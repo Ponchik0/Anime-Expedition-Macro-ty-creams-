@@ -1083,6 +1083,16 @@
             </div>
           </div>
 
+          <!-- Проверка эталонов. Только чтение: один снимок окна и сравнение
+               картинок в памяти, ни одного клика. -->
+          <div class="setting-row" style="padding: 14px; flex-wrap: wrap;">
+            <div style="flex:1; min-width:0;">
+              <div class="setting-label">Template Check</div>
+              <div class="setting-desc">Scores every reference image against what is on screen RIGHT NOW. Catches the buttons that almost match but miss the threshold -- the ones that stall a run at 3am. Open a game screen, press Run, read the Process Log. Read-only: no clicks, safe while the macro runs.</div>
+            </div>
+            <button id="btn-template-check" onclick="runTemplateCheck(this)" class="text-xs font-semibold px-3 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--brand); border-color: var(--border);">Run</button>
+          </div>
+
           <div class="setting-row" style="padding: 14px; flex-wrap: wrap;">
             <div>
               <div class="setting-label">Health Check</div>

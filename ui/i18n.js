@@ -306,6 +306,11 @@
     'Accent': 'Акцент',
     'Background': 'Фон',
 
+    // --- Проверка эталонов ---
+    'Template Check': 'Проверка эталонов',
+    'Scores every reference image against what is on screen RIGHT NOW. Catches the buttons that almost match but miss the threshold -- the ones that stall a run at 3am. Open a game screen, press Run, read the Process Log. Read-only: no clicks, safe while the macro runs.':
+      'Сравнивает все эталонные картинки с тем, что на экране ПРЯМО СЕЙЧАС, и показывает счёт каждой. Ловит кнопки, которые почти совпадают, но не берут порог, — именно они роняют прогон ночью. Открой нужный экран игры, нажми «Запустить» и смотри журнал. Только чтение: ни одного клика, можно запускать во время работы макроса.',
+
     // === СПРАВКА (модалка «Справка») ===================================
     'Help & Troubleshooting FAQ': 'Справка и решение проблем',
     'Is this macro safe? Why does VirusTotal show 1 virus detection?': 'Безопасен ли макрос? Почему VirusTotal показывает одно срабатывание?',

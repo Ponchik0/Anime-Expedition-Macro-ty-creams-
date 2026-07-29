@@ -6485,3 +6485,21 @@ async function pastePrivateServer() {
     paintPrivateServerState(await pywebview.api.set_private_server(el.value));
   } catch (e) {}
 }
+
+// ── Проверка эталонов (Настройки > Отладка) ───────────────────────────────
+// Только чтение: питон делает один снимок окна и сравнивает с ним все
+// картинки из Assets/ui. Результат уходит в журнал — там его видно целиком
+// и можно скопировать.
+async function runTemplateCheck(btn) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const r = await pywebview.api.check_templates();
+    if (r && !r.ok && r.reason === 'no_window') {
+      addLog('[Проверка] Окно Roblox не найдено — открой игру и повтори.');
+    }
+  } catch (e) {
+    addLog('[Проверка] Не удалось: ' + e);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = was || 'Run'; }
+}

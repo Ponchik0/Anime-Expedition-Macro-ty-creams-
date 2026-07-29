@@ -1227,6 +1227,22 @@ class Api:
     # не знает об игре ничего и потому работает где угодно.
     # Ядро — core/replay.py, здесь только мост в интерфейс.
 
+    def check_templates(self) -> dict:
+        """Проверка эталонов: что макрос сейчас видит на экране игры.
+
+        Только чтение — один снимок окна и сравнение картинок в памяти.
+        Ни кликов, ни нажатий, ни записи в настройки, поэтому запускать
+        можно хоть во время работы макроса.
+        """
+        from core import template_check
+        hwnd = self.game_hwnd
+        if not hwnd or not wm.is_window(hwnd):
+            return {"ok": False, "reason": "no_window"}
+        res = template_check.check(hwnd)
+        for line in template_check.summary(res).splitlines():
+            self.push_log("[Проверка] " + line)
+        return res
+
     # ================================================ ПРИВАТНЫЙ СЕРВЕР =====
     def get_private_server(self) -> dict:
         from core import joinlink
