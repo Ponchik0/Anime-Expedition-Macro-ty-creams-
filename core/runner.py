@@ -119,9 +119,17 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         _raw_set_status = set_status or (lambda **kw: None)
         self._last_action = ""
 
+        # Сторож бездействия опирается на смену действия: пока строка статуса
+        # меняется, макрос куда-то движется. Замерла надолго — он застрял.
+        # Отдельного «пульса» заводить не нужно, статус и есть пульс.
+        self._progress_at = time.time()
+        self._stall_reported = False
+
         def _tracking_set_status(**kw):
-            if "action" in kw:
+            if "action" in kw and kw["action"] != self._last_action:
                 self._last_action = kw["action"]
+                self._progress_at = time.time()
+                self._stall_reported = False
             _raw_set_status(**kw)
 
         self._set_status = _tracking_set_status
@@ -346,12 +354,58 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         self._pause_event.clear()
         return {"ok": True}
 
+    def _check_stall(self, stop_event: threading.Event) -> None:
+        """Сторож бездействия: макрос завис — остановить и сказать об этом.
+
+        Зачем. Без него застрявший прогон крутится до утра, а человек узнаёт
+        об этом, когда проснётся: шесть часов впустую и ни строчки о том, что
+        случилось. Ровно эта штука была в старом AHK-макросе.
+
+        Как считается «ничего не происходит». По строке текущего действия:
+        пока она меняется, макрос куда-то движется — ищет кнопку, ставит
+        юнита, ждёт волну. Замерла на STALL_TIMEOUT_MIN минут — застрял.
+
+        ВАЖНО про порог. Он обязан быть БОЛЬШЕ самого длинного матча, иначе
+        сработает посреди боя на ровном месте: во время боя действие подолгу
+        не меняется, и это нормально. 25 минут с запасом перекрывают и
+        Expedition, и Infinite.
+
+        На паузе сторож молчит: пауза — это не зависание.
+        """
+        mins = STALL_TIMEOUT_MIN
+        if mins <= 0 or self._stall_reported or stop_event.is_set():
+            return
+        if self._pause_event.is_set():
+            # На паузе часы не идут, иначе после снятия паузы сторож
+            # сработал бы мгновенно.
+            self._progress_at = time.time()
+            return
+        if time.time() - self._progress_at < mins * 60:
+            return
+        self._stall_reported = True
+        action = self._last_action or "—"
+        self._log(f"[Macro] Ничего не происходит {mins} мин (последнее действие: «{action}»). "
+                   f"Похоже, макрос застрял — останавливаюсь.")
+        self._set_status(action=f"Остановлен: завис на «{action}»")
+        try:
+            self._send_event_webhook(
+                getattr(self, "_webhook_cfg", None), getattr(self, "_current_task", None),
+                "Макрос завис",
+                f"Ничего не происходило {mins} минут.\n"
+                f"Последнее действие: **{action}**\n\n"
+                f"Прогон остановлен, чтобы не крутиться впустую.",
+                0xF0686A)
+        except Exception:
+            pass
+        stop_event.set()
+
     def _checkpoint(self, stop_event: threading.Event) -> bool:
         """Call between every major step. Blocks here while paused (so Pause
         works everywhere a stop check already happens, for free), then
         reports whether the caller should bail out. Centralizing the
         stop-check here (instead of the same 4-line block repeated after
         every step) is what makes it trivial to keep it consistent."""
+        self._check_stall(stop_event)
         while self._pause_event.is_set() and not stop_event.is_set():
             if not self._paused_logged:
                 self._log("[Macro] Paused.")
@@ -578,6 +632,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
               coords: dict = None, scroll_nudges: int = None, default_walk_paths: dict = None,
               webhook: dict = None) -> None:
         coords = {**DEFAULT_COORDS, **(coords or {})}
+        # Сторожу бездействия нужен доступ к настройкам вебхука из любого
+        # места цикла — держим их на self, а не таскаем параметром.
+        self._webhook_cfg = webhook
+        self._current_task = None
+        self._progress_at = time.time()
+        self._stall_reported = False
         # Also kept on self: most click sites live in methods coords was
         # never threaded through -- one shared dict beats adding a parameter
         # to a dozen call chains (see _cxy).
