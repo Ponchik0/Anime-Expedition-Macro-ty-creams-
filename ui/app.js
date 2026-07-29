@@ -6567,10 +6567,16 @@ async function toggleRecording() {
   refreshRecordings();
 }
 
+let _wasRecording = false;
 async function pollRecordingState() {
   if (currentScreen !== 'replay') return;
   try {
     const st = await pywebview.api.replay_recording_status();
+    // Запись останавливают клавишей F8, находясь В ИГРЕ — интерфейс об этом
+    // никак не узнаёт и список остаётся пустым до следующего действия
+    // руками. Ловим переход «писалась -> не пишется» и обновляем сами.
+    if (_wasRecording && !st.recording) refreshRecordings();
+    _wasRecording = !!st.recording;
     const btn = document.getElementById('btn-rec');
     const lbl = document.getElementById('rec-state');
     if (!btn || !lbl) return;

@@ -98,6 +98,10 @@ def _watched_keys() -> dict:
 
 WATCHED_KEYS = _watched_keys()
 _VK_BY_NAME = {name: vk for vk, name in WATCHED_KEYS.items()}
+# Отдельно — регистронезависимая карта. Хоткеи в настройках лежат строчными
+# ("f8"), а имена клавиш здесь заглавными ("F8"): без этого сопоставление
+# молча не находило ни одного совпадения.
+_VK_BY_LOWER = {name.lower(): vk for name, vk in _VK_BY_NAME.items()}
 
 
 def _timer_precision(on: bool) -> None:
@@ -163,10 +167,15 @@ class Recorder:
     при воспроизведении. Тот же приём уже используется в core/paths.py.
     """
 
-    def __init__(self, get_game_hwnd, get_gui_hwnd=None, log=None):
+    def __init__(self, get_game_hwnd, get_gui_hwnd=None, log=None, get_hotkeys=None):
         self._get_game = get_game_hwnd
         self._get_gui = get_gui_hwnd or (lambda: 0)
         self._log = log or (lambda m: None)
+        # Свои управляющие клавиши в запись попадать НЕ должны. Иначе F8,
+        # которым запись и останавливают, окажется в файле — а при повторе
+        # макрос нажмёт его сам и выключит себе запись. Ровно эта защита
+        # была в старом AHK-макросе (IsControlKey).
+        self._get_hotkeys = get_hotkeys or (lambda: {})
         self._thread = None
         self._stop = threading.Event()
         self._events = []
@@ -224,6 +233,15 @@ class Recorder:
         last_move = 0.0
         last_xy = (-9999, -9999)
         gui_hwnd = self._get_gui() or 0
+        # Виртуальные коды своих хоткеев — их пропускаем при записи.
+        skip_vks = set()
+        try:
+            for key in (self._get_hotkeys() or {}).values():
+                vk = _VK_BY_LOWER.get(str(key).strip().lower())
+                if vk is not None:
+                    skip_vks.add(vk)
+        except Exception:
+            pass
 
         while not self._stop.is_set():
             hwnd = self._get_game() or 0
@@ -236,6 +254,8 @@ class Recorder:
 
             # --- кнопки мыши и клавиши, один проход ---
             for vk, name in list(_MOUSE.items()) + list(WATCHED_KEYS.items()):
+                if vk in skip_vks:
+                    continue          # свой хоткей — в запись не пишем
                 try:
                     down = _inp.is_key_down(vk)
                 except Exception:
@@ -413,8 +433,12 @@ class Player:
             # Пауза и «жду окно игры» замораживают часы расписания.
             waiting = self._pause.is_set()
             if not waiting and require_focus:
+                # ИСПРАВЛЕНО: функция называется is_foreground, а не
+                # is_window_focused. Из-за неверного имени hasattr всегда
+                # давал False, и галка «играть только при активном окне
+                # Roblox» молча не работала — запись игралась в любое окно.
                 try:
-                    waiting = not wm.is_window_focused(hwnd) if hasattr(wm, "is_window_focused") else False
+                    waiting = not wm.is_foreground(hwnd)
                 except Exception:
                     waiting = False
             if waiting:

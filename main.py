@@ -1175,15 +1175,21 @@ class Api:
         return self.runner.start_crafting_test(lambda: self.game_hwnd, coords)
 
     def start_macro(self) -> dict:
-        # В режиме «Повтор» кнопка «Старт» крутит запись, а не очередь задач.
-        # Проверка окружения тут не нужна: повтору не важны ни шаблоны, ни
-        # координаты, ни сценарии — он просто отправляет записанный ввод.
-        if cfg.load().get("run_mode") == "replay":
-            return self.replay_play()
+        # Проверка окружения идёт ПЕРВОЙ в обоих режимах.
+        # Сначала я делал для «Повтора» ранний выход до неё — рассуждая, что
+        # повтору не нужны ни шаблоны, ни координаты. Это было ошибкой:
+        # блокирующие проблемы окружения (нет окна Roblox, нет прав на ввод)
+        # ломают повтор ровно так же, как автомат, и пропускать их значило
+        # запускать заведомо мёртвый прогон вместо внятного отказа.
         preflight = self.run_preflight_check()
         if preflight.get("has_blocker", False):
             self.push_log("[Preflight] Start blocked due to environment/configuration issue.")
             return {"ok": False, "reason": "preflight_blocker", "preflight": preflight}
+
+        # Окружение в порядке — теперь решаем, ЧТО запускать.
+        # В режиме «Повтор» кнопка «Старт» крутит запись, а не очередь задач.
+        if cfg.load().get("run_mode") == "replay":
+            return self.replay_play()
 
         data = cfg.load()
         scroll_power = data.get("story_scroll_power", 3)
@@ -1297,8 +1303,10 @@ class Api:
     def _replay_recorder(self):
         from core import replay
         if getattr(self, "_recorder", None) is None:
-            self._recorder = replay.Recorder(lambda: self.game_hwnd,
-                                              lambda: self.gui_hwnd, self.push_log)
+            self._recorder = replay.Recorder(
+                lambda: self.game_hwnd, lambda: self.gui_hwnd, self.push_log,
+                # Чтобы рекордер знал, какие клавиши — наши, и не писал их.
+                get_hotkeys=lambda: cfg.load().get("hotkeys", HOTKEY_DEFAULTS))
         return self._recorder
 
     def _replay_player(self):
