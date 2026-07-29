@@ -237,6 +237,50 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
 @media (prefers-reduced-motion:reduce){
   #bg i,.dot{animation:none!important}
 }
+
+/* === ПРАВАЯ КОЛОНКА: собрана в три поверхности =====================
+   Было пять отдельных коробок с пятью одинаковыми шапками подряд —
+   ровно тот повтор одной формы, который читается как «сгенерировано».
+   Стало: «Сейчас» (живое), «Статистика» (ОДИН блок с внутренними
+   разделами) и «Управление». Разделы внутри отбиты волосяной линией и
+   надписью, а не новой рамкой — колонка читается как один прибор, а не
+   как стопка карточек. */
+.sec{padding:var(--s4) var(--s4) var(--s3)}
+.sec+.sec{border-top:1px solid rgba(255,255,255,.06)}
+.sec-h{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s3)}
+.sec-h b{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.sec-h .rule{flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.09),transparent)}
+.sec-h em{font-style:normal;font-size:11px;color:var(--mut)}
+
+/* Кольцо процента побед. Единственная круглая форма среди прямоугольников,
+   поэтому взгляд цепляется за неё первой — а это и есть главное число. */
+.ring-row{display:flex;align-items:center;gap:var(--s5)}
+.ring{position:relative;width:104px;height:104px;flex-shrink:0}
+.ring svg{width:104px;height:104px;transform:rotate(-90deg);stroke-width:8}
+.ring .track{stroke:rgba(255,255,255,.10);fill:none}
+.ring .fill{stroke:var(--ok);fill:none;stroke-linecap:round;
+  filter:drop-shadow(0 0 6px rgba(111,207,140,.35))}
+.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px}
+.ring-c u{text-decoration:none;font-size:26px;font-weight:600;line-height:1}
+.ring-c small{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+
+/* Победы и поражения рядом с кольцом — без рамок, только цветная метка. */
+.wl{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s3)}
+.wl-row{display:flex;align-items:center;gap:var(--s2)}
+.wl-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.wl-n{font-size:20px;font-weight:600;line-height:1;min-width:34px}
+.wl-t{font-size:11px;color:var(--mut);line-height:1.25}
+.wl-t s{display:block;text-decoration:none;color:var(--dim)}
+
+/* История: полосой во всю ширину, без легенды — зелёное и красное
+   объяснять не нужно. */
+.hist{display:flex;gap:2px;margin-top:var(--s4)}
+.hist i{flex:1;height:22px;border-radius:3px;background:var(--glass-3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.hist i.w{background:var(--ok);box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
+.hist i.l{background:var(--err);box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
+.hist-x{display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--mut)}
 </style>
 </head>
 <body>
@@ -273,9 +317,9 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
 
   <div id="right">
 
+    <!-- 1. Живое: что происходит прямо сейчас -->
     <section class="g">
-      <header class="ph"><b>Сейчас</b><span class="rule"></span><em>Expedition</em></header>
-      <div class="now">
+      <div class="sec" style="padding-bottom:var(--s4)">
         <div class="now-top">
           <span class="dot"></span>
           <span class="now-act">Ставлю «Ramen Guy»</span>
@@ -290,57 +334,76 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
       </div>
     </section>
 
+    <!-- 2. Статистика: ОДИН прибор с внутренними разделами -->
     <section class="g">
-      <header class="ph"><b>Счёт</b><span class="rule"></span><em>сессия</em></header>
-      <div class="score">
-        <div><u class="tnum" style="color:var(--ok)">18</u><small>Побед</small><em class="tnum">142 всего</em></div>
-        <div><u class="tnum">86%</u><small>Процент</small><em class="tnum">88% всего</em></div>
-        <div><u class="tnum" style="color:var(--err)">3</u><small>Поражений</small><em class="tnum">19 всего</em></div>
+
+      <div class="sec">
+        <div class="sec-h"><b>Результат</b><span class="rule"></span><em>сессия</em></div>
+        <div class="ring-row">
+          <div class="ring">
+            <svg viewBox="0 0 104 104">
+              <circle class="track" cx="52" cy="52" r="44"/>
+              <!-- длина дуги 2*pi*r = 276.5; 86% -> смещение 38.7 -->
+              <circle class="fill" cx="52" cy="52" r="44"
+                      stroke-dasharray="276.5" stroke-dashoffset="38.7"/>
+            </svg>
+            <div class="ring-c"><u class="tnum">86%</u><small>побед</small></div>
+          </div>
+          <div class="wl">
+            <div class="wl-row">
+              <span class="wl-dot" style="background:var(--ok)"></span>
+              <span class="wl-n tnum" style="color:var(--ok)">18</span>
+              <span class="wl-t">побед<s class="tnum">142 за всё время</s></span>
+            </div>
+            <div class="wl-row">
+              <span class="wl-dot" style="background:var(--err)"></span>
+              <span class="wl-n tnum" style="color:var(--err)">3</span>
+              <span class="wl-t">поражений<s class="tnum">19 за всё время</s></span>
+            </div>
+          </div>
+        </div>
+        <div class="hist">
+          <i class="w"></i><i class="w"></i><i class="w"></i><i class="l"></i><i class="w"></i>
+          <i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i>
+          <i class="l"></i><i class="l"></i><i class="w"></i><i class="w"></i><i class="w"></i>
+          <i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i>
+        </div>
+        <div class="hist-x"><span>20 забегов назад</span><span>последний</span></div>
       </div>
-      <div class="grid">
-        <i class="w"></i><i class="w"></i><i class="w"></i><i class="l"></i><i class="w"></i>
-        <i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i>
-        <i class="l"></i><i class="l"></i><i class="w"></i><i class="w"></i><i class="w"></i>
-        <i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i>
+
+      <div class="sec">
+        <div class="sec-h"><b>Темп</b><span class="rule"></span><em class="tnum">6.4 забега/час</em></div>
+        <div class="spark" style="padding:0;height:46px">
+          <i style="height:38%"></i><i style="height:55%"></i><i style="height:47%"></i>
+          <i style="height:70%"></i><i style="height:62%"></i><i style="height:15%"></i>
+          <i style="height:20%"></i><i style="height:66%"></i><i style="height:80%"></i>
+          <i style="height:74%"></i><i class="hi" style="height:92%"></i><i class="hi" style="height:88%"></i>
+        </div>
+        <div class="spark-x" style="padding:6px 0 0"><span>12 часов назад</span><span>сейчас</span></div>
       </div>
-      <div class="legend">
-        <span><b style="background:var(--ok)"></b>победа</span>
-        <span><b style="background:var(--err)"></b>поражение</span>
-        <span style="margin-left:auto">последние 20 забегов</span>
+
+      <div class="sec">
+        <div class="sec-h"><b>По картам</b><span class="rule"></span><em>процент побед</em></div>
+        <div class="maps" style="padding:0">
+          <div class="map" style="padding:6px 0"><span class="nm">School Grounds</span>
+            <span class="bar"><i style="width:96%"></i></span><span class="pc tnum">96%</span></div>
+          <div class="map" style="padding:6px 0"><span class="nm">Flower Forest</span>
+            <span class="bar"><i style="width:91%"></i></span><span class="pc tnum">91%</span></div>
+          <div class="map" style="padding:6px 0"><span class="nm">Rose Kingdom</span>
+            <span class="bar"><i class="bad" style="width:54%"></i></span><span class="pc tnum">54%</span></div>
+          <div class="map" style="padding:6px 0"><span class="nm">King's Tomb</span>
+            <span class="bar"><i style="width:83%"></i></span><span class="pc tnum">83%</span></div>
+        </div>
       </div>
+
     </section>
 
+    <!-- 3. Управление -->
     <section class="g">
-      <header class="ph"><b>Темп</b><span class="rule"></span><em class="tnum">6.4 забега/час</em></header>
-      <div class="spark">
-        <i style="height:38%"></i><i style="height:55%"></i><i style="height:47%"></i>
-        <i style="height:70%"></i><i style="height:62%"></i><i style="height:15%"></i>
-        <i style="height:20%"></i><i style="height:66%"></i><i style="height:80%"></i>
-        <i style="height:74%"></i><i class="hi" style="height:92%"></i><i class="hi" style="height:88%"></i>
-      </div>
-      <div class="spark-x"><span>12 часов назад</span><span>сейчас</span></div>
-    </section>
-
-    <section class="g">
-      <header class="ph"><b>По картам</b><span class="rule"></span><em>процент побед</em></header>
-      <div class="maps">
-        <div class="map"><span class="nm">School Grounds</span>
-          <span class="bar"><i style="width:96%"></i></span><span class="pc tnum">96%</span></div>
-        <div class="map"><span class="nm">Flower Forest</span>
-          <span class="bar"><i style="width:91%"></i></span><span class="pc tnum">91%</span></div>
-        <div class="map"><span class="nm">Rose Kingdom</span>
-          <span class="bar"><i class="bad" style="width:54%"></i></span><span class="pc tnum">54%</span></div>
-        <div class="map"><span class="nm">King's Tomb</span>
-          <span class="bar"><i style="width:83%"></i></span><span class="pc tnum">83%</span></div>
-      </div>
-    </section>
-
-    <section class="g">
-      <header class="ph"><b>Управление</b><span class="rule"></span></header>
-      <div class="ctl">
-        <button class="b go wide">▶ Старт <span class="k">F1</span></button>
-        <button class="b">❚❚ Пауза <span class="k">F5</span></button>
-        <button class="b no">■ Стоп <span class="k">F2</span></button>
+      <div class="ctl" style="padding:var(--s4)">
+        <button class="b go wide">&#9654; Старт <span class="k">F1</span></button>
+        <button class="b">&#10074;&#10074; Пауза <span class="k">F5</span></button>
+        <button class="b no">&#9632; Стоп <span class="k">F2</span></button>
       </div>
     </section>
 
