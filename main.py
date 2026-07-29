@@ -1362,9 +1362,33 @@ class Api:
     def replay_recording_status(self) -> dict:
         rec = getattr(self, "_recorder", None)
         p = getattr(self, "_player", None)
+        # Хвост последних действий и длительность нужны панели записи на
+        # Дашборде: записывая через F8, человек сидит В ИГРЕ и до этого
+        # видел только счётчик — «пишется 47 действий» не говорит НИЧЕГО о
+        # том, попало ли в запись то, что он делал. Список последних
+        # событий отвечает на это сразу.
+        recent, elapsed = [], 0.0
+        if rec and rec.running:
+            try:
+                with rec._lock:
+                    evs = list(rec._events)
+                elapsed = round((evs[-1]["t"] / 1000.0) if evs else 0.0, 1)
+                for e in reversed(evs):
+                    if e["kind"] == "move":
+                        continue          # точек пути тысячи, показывать их незачем
+                    label = {"down": "нажал", "up": "отпустил", "wheel": "колесо"}.get(e["kind"], e["kind"])
+                    code = {"left": "ЛКМ", "right": "ПКМ", "middle": "СКМ"}.get(e["code"], e["code"])
+                    where = f" ({e['x']}, {e['y']})" if (e["x"] or e["y"]) else ""
+                    recent.append(f"{e['t'] / 1000.0:6.1f}с  {label} {code}{where}")
+                    if len(recent) >= 7:
+                        break
+            except Exception:
+                pass
         return {
             "recording": bool(rec and rec.running),
             "recorded": rec.count if rec else 0,
+            "recent": recent,
+            "elapsed": elapsed,
             "state": p.state if p else "idle",
             "loop": p.loop_num if p else 0,
             "index": p.index if p else 0,

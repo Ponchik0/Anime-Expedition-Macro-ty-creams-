@@ -531,6 +531,7 @@ function switchScreen(name) {
   if (name === 'resource') { refreshCraftingScreen(); refreshChallengeScreen(); refreshBountyScreen(); }
   if (name === 'settings') { refreshSavedPaths(); loadMacroCoords(); loadRewardTestMaps(); }
   if (name === 'settings') czLoad();
+  if (name === 'dashboard') refreshRecLive();
   if (name === 'replay') loadReplayScreen();
 
   // The Process Log only exists on the Dashboard, and a display:none element
@@ -6211,6 +6212,9 @@ window.addEventListener('pywebviewready', async () => {
   setInterval(tickTimers, 1000);
   refreshStatus();
   setInterval(refreshStatus, 1500);
+  // Панель записи обновляется чаще: во время записи важно видеть, что
+  // действия РЕАЛЬНО попадают в файл, а не гадать раз в полторы секунды.
+  setInterval(refreshRecLive, 600);
 });
 
 // --- Share Code (Export / Import via Code or URL) ---
@@ -6702,4 +6706,24 @@ async function czLoad() {
     czApply('density', s.ui_density || 'default', false);
     czApply('corners', s.ui_corners || 'default', false);
   } catch (e) { czRender(); }
+}
+
+// ── Живая панель записи на Дашборде ──────────────────────────────────────
+// Опрашивается вместе с остальным статусом. Показывается только во время
+// записи: в покое лишняя панель на Дашборде — шум.
+async function refreshRecLive() {
+  const box = document.getElementById('rec-live');
+  if (!box) return;
+  let st = null;
+  try { st = await pywebview.api.replay_recording_status(); } catch (e) { return; }
+  if (!st || !st.recording) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const meta = document.getElementById('rec-live-meta');
+  if (meta) meta.textContent = `${st.recorded} действий · ${st.elapsed || 0} с`;
+  const list = document.getElementById('rec-live-list');
+  if (list) {
+    list.innerHTML = (st.recent && st.recent.length)
+      ? st.recent.map(l => `<div>${escapeHtml(l)}</div>`).join('')
+      : '<div style="color:var(--text-muted)">Жду первых действий — переключись в Roblox и играй.</div>';
+  }
 }

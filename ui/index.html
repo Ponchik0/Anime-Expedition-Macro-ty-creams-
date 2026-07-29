@@ -413,6 +413,24 @@
           </div>
         </section>
 
+        <!-- ── Живая панель записи ──────────────────────────────────
+             Показывается ТОЛЬКО во время записи. Нужна потому, что писать
+             приходится находясь в игре: до неё единственной обратной связью
+             был счётчик действий, а он не отвечает на главный вопрос —
+             попало ли в запись то, что ты только что сделал. -->
+        <section class="rp-panel" id="rec-live" style="display:none;">
+          <header class="rp-panel-head">
+            <span class="rp-head-title">Идёт запись</span>
+            <span class="rp-head-rule"></span>
+            <span id="rec-live-meta" style="font-size:11px; color:var(--text-muted);"></span>
+          </header>
+          <div id="rec-live-list" style="padding:8px 12px; font-family:var(--font-mono);
+               font-size:11px; line-height:1.7; color:var(--text-dim);"></div>
+          <div style="padding:0 12px 10px; font-size:11px; color:var(--text-muted);">
+            Остановить — <b>F8</b>, той же клавишей, что начал.
+          </div>
+        </section>
+
         <!-- Controls: one primary command, one quiet one. -->
         <section class="rp-panel">
           <header class="rp-panel-head">

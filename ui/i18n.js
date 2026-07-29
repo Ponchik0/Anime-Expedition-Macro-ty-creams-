@@ -294,6 +294,8 @@
     'Accent': 'Акцент',
     'Background': 'Фон интерфейса',
     'Customization': 'Кастомизация',
+    'Остановить — ': 'Остановить — ',
+    ', той же клавишей, что начал.': ', той же клавишей, что начал.',
     'Background, accent colour and how densely everything is packed. Contrast of every combination is verified -- nothing here can make the interface unreadable.':
       'Фон, цвет акцента и плотность интерфейса. Контраст каждого сочетания проверен численно — сделать интерфейс нечитаемым отсюда нельзя.',
     'Accent': 'Акцент',
