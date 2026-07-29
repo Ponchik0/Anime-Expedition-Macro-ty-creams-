@@ -39,7 +39,6 @@
     'Session': 'Сессия',
     'All Time': 'Всего',
     'Minimize': 'Свернуть',
-    'Close': 'Закрыть',
     'Time this session / all-time total': 'Время за сессию / за всё время',
 
     // --- Дашборд: состояние ---
@@ -55,8 +54,6 @@
     'Disabled': 'Выключено',
     '▾ details': '▾ подробнее',
     'Hover for more detail': 'Наведи, чтобы увидеть подробности',
-    'Mode': 'Режим',
-    'Stage': 'Стадия',
     'Difficulty': 'Сложность',
     'Play Mode': 'Режим игры',
     'Macro': 'Сценарий',
@@ -83,9 +80,6 @@
     'Process Log': 'Журнал',
     'Pop Out': 'В окно',
     'Clear': 'Очистить',
-    'Clear logs': 'Очистить журнал',
-    'Open logs in their own window': 'Открыть журнал отдельным окном',
-    'Jump to the newest line': 'К последней строке',
     'new': 'новых',
 
     // --- Экран ожидания ---
@@ -122,12 +116,10 @@
     // --- Сценарии (Macro Manager) ---
     'Macro Operation': 'Сценарий',
     'Current Template': 'Текущий сценарий',
-    'Template name': 'Название сценария',
     'All Templates': 'Все сценарии',
     'Single Template': 'Один сценарий',
     'Select Templates': 'Выбрать сценарии',
     'Check templates to share:': 'Отметь, чем поделиться:',
-    'Blocks': 'Блоки',
     'Place Unit': 'Поставить юнита',
     'Set Position': 'Задать точку',
     'Keep Placing': 'Ставить до упора',
@@ -192,7 +184,6 @@
 
     // --- Настройки: общее ---
     'Start Minimized': 'Запускать свёрнутым',
-    'Launch minimized to the taskbar.': 'Открываться сразу в панель задач.',
     'Auto-Reopen Roblox': 'Перезапускать Roblox',
     'Macro Speed': 'Скорость макроса',
     'Action Delay': 'Задержка между действиями',
@@ -241,8 +232,6 @@
     'Attach': 'Прикрепить',
     'Un-Attach': 'Открепить',
     'Camera Setup': 'Настройка камеры',
-    'Camera Mode': 'Режим камеры',
-    'Invert Camera Y-Axis': 'Инвертировать ось Y',
     'Force Rejoin': 'Принудительный реджойн',
     'Rejoin Now': 'Перезайти сейчас',
     'Wave Monitor': 'Монитор волн',
@@ -302,7 +291,6 @@
     'Esc': 'Esc',
     'Live': 'В работе',
     'PRESET': 'НАБОР',
-    'Default (Classic)': 'Обычный',
     'Accent': 'Акцент',
     'Background': 'Фон',
     'Record': 'Запись',
