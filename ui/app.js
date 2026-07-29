@@ -4515,7 +4515,17 @@ async function openPlaceUnitModal(blockId) {
   if (reqId !== puRequestId) return;
   if (puState.categories.length === 0) {
     document.getElementById('pu-category-tabs').innerHTML = '';
-    document.getElementById('pu-map-grid').innerHTML = '<div class="rh-empty">No maps found in Assets/map -- add category folders with map images, or use "Use Roblox Screen" instead.</div>';
+    // Пустой каталог — это НОРМАЛЬНОЕ состояние в этой сборке: готовые
+    // карты автора убраны в Assets/map_bundled (клик по чужому кадру
+    // промахивается — у него другой ракурс камеры). Поэтому подсказка не
+    // «ничего не найдено», а «вот как задать точку».
+    document.getElementById('pu-map-grid').innerHTML =
+      '<div class="empty-state">'
+      + '<div class="empty-state-title">Готовых карт нет — и это нормально</div>'
+      + '<div class="empty-state-hint">Нажми <b>«Снимок из игры»</b> вверху: макрос возьмёт кадр прямо из окна Roblox, '
+      + 'и ты кликнешь по своему настоящему экрану. Это точнее любой готовой картинки — ракурс камеры у каждого свой.'
+      + '<br><br>Хочешь свою карту на будущее — положи файл в <code>Assets/map/&lt;Категория&gt;/&lt;Название&gt;.png</code>, '
+      + 'подробности в <code>Assets/map/README.txt</code>.</div></div>';
     return;
   }
 

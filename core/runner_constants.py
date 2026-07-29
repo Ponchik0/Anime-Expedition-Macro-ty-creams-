@@ -597,4 +597,11 @@ CRAFT_MENU_TIMEOUT = 15.0          # the E menu fully opening (craft_menu anchor
 CRAFT_ITEM_TIMEOUT = 4.0           # a sprite icon / Max / input / Craft button appearing
 CRAFT_INSUFFICIENT_TIMEOUT = 2.0   # how long to watch for the insufficient-items warning after clicking Craft
 
-
+# ── Чёрный экран после частых перезаходов (баг игры) ──────────────────────
+# Roblox остаётся запущен, но рисует чёрный кадр: кнопки «Play» нет и не
+# будет. Повторный диплинк в живой, но сломанный клиент ничего не меняет —
+# помогает только закрыть процесс и открыть заново.
+ROBLOX_PROCESS_KILL_NAMES = ("RobloxPlayerBeta.exe",)
+ROBLOX_KILL_SETTLE = 3.0      # дать системе снять процесс перед новым стартом
+HARD_RESTART_TIMEOUT = 150.0  # сколько ждать лобби после перезапуска
+HARD_RESTART_MAX = 2          # не помогло дважды — дело не в игре, встаём

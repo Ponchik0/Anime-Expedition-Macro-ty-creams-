@@ -14,6 +14,7 @@ rest of the Battle-phase block types (Walk/Wait/Setting), plug in once those
 exist.
 """
 import os
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
@@ -191,6 +192,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # unbroken streak on the SAME map ever counts toward it.
         self._consecutive_losses = 0
         self._consecutive_loss_map = None
+        # Сколько раз за забег пришлось полностью перезапускать Roblox
+        # из-за чёрного экрана (см. _hard_restart_roblox).
+        self._hard_restarts = 0
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -218,6 +222,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         self._left_stage_this_run = False
         self._consecutive_losses = 0
         self._consecutive_loss_map = None
+        self._hard_restarts = 0
         self._thread = threading.Thread(
             target=self._run_session,
             args=(hwnd_getter, get_tasks, self._stop_event, scroll_power, coords, scroll_nudges,
@@ -2377,7 +2382,80 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 self._log("[Macro] Rejoined -- back on the lobby.")
                 self._current_hwnd = current_hwnd
                 return True
+        # Диплинк не помог за отведённое время. Классический случай — баг
+        # игры при частых перезаходах: Roblox остаётся запущен, но рисует
+        # ЧЁРНЫЙ ЭКРАН. Кнопки «Play» там нет и не появится, сколько ни жди,
+        # а повторный диплинк бьёт в тот же сломанный клиент и ничего не
+        # меняет. Лечится только полным перезапуском процесса.
+        if self._hard_restart_roblox(stop_event):
+            return True
         self._log(f"[Macro] Rejoin didn't reach the lobby within {REJOIN_TIMEOUT:.0f}s -- giving up.")
+        return False
+
+    def _hard_restart_roblox(self, stop_event: threading.Event) -> bool:
+        """Закрыть Roblox совсем и открыть заново по своей ссылке.
+
+        Нужен ровно для одного случая: игра висит с чёрным экраном после
+        частых перезаходов. Диплинк в живой, но сломанный клиент бесполезен —
+        помогает только убить процесс и стартовать с нуля.
+
+        Ограничено HARD_RESTART_MAX за забег: если перезапуск не помог два
+        раза подряд, дело не в игре, и бесконечно её передёргивать хуже, чем
+        честно встать и сказать.
+        """
+        if getattr(self, "_hard_restarts", 0) >= HARD_RESTART_MAX:
+            self._log(f"[Macro] Полный перезапуск Roblox уже делался {HARD_RESTART_MAX} раз(а) за этот "
+                       f"забег и не помог — больше не пробую.")
+            return False
+        self._hard_restarts = getattr(self, "_hard_restarts", 0) + 1
+        self._set_status(action="Чёрный экран — перезапускаю Roblox...")
+        self._log(f"[Macro] Похоже на чёрный экран после перезахода: игра запущена, но лобби не "
+                   f"появляется. Полный перезапуск Roblox ({self._hard_restarts}/{HARD_RESTART_MAX}).")
+
+        killed = False
+        for name in ROBLOX_PROCESS_KILL_NAMES:
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", name],
+                                capture_output=True,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                killed = True
+            except Exception as exc:
+                self._log(f"[Macro] Не смог закрыть {name}: {exc}")
+        if not killed:
+            return False
+
+        # Дать системе действительно снять процесс, иначе новая копия
+        # стартует, пока старая ещё держит окно, и Roblox ругается.
+        for _ in range(int(ROBLOX_KILL_SETTLE / 0.25)):
+            if stop_event.is_set():
+                return False
+            time.sleep(0.25)
+
+        try:
+            from core import joinlink
+            os.startfile(joinlink.get_join_link())
+        except OSError as exc:
+            self._log(f"[Macro] Не удалось открыть ссылку после перезапуска: {exc}")
+            return False
+        self._log("[Macro] Roblox перезапущен — жду загрузку лобби...")
+
+        deadline = time.time() + HARD_RESTART_TIMEOUT
+        while time.time() < deadline:
+            if stop_event.is_set():
+                return False
+            time.sleep(REJOIN_POLL_INTERVAL)
+            current_hwnd = self._hwnd_getter() if self._hwnd_getter else None
+            if not current_hwnd or not wm.is_window(current_hwnd):
+                continue
+            try:
+                match, _ = vision.find_image_any(current_hwnd, NAV_PLAY_IMAGE_NAMES)
+            except vision.TemplateNotFound:
+                match = None
+            if match is not None:
+                self._log("[Macro] Лобби на месте — продолжаю.")
+                self._current_hwnd = current_hwnd
+                return True
+        self._log(f"[Macro] После перезапуска лобби не появилось за {HARD_RESTART_TIMEOUT:.0f}с.")
         return False
 
     def _click_start_and_wait_teleport(self, hwnd, stop_event: threading.Event, webhook: dict = None,
