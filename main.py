@@ -3658,15 +3658,22 @@ def _launch_ui():
 
     threading.Thread(target=_set_window_icon_background, daemon=True).start()
 
-    # ФОРК: фоновая проверка обновлений при старте убрана.
-    # Апдейтер автора накатывает релиз поверх папки установки и затирает наши
-    # правки в core/ и ui/. Сам вызов тоже заглушён (см. UPDATES_DISABLED в
-    # core/updater.py) — этот поток не запускается, чтобы не ходить в сеть на
-    # каждом запуске ради ответа, который всегда «обновлений нет».
-    #
-    # Что нового у автора — смотреть вручную:
-    #   git fetch upstream && git log --oneline HEAD..upstream/main
-    # и переносить нужное точечно, а не целым релизом.
+    def _check_for_update_background():
+        # Проверка через несколько секунд после запуска, а не сразу: медленный
+        # или недоступный GitHub не должен соперничать со стартом приложения
+        # за внимание. push_ui только говорит интерфейсу сходить за
+        # подробностями, когда они появятся.
+        time.sleep(4)
+        try:
+            api._update_info = updater.check_for_update(log=api.push_log)
+        except Exception as exc:
+            api.push_log(f"[Обновление] Проверка не удалась: {exc}")
+            return
+        if api._update_info.get("available"):
+            api.push_log(f'[Обновление] Доступна версия {api._update_info["version"]}.')
+            api.push_ui("showUpdateAvailable")
+
+    threading.Thread(target=_check_for_update_background, daemon=True).start()
 
     def _ensure_assets_background():
         # Assets/ ships as a loose folder beside the exe (see core.constants.

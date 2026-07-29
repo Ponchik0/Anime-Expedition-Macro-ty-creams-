@@ -308,12 +308,16 @@ def test_the_dirty_check_does_not_pop_a_console_window(tmp_path, monkeypatch):
     assert seen.get("creationflags") == getattr(_subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def test_stage_source_update_refuses_while_updates_are_disabled(tmp_path):
-    """ФОРК: автообновление выключено (UPDATES_DISABLED в core/updater.py).
-    Апдейтер автора накатывает релиз поверх папки установки и затирает наши
-    правки в core/ и ui/, поэтому применить его нельзя даже прямым вызовом."""
+def test_stage_source_update_refuses_while_updates_are_disabled(tmp_path, monkeypatch):
+    """Выключатель UPDATES_DISABLED работает.
+
+    Сейчас обновления ВКЛЮЧЕНЫ: источник — свой репозиторий, и обновиться
+    значит забрать то, что сам туда выложил. Но выключатель остаётся на
+    случай, если источник снова окажется чужим, — и он обязан
+    останавливать апдейт даже при прямом вызове, минуя интерфейс."""
     from core import updater
 
+    monkeypatch.setattr(updater, "UPDATES_DISABLED", True)
     app = _repo(tmp_path / "app")
     (app / "main.py").write_text("original")
 
