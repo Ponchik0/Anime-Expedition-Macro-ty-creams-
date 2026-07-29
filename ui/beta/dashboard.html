@@ -2,170 +2,252 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Бета-дизайн · Anime Expeditions</title>
+<title>Бета · Панель · Anime Expeditions</title>
 <!--
-  НАБРОСОК. Самостоятельная страница, рабочего интерфейса не касается:
-  свои стили, свои данные, ничего не импортирует из ui/style.css.
-  Открывается двойным кликом в браузере.
+  НАБРОСОК ВКЛАДКИ «ПАНЕЛЬ». Самостоятельная страница: свои стили, свои
+  выдуманные данные, ничего не импортирует из ui/style.css и в приложение
+  не подключена. Рабочий макрос продолжает работать как есть.
 
-  ЧТО ЗДЕСЬ ПРОБУЕТСЯ И ЗАЧЕМ
-  Текущий интерфейс правильный, но пустой: панель показывает семь строк
-  «подпись — прочерк» и три счётчика. Смотреть не на что, потому что
-  показывать нечего — хотя данные у макроса есть, они просто не выведены.
+  ЧТО ИЗМЕНИЛОСЬ ПРОТИВ ПРОШЛОГО НАБРОСКА
+  Прошлый был честной приборной панелью, но плоской: заливка, рамка 1px,
+  и так двенадцать раз подряд. Отсюда ощущение «нейронки» — не потому что
+  некрасиво, а потому что ОДИНАКОВО. Ни одна поверхность ничем не
+  отличалась от соседней.
 
-  Поэтому ставка не на украшения, а на СОДЕРЖАНИЕ:
-    • ход текущего матча (волна, время, что делает прямо сейчас);
-    • история побед клетками — видно полосу невезения, а не только процент;
-    • график забегов по часам — видно, когда макрос простаивал;
-    • разбивка по картам — видно, какая карта проседает.
+  Здесь введена глубина: три слоя, каждый со своим поведением света.
+    1. Фон  — тёплые поля, медленно плывущие. Их задача одна: дать стеклу
+              что преломлять. Блюр по пустоте выглядит как грязь.
+    2. Стекло — панели. Полупрозрачные, с настоящим backdrop-filter, с
+              бликом по верхней кромке и тенью под собой.
+    3. Данные — поверх стекла, полностью непрозрачные и контрастные.
 
-  Правила прежние и не нарушены: без градиентов, без стекла, без свечений,
-  скругления до 8px, отступы кратны 4, один акцент. Интерес добирается
-  плотностью данных и типографикой, а не эффектами.
+  ПОЧЕМУ ФОН СВОЙ, А НЕ ОБОИ РАБОЧЕГО СТОЛА
+  Окно Roblox докается как нативное дочернее окно и рисуется ПОВЕРХ HTML.
+  Сквозь стекло игру видно не будет ни при каком z-index — это ограничение
+  Windows, а не вёрстки. Значит преломлять можно только собственный фон.
+
+  ЧТО СОХРАНЕНО ЦЕЛИКОМ
+  Все четыре блока статистики: ход матча с волнами, счёт с историей
+  клетками, темп по часам, разбивка по картам. Палитра прежняя — тёплый
+  нейтральный с латунным акцентом, зелёный только «идёт», красный только
+  ошибка. Никакого сине-фиолетового.
 -->
 <style>
 :root{
-  --bg:#12100f; --panel:#1a1916; --card:#24221f; --field:#2e2b29;
-  --line:#332f2b; --line2:#44403c; --line3:#5b5752;
-  --tx:#eeecea; --dim:#b8b5b2; --mut:#93908c;
-  --ac:#dcae6e; --ok:#6bc987; --err:#ef6567;
+  /* Базовая гамма прежняя, но фоны теперь полупрозрачные: под ними живёт
+     подложка, и именно она делает стекло стеклом. */
+  --ink:#0d0b0a;
+  --glass:rgba(38,34,30,.55);       /* панель */
+  --glass-2:rgba(52,47,42,.55);     /* шапка панели, чуть светлее */
+  --glass-3:rgba(22,20,18,.45);     /* утопленные дорожки, поля */
+  --edge:rgba(255,255,255,.10);     /* граница стекла */
+  --edge-hi:rgba(255,255,255,.16);  /* блик по верхней кромке */
+
+  --tx:#f3f1ee; --dim:#c2beb9; --mut:#96918b;
+  --ac:#e6b877; --ok:#6fcf8c; --err:#f0686a;
+
   --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;
-  --r:6px; --r2:8px;
+  --r:10px; --r2:14px;
   --f:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
   --fm:"Cascadia Mono","SF Mono",ui-monospace,Consolas,monospace;
   color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);overflow:hidden}
+html,body{margin:0;height:100%;background:var(--ink);overflow:hidden}
 body{font-family:var(--f);font-size:13px;color:var(--tx);line-height:1.45;
   -webkit-font-smoothing:antialiased;user-select:none}
 .tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
   stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
 
-/* ── шапка ─────────────────────────────────────────────────────────── */
-#top{height:44px;display:flex;align-items:center;gap:var(--s3);
-  padding:0 var(--s3);background:var(--panel);border-bottom:1px solid var(--line2)}
+/* ═══ СЛОЙ 1: подложка ═══════════════════════════════════════════════
+   Тёплые поля в латунной гамме. Медленные — период около минуты, чтобы
+   движение читалось как «дышит», а не как заставка. Никаких радужных
+   пятен: цвет один, меняется только светлота. */
+#bg{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+#bg i{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5}
+#bg i:nth-child(1){width:760px;height:760px;left:-14%;top:-26%;
+  background:radial-gradient(circle at 40% 40%,#8a6a3a,transparent 66%);
+  animation:d1 64s ease-in-out infinite alternate}
+#bg i:nth-child(2){width:640px;height:640px;right:-12%;top:26%;
+  background:radial-gradient(circle at 55% 45%,#6b4f2c,transparent 66%);
+  animation:d2 78s ease-in-out infinite alternate}
+#bg i:nth-child(3){width:700px;height:700px;left:26%;bottom:-34%;
+  background:radial-gradient(circle at 50% 50%,#4a4038,transparent 66%);
+  animation:d3 70s ease-in-out infinite alternate}
+@keyframes d1{to{transform:translate(16vw,10vh) scale(1.18)}}
+@keyframes d2{to{transform:translate(-14vw,-8vh) scale(.88)}}
+@keyframes d3{to{transform:translate(10vw,-14vh) scale(1.2)}}
+/* Тонкая структура: без неё преломлять нечего — блюр по ровной заливке
+   неотличим от простой заливки, и всё «стекло» пропадает. */
+#bg::after{content:"";position:absolute;inset:0;opacity:.5;
+  background:repeating-linear-gradient(114deg,rgba(255,255,255,.05) 0 1px,transparent 1px 30px),
+             repeating-linear-gradient(24deg,rgba(255,255,255,.03) 0 1px,transparent 1px 46px)}
+
+/* ═══ СЛОЙ 2: стекло ═════════════════════════════════════════════════
+   Три вещи делают стекло убедительным, и все три обязательны:
+   блюр с подъёмом насыщенности, блик по ВЕРХНЕЙ кромке (свет падает
+   сверху) и мягкая тень под панелью. Без блика выходит просто мутный
+   прямоугольник. */
+.g{
+  background:var(--glass);
+  backdrop-filter:blur(26px) saturate(180%);
+  -webkit-backdrop-filter:blur(26px) saturate(180%);
+  border:1px solid var(--edge);
+  border-radius:var(--r2);
+  box-shadow:
+    inset 0 1px 0 var(--edge-hi),          /* кромка, поймавшая свет */
+    inset 0 -1px 0 rgba(0,0,0,.22),        /* нижняя грань в тени */
+    0 12px 32px -14px rgba(0,0,0,.75);     /* панель висит над фоном */
+  overflow:hidden;
+}
+
+/* ── шапка окна ─────────────────────────────────────────────────────── */
+#top{position:relative;z-index:2;height:48px;display:flex;align-items:center;
+  gap:var(--s3);padding:0 var(--s4);
+  background:rgba(24,21,19,.55);
+  backdrop-filter:blur(26px) saturate(180%);
+  -webkit-backdrop-filter:blur(26px) saturate(180%);
+  border-bottom:1px solid var(--edge)}
 .brand{display:flex;flex-direction:column;line-height:1}
-.brand b{font-size:14px;font-weight:600;letter-spacing:-.01em}
-.brand span{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut)}
-.chip{font-size:10px;padding:2px var(--s2);border-radius:var(--r);
-  border:1px solid var(--line2);background:var(--card);color:var(--mut)}
-.spacer{flex:1}
-.clock{display:flex;gap:var(--s4);align-items:center}
+.brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.brand span{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--mut)}
+.chip{font-size:10px;padding:3px var(--s2);border-radius:8px;
+  border:1px solid var(--edge);background:rgba(255,255,255,.05);color:var(--dim)}
+.sp{flex:1}
+.clock{display:flex;gap:var(--s5)}
 .clock div{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15}
 .clock small{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
-.clock b{font-size:13px;font-weight:600;color:var(--dim)}
+.clock b{font-size:14px;font-weight:600;color:var(--dim)}
 
-/* ── каркас ────────────────────────────────────────────────────────── */
-#wrap{display:flex;height:calc(100% - 44px)}
-#left{width:1152px;flex-shrink:0;display:flex;flex-direction:column}
-#game{height:560px;background:var(--bg);border:1px dashed var(--line2);
-  margin:var(--s3);border-radius:var(--r2);
-  display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px}
+/* ── каркас ─────────────────────────────────────────────────────────── */
+#wrap{position:relative;z-index:1;display:flex;height:calc(100% - 48px)}
+#left{width:1152px;flex-shrink:0;display:flex;flex-direction:column;
+  padding:var(--s3);gap:var(--s3)}
+#game{height:548px;border-radius:var(--r2);border:1px dashed rgba(255,255,255,.14);
+  background:rgba(0,0,0,.30);display:flex;align-items:center;justify-content:center;
+  color:var(--mut);font-size:12px}
 #right{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s3);
-  padding:var(--s3);overflow-y:auto}
-#rail{width:76px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line2);
-  display:flex;flex-direction:column;gap:var(--s1);padding:var(--s2) var(--s1)}
-.nav{display:flex;flex-direction:column;align-items:center;gap:3px;padding:var(--s2) 2px;
+  padding:var(--s3) var(--s3) var(--s3) 0;overflow-y:auto}
+#right::-webkit-scrollbar{width:8px}
+#right::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}
+#rail{width:80px;flex-shrink:0;display:flex;flex-direction:column;gap:var(--s1);
+  padding:var(--s3) var(--s2);
+  background:rgba(24,21,19,.5);
+  backdrop-filter:blur(26px) saturate(180%);
+  -webkit-backdrop-filter:blur(26px) saturate(180%);
+  border-left:1px solid var(--edge)}
+.nav{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 2px;
   border-radius:var(--r);border:1px solid transparent;color:var(--mut);
-  font-size:10px;cursor:pointer}
-.nav:hover{background:var(--card);color:var(--dim)}
-.nav.on{background:color-mix(in srgb,var(--ac) 14%,var(--card));
-  border-color:color-mix(in srgb,var(--ac) 55%,var(--line2));color:var(--ac)}
+  font-size:10px;cursor:pointer;transition:background .14s,color .14s,border-color .14s}
+.nav:hover{background:rgba(255,255,255,.06);color:var(--dim)}
+.nav.on{background:rgba(230,184,119,.14);border-color:rgba(230,184,119,.42);color:var(--ac);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
 
-/* ── панель ────────────────────────────────────────────────────────── */
-.p{border:1px solid var(--line2);border-radius:var(--r2);background:var(--panel);overflow:hidden}
-.ph{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s3);
-  border-bottom:1px solid var(--line2);background:var(--card)}
+/* ── шапка панели ──────────────────────────────────────────────────── */
+.ph{display:flex;align-items:center;gap:var(--s2);padding:9px var(--s4);
+  background:var(--glass-2);border-bottom:1px solid var(--edge)}
 .ph b{font-size:12px;font-weight:600}
-.ph .rule{flex:1;height:1px;background:var(--line2);opacity:.5}
+.ph .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--edge),transparent)}
 .ph em{font-style:normal;font-size:11px;color:var(--mut)}
 
-/* ── НОВОЕ 1: ход текущего матча ───────────────────────────────────── */
-.now{padding:var(--s3)}
-.now-top{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s2)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex-shrink:0;
-  align-self:center;animation:live 2s ease-in-out infinite}
-@keyframes live{0%,100%{opacity:1}50%{opacity:.45}}
-.now-act{font-size:14px;font-weight:600;flex:1;min-width:0;
+/* ── блок 1: ход матча ─────────────────────────────────────────────── */
+.now{padding:var(--s4)}
+.now-top{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex-shrink:0;
+  box-shadow:0 0 0 4px rgba(111,207,140,.16);animation:live 2.4s ease-in-out infinite}
+@keyframes live{0%,100%{box-shadow:0 0 0 4px rgba(111,207,140,.16)}
+                50%{box-shadow:0 0 0 8px rgba(111,207,140,.04)}}
+.now-act{font-size:15px;font-weight:600;flex:1;min-width:0;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.now-el{font-size:12px;color:var(--mut)}
-/* волны отрезками: сразу видно, сколько пройдено и сколько осталось */
-.waves{display:flex;gap:2px;height:8px;margin:var(--s2) 0 6px}
-.waves i{flex:1;border-radius:1px;background:var(--field)}
-.waves i.done{background:var(--ac)}
-.waves i.cur{background:var(--ac);opacity:.45}
+.now-el{font-size:13px;color:var(--dim)}
+.waves{display:flex;gap:3px;height:10px;margin-bottom:var(--s2)}
+.waves i{flex:1;border-radius:2px;background:var(--glass-3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.waves i.done{background:var(--ac);box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
+.waves i.cur{background:rgba(230,184,119,.45)}
 .now-sub{display:flex;justify-content:space-between;font-size:11px;color:var(--mut)}
 
-/* ── НОВОЕ 2: история клетками ─────────────────────────────────────── */
-.grid{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;padding:var(--s3)}
-.grid i{aspect-ratio:1;border-radius:2px;background:var(--field)}
-.grid i.w{background:var(--ok)}
-.grid i.l{background:var(--err)}
-.legend{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s3) var(--s3);
-  font-size:11px;color:var(--mut)}
+/* ── блок 2: счёт ──────────────────────────────────────────────────── */
+.score{display:flex;padding:var(--s4) var(--s3) var(--s3)}
+.score>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.score>div+div{border-left:1px solid var(--edge)}
+.score u{text-decoration:none;font-size:26px;font-weight:600;line-height:1.05}
+.score small{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
+.score em{font-style:normal;font-size:11px;color:var(--dim)}
+.grid{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;padding:0 var(--s4) var(--s2)}
+.grid i{aspect-ratio:1;border-radius:3px;background:var(--glass-3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.grid i.w{background:var(--ok);box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.grid i.l{background:var(--err);box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.legend{display:flex;gap:var(--s3);padding:0 var(--s4) var(--s4);font-size:11px;color:var(--mut)}
 .legend span{display:flex;align-items:center;gap:5px}
 .legend b{width:8px;height:8px;border-radius:2px;display:inline-block}
 
-/* ── табло ─────────────────────────────────────────────────────────── */
-.score{display:flex;padding:var(--s3) var(--s2)}
-.score>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
-.score>div+div{border-left:1px solid var(--line2)}
-.score u{text-decoration:none;font-size:22px;font-weight:600;line-height:1.1}
-.score small{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
-.score em{font-style:normal;font-size:11px;color:var(--dim)}
-
-/* ── НОВОЕ 3: забеги по часам ──────────────────────────────────────── */
-.spark{display:flex;align-items:flex-end;gap:2px;height:44px;padding:var(--s3) var(--s3) var(--s2)}
-.spark i{flex:1;background:var(--line3);border-radius:1px 1px 0 0;min-height:2px}
-.spark i.hi{background:var(--ac)}
-.spark-x{display:flex;justify-content:space-between;padding:0 var(--s3) var(--s3);
+/* ── блок 3: темп ──────────────────────────────────────────────────── */
+.spark{display:flex;align-items:flex-end;gap:3px;height:52px;padding:var(--s4) var(--s4) var(--s2)}
+.spark i{flex:1;border-radius:3px 3px 0 0;min-height:3px;background:rgba(255,255,255,.13);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
+.spark i.hi{background:var(--ac);box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.spark-x{display:flex;justify-content:space-between;padding:0 var(--s4) var(--s4);
   font-size:10px;color:var(--mut)}
 
-/* ── НОВОЕ 4: разбивка по картам ───────────────────────────────────── */
-.maps{padding:var(--s2) 0}
-.map{display:grid;grid-template-columns:1fr 56px 44px;align-items:center;gap:var(--s2);
-  padding:5px var(--s3);font-size:12px}
-.map+.map{border-top:1px solid var(--line)}
+/* ── блок 4: карты ─────────────────────────────────────────────────── */
+.maps{padding:var(--s2) 0 var(--s3)}
+.map{display:grid;grid-template-columns:1fr 64px 44px;align-items:center;gap:var(--s3);
+  padding:7px var(--s4);font-size:12px}
+.map+.map{border-top:1px solid rgba(255,255,255,.05)}
 .map .nm{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar{height:5px;border-radius:2px;background:var(--field);overflow:hidden}
-.bar i{display:block;height:100%;background:var(--ok)}
+.bar{height:6px;border-radius:3px;background:var(--glass-3);overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.bar i{display:block;height:100%;background:var(--ok);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
 .bar i.bad{background:var(--err)}
-.map .pc{text-align:right;color:var(--tx);font-size:11px}
+.map .pc{text-align:right;font-size:11px}
 
 /* ── кнопки ────────────────────────────────────────────────────────── */
-.ctl{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);padding:10px var(--s3) var(--s3)}
+.ctl{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);padding:var(--s3) var(--s4) var(--s4)}
 .b{display:flex;align-items:center;justify-content:center;gap:var(--s2);
-  padding:var(--s2) var(--s3);border-radius:var(--r);border:1px solid var(--line2);
-  background:var(--card);color:var(--dim);font-size:12px;font-weight:600;cursor:pointer}
-.b:hover{background:var(--field);color:var(--tx);border-color:var(--line3)}
+  padding:11px var(--s3);border-radius:var(--r);cursor:pointer;
+  font-size:12px;font-weight:600;color:var(--dim);
+  background:rgba(255,255,255,.06);border:1px solid var(--edge);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+  transition:background .14s,color .14s,border-color .14s}
+.b:hover{background:rgba(255,255,255,.11);color:var(--tx)}
 .b.wide{grid-column:1/-1}
-.b.go{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,var(--card));
-  border-color:color-mix(in srgb,var(--ok) 45%,var(--line2))}
-.b.no{color:var(--err);background:color-mix(in srgb,var(--err) 12%,var(--card));
-  border-color:color-mix(in srgb,var(--err) 45%,var(--line2))}
-.k{font-family:var(--fm);font-size:10px;padding:1px 5px;border-radius:4px;
-  background:color-mix(in srgb,currentColor 14%,transparent);
-  border:1px solid color-mix(in srgb,currentColor 30%,transparent)}
+.b.go{color:var(--ok);background:rgba(111,207,140,.14);border-color:rgba(111,207,140,.4)}
+.b.go:hover{background:rgba(111,207,140,.22)}
+.b.no{color:var(--err);background:rgba(240,104,106,.13);border-color:rgba(240,104,106,.38)}
+.b.no:hover{background:rgba(240,104,106,.2)}
+.k{font-family:var(--fm);font-size:10px;padding:1px 5px;border-radius:5px;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14)}
 
-/* ── лог ───────────────────────────────────────────────────────────── */
-#log{flex:1;margin:0 var(--s3) var(--s3);display:flex;flex-direction:column;min-height:0}
-.logl{flex:1;overflow:auto;padding:var(--s2);font-family:var(--fm);font-size:11px;
-  line-height:1.6;color:var(--dim)}
-.logl div{padding:1px var(--s2);border-radius:4px}
-.logl div:hover{background:var(--card)}
+/* ── журнал ────────────────────────────────────────────────────────── */
+#log{flex:1;display:flex;flex-direction:column;min-height:0}
+.logl{flex:1;overflow:auto;padding:var(--s3);font-family:var(--fm);font-size:11px;
+  line-height:1.65;color:var(--dim)}
+.logl div{padding:2px var(--s2);border-radius:5px}
+.logl div:hover{background:rgba(255,255,255,.05)}
 .t-ok{color:var(--ok)}.t-er{color:var(--err)}.t-ac{color:var(--ac)}.t-mu{color:var(--mut)}
-@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+.logl::-webkit-scrollbar{width:8px}
+.logl::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}
+
+/* Уважение к системной настройке: подложка замирает, пульсация гаснет.
+   Стекло остаётся — оно статичное и движением не является. */
+@media (prefers-reduced-motion:reduce){
+  #bg i,.dot{animation:none!important}
+}
 </style>
 </head>
 <body>
+
+<div id="bg" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <div id="top">
   <div class="brand"><span>Anime</span><b>Expeditions</b></div>
   <span class="chip tnum">v1.0.0</span>
   <span class="chip">RU</span>
-  <span class="spacer"></span>
+  <span class="sp"></span>
   <div class="clock">
     <div><small>Сессия</small><b class="tnum">02:41</b></div>
     <div><small>Всего</small><b class="tnum">61:08</b></div>
@@ -175,7 +257,7 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
 <div id="wrap">
   <div id="left">
     <div id="game">окно Roblox 1152 × 756</div>
-    <section class="p" id="log">
+    <section class="g" id="log">
       <header class="ph"><b>Журнал</b><span class="rule"></span><em>в работе</em></header>
       <div class="logl">
         <div><span class="t-mu">[14:02:11]</span> <span class="t-ac">[Макрос]</span> Задача 1/3 — Expedition · School Grounds</div>
@@ -191,8 +273,7 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
 
   <div id="right">
 
-    <!-- НОВОЕ: ход текущего матча -->
-    <section class="p">
+    <section class="g">
       <header class="ph"><b>Сейчас</b><span class="rule"></span><em>Expedition</em></header>
       <div class="now">
         <div class="now-top">
@@ -209,15 +290,13 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
       </div>
     </section>
 
-    <!-- табло -->
-    <section class="p">
+    <section class="g">
       <header class="ph"><b>Счёт</b><span class="rule"></span><em>сессия</em></header>
       <div class="score">
         <div><u class="tnum" style="color:var(--ok)">18</u><small>Побед</small><em class="tnum">142 всего</em></div>
         <div><u class="tnum">86%</u><small>Процент</small><em class="tnum">88% всего</em></div>
         <div><u class="tnum" style="color:var(--err)">3</u><small>Поражений</small><em class="tnum">19 всего</em></div>
       </div>
-      <!-- НОВОЕ: полоса невезения видна глазом, а не только в проценте -->
       <div class="grid">
         <i class="w"></i><i class="w"></i><i class="w"></i><i class="l"></i><i class="w"></i>
         <i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i>
@@ -231,8 +310,7 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
       </div>
     </section>
 
-    <!-- НОВОЕ: забеги по часам -->
-    <section class="p">
+    <section class="g">
       <header class="ph"><b>Темп</b><span class="rule"></span><em class="tnum">6.4 забега/час</em></header>
       <div class="spark">
         <i style="height:38%"></i><i style="height:55%"></i><i style="height:47%"></i>
@@ -243,8 +321,7 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
       <div class="spark-x"><span>12 часов назад</span><span>сейчас</span></div>
     </section>
 
-    <!-- НОВОЕ: где проседает -->
-    <section class="p">
+    <section class="g">
       <header class="ph"><b>По картам</b><span class="rule"></span><em>процент побед</em></header>
       <div class="maps">
         <div class="map"><span class="nm">School Grounds</span>
@@ -258,8 +335,7 @@ svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.5;fill:none;
       </div>
     </section>
 
-    <!-- управление -->
-    <section class="p">
+    <section class="g">
       <header class="ph"><b>Управление</b><span class="rule"></span></header>
       <div class="ctl">
         <button class="b go wide">▶ Старт <span class="k">F1</span></button>
