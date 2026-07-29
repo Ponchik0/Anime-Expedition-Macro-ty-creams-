@@ -3390,23 +3390,15 @@ def _launch_ui():
 
     threading.Thread(target=_set_window_icon_background, daemon=True).start()
 
-    def _check_for_update_background():
-        # A few seconds after launch, not immediately -- so a slow/offline
-        # GitHub request can never compete with the app's own startup for
-        # attention. push_ui (no args, same pattern as showDocked/
-        # showWaiting) just tells the UI to go ask get_update_info() for the
-        # details once it actually has something to show.
-        time.sleep(4)
-        try:
-            api._update_info = updater.check_for_update(log=api.push_log)
-        except Exception as exc:
-            api.push_log(f"[Update] Check failed: {exc}")
-            return
-        if api._update_info.get("available"):
-            api.push_log(f'[Update] Version {api._update_info["version"]} is available.')
-            api.push_ui("showUpdateAvailable")
-
-    threading.Thread(target=_check_for_update_background, daemon=True).start()
+    # ФОРК: фоновая проверка обновлений при старте убрана.
+    # Апдейтер автора накатывает релиз поверх папки установки и затирает наши
+    # правки в core/ и ui/. Сам вызов тоже заглушён (см. UPDATES_DISABLED в
+    # core/updater.py) — этот поток не запускается, чтобы не ходить в сеть на
+    # каждом запуске ради ответа, который всегда «обновлений нет».
+    #
+    # Что нового у автора — смотреть вручную:
+    #   git fetch upstream && git log --oneline HEAD..upstream/main
+    # и переносить нужное точечно, а не целым релизом.
 
     def _ensure_assets_background():
         # Assets/ ships as a loose folder beside the exe (see core.constants.

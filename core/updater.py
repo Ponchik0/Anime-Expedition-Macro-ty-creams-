@@ -127,9 +127,21 @@ def _latest_tag_via_redirect(timeout: float, log=None) -> str:
     return ""
 
 
+# ФОРК: автообновление выключено намеренно.
+# Апдейтер качает релиз автора движка и robocopy'ит его поверх папки установки.
+# Мы переписываем ui/ и core/ под себя — любой такой апдейт затрёт наши правки
+# без предупреждения. Проверка версии тоже выключена: без неё UI просто никогда
+# не покажет плашку «доступно обновление».
+# Чтобы временно вернуть апдейты (например, чтобы посмотреть, что нового у
+# автора) — поставь False, но НЕ применяй обновление на рабочей копии.
+UPDATES_DISABLED = True
+
+
 def check_for_update(timeout: float = 6.0, log=None) -> dict:
     """Never raises -- a failed check (offline, no releases yet) just
     reports not available so it can't break startup."""
+    if UPDATES_DISABLED:
+        return {"available": False}
     current = get_current_version()
     tag = _latest_tag_via_redirect(timeout, log)
     if not tag or _parse_version(tag) <= _parse_version(current):
@@ -220,6 +232,18 @@ def _uncommitted_changes(app_dir: str) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
+def _refuse_if_disabled() -> None:
+    """Вторая линия обороны. check_for_update уже не даст UI предложить
+    обновление, но применить его можно и напрямую (старый вызов, кнопка в
+    неочищенном UI). Эти функции перезаписывают файлы проекта — молча
+    выполнить их нельзя."""
+    if UPDATES_DISABLED:
+        raise RuntimeError(
+            "Автообновление отключено в этом форке: оно перезапишет наши "
+            "правки в core/ и ui/. См. UPDATES_DISABLED в core/updater.py."
+        )
+
+
 def stage_source_update(zip_url: str, app_dir: str, log, on_progress=None) -> str:
     """Downloads + extracts the release source zip and writes the relaunch
     helper script. Returns the helper's path -- the caller launches it
@@ -235,6 +259,7 @@ def stage_source_update(zip_url: str, app_dir: str, log, on_progress=None) -> st
     the copy below overwrites tracked source, and there is no undo. See
     _uncommitted_changes.
     """
+    _refuse_if_disabled()
     if _uncommitted_changes(app_dir):
         raise RuntimeError(
             "This install has uncommitted changes, so updating would overwrite them. "
@@ -803,6 +828,7 @@ def download_release_update(release_zip_url: str, log, on_progress=None) -> str:
     exe -- see _download_release_update_mac (whose return value goes to
     stage_app_update instead of stage_exe_update).
     """
+    _refuse_if_disabled()
     if sys.platform == "darwin":
         return _download_release_update_mac(release_zip_url, log, on_progress)
     current_exe = _current_exe_path()
