@@ -81,7 +81,7 @@ IMAGE_MANAGER_CATEGORIES = {
     "detect": ("detect", "Detection Images"),
 }
 
-GUI_TITLE = "Cream's Macro | Anime Expeditions"
+GUI_TITLE = "Anime Expeditions"
 PANEL_WIDTH = 400
 TITLEBAR_H = 44  # custom HTML titlebar, since the window is frameless (no native OS titlebar)
 LOGS_H = 160  # log strip under the docked Roblox window, same width as the game
@@ -1629,7 +1629,7 @@ class Api:
             "title": "Test",
             "description": "If you can see this, the webhook is working.",
             "color": 0x5865F2,  # Discord blurple
-            "footer": {"text": "Cream's Macro | Anime Expeditions"},
+            "footer": {"text": "Anime Expeditions"},
         }
         return webhook.send(url or "", embed)
 
@@ -1714,7 +1714,7 @@ class Api:
                 self._log_window = None
 
         win = webview.create_window(
-            "Logs | Cream's Macro",
+            "Logs | Anime Expeditions",
             url=LOGS_WINDOW_HTML,
             width=480,
             height=420,
@@ -1778,7 +1778,7 @@ class Api:
             except Exception:
                 self._wave_window = None
         win = webview.create_window(
-            "Wave Monitor | Cream's Macro",
+            "Wave Monitor | Anime Expeditions",
             url=WAVE_MONITOR_HTML,
             width=300, height=280,
             on_top=True,
@@ -3303,7 +3303,7 @@ def _launch_ui():
     # several untagged fixes have landed since the last real release, and
     # a pasted debug.log with no version context at all wastes a round
     # trip just asking "which build is this from?" every time.
-    api.push_log(f"[Macro] Cream's Macro v{updater.get_current_version()} ({_get_build_info()}) starting...")
+    api.push_log(f"[Macro] Anime Expeditions v{updater.get_current_version()} ({_get_build_info()}) starting...")
     # Diagnostic: confirms whether set_dpi_aware() (called at import time,
     # above the wm.set_dpi_aware() call at module scope) actually took --
     # a non-100% value here with docking/clicks still landing wrong would

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Cream's Macro | Anime Expeditions</title>
+<title>Anime Expeditions</title>
 <!-- Tailwind is VENDORED locally (ui/tailwind.js), not loaded from
      cdn.tailwindcss.com. The whole layout is Tailwind utility classes, and a
      synchronous <script> to an unreachable CDN (offline, school/work firewall,
@@ -37,13 +37,13 @@
        loading state reads as just the spinner, not a half-built app shell. -->
   <div id="titlebar" class="pywebview-drag-region flex items-center justify-between px-4 border-b flex-shrink-0"
        style="height: 44px; background: var(--bg-card); border-color: var(--border); display: none;">
+    <!-- Название игры в углу. Бренд оригинального движка из интерфейса убран
+         (атрибуция автора остаётся в README и LICENSE — этого требует MIT). -->
     <div class="flex items-center gap-3">
-      <div class="flex flex-col items-center" style="line-height: 1;">
-        <span class="logo-anime text-[8px] uppercase tracking-widest font-bold">Anime</span>
-        <span class="logo-expeditions brand-font text-base font-bold" style="line-height: 1.1;">Expeditions</span>
+      <div class="flex flex-col" style="line-height: 1;">
+        <span class="logo-anime">Anime</span>
+        <span class="logo-expeditions brand-font" style="line-height: 1.15;">Expeditions</span>
       </div>
-      <span style="color: var(--border);">|</span>
-      <span class="text-sm font-semibold" style="color: var(--text-dim);">Cream's Macro</span>
       <button type="button" id="ver-badge" class="ver-badge-btn flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-medium no-drag" style="color: var(--brand); border-color: var(--border); background: var(--bg-surface); cursor: pointer;" title="Click to check for updates" onclick="manualCheckForUpdate()">
         <svg class="w-3 h-3 ver-badge-icon flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
@@ -55,43 +55,47 @@
       </button>
     </div>
 
-    <div class="flex items-center gap-1 no-drag">
-      <button id="nav-dashboard" onclick="switchScreen('dashboard')" class="nav-btn active no-drag" data-tooltip="Dashboard">
+    <!-- Навигация. Разметка осталась внутри титульной строки, но стилями
+         (#rail в style.css) выставлена вертикальным рельсом у правого края
+         окна: иконка + подпись. Влево её ставить нельзя — туда, в точку
+         x=0 y=44, main.py докает окно Roblox. -->
+    <nav id="rail" class="no-drag">
+      <button id="nav-dashboard" onclick="switchScreen('dashboard')" class="nav-btn active no-drag" data-nav-label="Панель" data-tooltip="Dashboard">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
           <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
       </button>
-      <button id="nav-task" onclick="switchScreen('task')" class="nav-btn no-drag" data-tooltip="Task">
+      <button id="nav-task" onclick="switchScreen('task')" class="nav-btn no-drag" data-nav-label="Задачи" data-tooltip="Task">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 11l3 3L22 4"/>
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
         </svg>
       </button>
-      <button id="nav-creation" onclick="switchScreen('creation')" class="nav-btn no-drag" data-tooltip="Macro Manager">
+      <button id="nav-creation" onclick="switchScreen('creation')" class="nav-btn no-drag" data-nav-label="Сценарии" data-tooltip="Macro Manager">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16M4 12h16"/>
         </svg>
       </button>
-      <button id="nav-resource" onclick="switchScreen('resource')" class="nav-btn no-drag" data-tooltip="Resource">
+      <button id="nav-resource" onclick="switchScreen('resource')" class="nav-btn no-drag" data-nav-label="Ресурсы" data-tooltip="Resource">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 2l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/>
         </svg>
       </button>
-      <button id="nav-settings" onclick="switchScreen('settings')" class="nav-btn no-drag" data-tooltip="Settings">
+      <button id="nav-settings" onclick="switchScreen('settings')" class="nav-btn no-drag" data-nav-label="Настройки" data-tooltip="Settings">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
-      <button id="nav-faq" onclick="openFaqModal()" class="nav-btn no-drag" data-tooltip="Help & FAQ">
+      <button id="nav-faq" onclick="openFaqModal()" class="nav-btn no-drag" data-nav-label="Справка" data-tooltip="Help & FAQ">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
       </button>
-    </div>
+    </nav>
 
     <div class="flex items-center gap-4 no-drag">
       <div class="flex items-center gap-3 tooltip-left" data-tooltip="Time this session / all-time total">
@@ -175,7 +179,7 @@
       </div>
 
       <div class="loading-tag" style="margin-top: 8px;">
-        <span class="loading-tag-dot"></span>Cream's Macro
+        <span class="loading-tag-dot"></span>Anime Expeditions
       </div>
 
       <div class="flex items-center gap-1.5 text-sm font-semibold" style="color: var(--text); margin-top: 18px;">
@@ -256,7 +260,7 @@
         </div>
       </div>
 
-      <div id="dash-side" class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="width: 400px; flex-shrink: 0;">
+      <div id="dash-side" class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="flex: 1; min-width: 0;">
         <!-- Status readout: hero Action row + ledger rows with dotted leaders.
              Wrapped in .rp-hoverpanel so the extra detail rows (.rp-rows-extra)
              can be absolutely positioned and overlay the panels below on hover
@@ -1767,7 +1771,7 @@
          two thirds of the window sat empty. -->
     <div class="modal-panel onb-panel" style="width: min(1040px, 94vw);">
       <div class="modal-head">
-        <span class="modal-title">Welcome to Cream's Macro</span>
+        <span class="modal-title">Anime Expeditions</span>
       </div>
       <div class="modal-body">
         <p class="onb-intro">
