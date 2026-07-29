@@ -993,6 +993,19 @@
                 <button id="keybind-toggle_compact" class="keybind-btn" onclick="startRebind('toggle_compact', this)">F7</button>
               </div>
             </div>
+            <!-- Запись: биндом, а не только кнопкой. Записывать надо находясь
+                 в игре, а кнопка в окне макроса требует забрать фокус у
+                 Roblox — и такие клики рекордер намеренно не пишет. -->
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Record</div>
+                <div class="setting-desc">Start/stop recording your own play. Press it while you are IN the game -- that is the point: the macro then repeats exactly what you did.</div>
+              </div>
+              <div class="keybind-group">
+                <button id="keybind-clear-toggle_record" class="keybind-clear-btn" onclick="clearHotkey('toggle_record')" title="Reset to default key (press Esc while capturing to unbind)">&times;</button>
+                <button id="keybind-toggle_record" class="keybind-btn" onclick="startRebind('toggle_record', this)">F8</button>
+              </div>
+            </div>
           </div>
         </section>
       </div>

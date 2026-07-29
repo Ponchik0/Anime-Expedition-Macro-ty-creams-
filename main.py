@@ -150,6 +150,12 @@ HOTKEY_DEFAULTS = {
     # Collapses the whole dashboard to a small always-on-top strip (and back)
     # -- for when the macro's running fine and the full UI is just clutter.
     "toggle_compact": "f7",
+    # Начать/остановить запись. Биндом, а не только кнопкой в интерфейсе, и
+    # это не удобство, а необходимость: записывать надо НАХОДЯСЬ В ИГРЕ, а
+    # чтобы нажать кнопку в окне макроса, пришлось бы забрать фокус у Roblox
+    # — и рекордер такие клики намеренно не пишет (иначе нажатие на саму
+    # кнопку «Запись» попало бы в файл). F8 свободна.
+    "toggle_record": "f8",
 }
 
 # Stage-detail panel (shown after clicking a stage row on the Select Stage
@@ -1301,6 +1307,17 @@ class Api:
             self._player = replay.Player(lambda: self.game_hwnd, self.push_log)
         return self._player
 
+    def hotkey_toggle_record(self) -> dict:
+        """То же, что кнопка на экране «Запись», но с клавиатуры.
+
+        Именно этим биндом запись и пользуются: ты в игре, жмёшь F8, играешь,
+        жмёшь F8 снова — запись сохранена. Через кнопку в окне так не выйдет,
+        фокус пришлось бы уводить из Roblox."""
+        st = self.replay_recording_status()
+        if st.get("recording"):
+            return self.replay_stop_recording("")
+        return self.replay_start_recording()
+
     def replay_start_recording(self) -> dict:
         # Запись и автомат несовместимы: автомат сам двигает мышь, и это
         # попало бы в файл как действия игрока.
@@ -1814,11 +1831,34 @@ class Api:
         return webhook.validate(url or "")
 
     def test_webhook(self, url: str) -> dict:
+        """Присылает сообщение ТОЙ ЖЕ ФОРМЫ, что и настоящий отчёт о матче,
+        но с прочерками вместо данных.
+
+        Раньше тест слал голое «Test» — он подтверждал, что ссылка рабочая,
+        и ничего не говорил о том, КАК это будет выглядеть. Понять, влезает
+        ли всё в карточку на телефоне и не рябит ли она, можно было только
+        дождавшись настоящего матча.
+
+        Значения намеренно прочерки, а не выдуманные цифры: иначе тестовое
+        сообщение не отличить от настоящего, и в канале появляется «победа»,
+        которой не было."""
+        from core import joinlink
         embed = {
-            "title": "Test",
-            "description": "If you can see this, the webhook is working.",
-            "color": 0x5865F2,  # Discord blurple
-            "footer": {"text": "Anime Expeditions"},
+            "title": "Проверка связи",
+            "description": ("Так будет выглядеть отчёт о матче. Данных нет — "
+                             "это пустой образец, а не результат забега."),
+            "color": 0xDCAE6E,
+            "fields": [
+                {"name": "Карта",        "value": "—", "inline": True},
+                {"name": "Результат",    "value": "—", "inline": True},
+                {"name": "Длительность", "value": "—", "inline": True},
+                {"name": "Сессия",       "value": "— побед / — поражений", "inline": True},
+                {"name": "За всё время", "value": "— побед / — поражений", "inline": True},
+                {"name": "Забегов в час", "value": "—", "inline": True},
+                {"name": "Сервер", "inline": False,
+                 "value": ("приватный" if joinlink.is_private() else "общее лобби")},
+            ],
+            "footer": {"text": f"Anime Expeditions · v{updater.get_current_version()}"},
         }
         return webhook.send(url or "", embed)
 
@@ -3888,6 +3928,11 @@ def _launch_ui():
             # poll picks up is_macro_running() within its own next tick --
             # it just isn't gating the actual stop signal anymore.
             "macro_stop": lambda: api.stop_macro(),
+            # Запись тоже НЕ через push_ui: жать F8 будут, находясь в Roblox,
+            # а окно макроса в этот момент не в фокусе — гонять сигнал через
+            # интерфейс значит зависеть от того, чем он сейчас занят.
+            # Зовём напрямую, как и стоп.
+            "toggle_record": lambda: api.hotkey_toggle_record(),
         }
         for action, fn in actions.items():
             key = hotkeys.get(action) or HOTKEY_DEFAULTS.get(action, "")
