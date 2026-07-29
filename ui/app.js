@@ -414,7 +414,8 @@ function launchRoblox() {
 // other screens get the full window instead of Roblox showing through.
 let currentScreen = 'dashboard';
 let lastNonDashboardScreen = 'creation';
-const SCREENS = ['dashboard', 'task', 'creation', 'resource', 'settings'];
+// 'replay' — режим повтора записи (см. ui/replay-ui.js и core/replay.py).
+const SCREENS = ['dashboard', 'task', 'creation', 'resource', 'replay', 'settings'];
 
 // Only macOS cares: there the game sits BESIDE this window instead of inside
 // it, which changes both the Dashboard's layout and how much screen this

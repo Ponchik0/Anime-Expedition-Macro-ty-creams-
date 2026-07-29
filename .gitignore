@@ -52,3 +52,6 @@ dist/
 
 # Personal Claude Code permission grants -- not team-wide.
 .claude/settings.local.json
+
+# Записи режима «Повтор» — личные, как и настройки.
+Recordings/

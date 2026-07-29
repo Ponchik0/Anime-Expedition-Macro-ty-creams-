@@ -161,6 +161,61 @@ button, input, select, textarea {
 button { background: none; border: none; padding: 0; cursor: pointer; }
 button:disabled { cursor: default; }
 
+/* Просим у системы тёмные нативные контролы: стрелки у полей с числом,
+   выпадающий список у <select>, полосы прокрутки внутри них. Без этого
+   Windows рисует их светлыми, и они выглядят вырезанными из чужого окна. */
+:root { color-scheme: dark; }
+
+/* БАЗОВЫЙ ВИД ЛЮБОГО ПОЛЯ ВВОДА.
+   Правило общее намеренно. Раньше поля оформлялись поимённо по классам, и
+   стоило встретиться полю без класса — оно оставалось с браузерным белым
+   фоном, а текст брался светлый из темы: получался белый по белому, и
+   набранного не видно. Ровно так сломалось поле «Повторов» в конструкторе
+   задач. Теперь умолчание правильное, а классы лишь уточняют размеры.
+   Исключены те типы, у которых своя отрисовка (ползунок, галка, радио). */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  padding: var(--s1) var(--s2);
+  outline: none;
+  transition: border-color var(--t-hover) var(--ease);
+}
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus,
+select:focus,
+textarea:focus { border-color: var(--accent-line); }
+input::placeholder, textarea::placeholder { color: var(--text-dim); }
+input:disabled, select:disabled, textarea:disabled { opacity: 0.5; }
+
+/* Поле «Повторов» в конструкторе задач: значок × и само число в одной
+   рамке. Раньше рамку рисовал контейнер, а поле внутри было голым. */
+.task-rep-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: border-color var(--t-hover) var(--ease);
+}
+.task-rep-group:focus-within { border-color: var(--accent-line); }
+.task-rep-group input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.task-rep-group input:focus { border: none; }
+
 /* Полоса прокрутки — тихая, в языке интерфейса. Не «кастомный скроллбар
    ради красоты»: просто чтобы системный светлый не выглядел заплаткой. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

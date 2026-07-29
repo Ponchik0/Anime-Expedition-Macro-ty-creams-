@@ -1169,6 +1169,11 @@ class Api:
         return self.runner.start_crafting_test(lambda: self.game_hwnd, coords)
 
     def start_macro(self) -> dict:
+        # В режиме «Повтор» кнопка «Старт» крутит запись, а не очередь задач.
+        # Проверка окружения тут не нужна: повтору не важны ни шаблоны, ни
+        # координаты, ни сценарии — он просто отправляет записанный ввод.
+        if cfg.load().get("run_mode") == "replay":
+            return self.replay_play()
         preflight = self.run_preflight_check()
         if preflight.get("has_blocker", False):
             self.push_log("[Preflight] Start blocked due to environment/configuration issue.")
@@ -1193,16 +1198,170 @@ class Api:
         # quit), the watchdog must not helpfully reopen the game and start the
         # run back up behind them.
         self._resume_after_relaunch = False
+        # Одна кнопка «Стоп» тушит оба режима: и автомат, и повтор записи.
+        self.replay_stop()
+        if getattr(self, "_recorder", None) is not None and self._recorder.running:
+            self.replay_stop_recording()
         return self.runner.stop()
 
     def pause_macro(self) -> dict:
+        p = getattr(self, "_player", None)
+        if p is not None and p.running:
+            return self.replay_toggle_pause()
         return self.runner.pause()
 
     def resume_macro(self) -> dict:
         return self.runner.resume()
 
     def is_macro_running(self) -> dict:
+        p = getattr(self, "_player", None)
+        if p is not None and p.running:
+            # Панель должна показывать «работает» и когда крутится запись,
+            # иначе в режиме повтора кнопки выглядят неактивными.
+            return {"running": True, "paused": p.state == "paused"}
         return {"running": self.runner.is_running(), "paused": self.runner.is_paused()}
+
+    # ================================================== РЕЖИМ «ПОВТОР» =====
+    # Второй способ играть: не разбирать экраны игры, а повторить записанные
+    # действия игрока тик в тик. Автомат умнее, но требует настройки; повтор
+    # не знает об игре ничего и потому работает где угодно.
+    # Ядро — core/replay.py, здесь только мост в интерфейс.
+
+    def get_run_mode(self) -> dict:
+        """auto — обычный автоматический прогон, replay — повтор записи."""
+        data = cfg.load()
+        mode = data.get("run_mode", "auto")
+        return {
+            "mode": mode if mode in ("auto", "replay") else "auto",
+            "recording": data.get("replay_file", ""),
+            "loops": int(data.get("replay_loops", 0) or 0),
+            "require_focus": bool(data.get("replay_require_focus", True)),
+        }
+
+    def set_run_mode(self, mode: str) -> dict:
+        if mode not in ("auto", "replay"):
+            return {"ok": False, "reason": "bad_mode"}
+        cfg.update({"run_mode": mode})
+        self.push_log("[Повтор] Режим: " + ("повтор записи" if mode == "replay" else "автоматический"))
+        return {"ok": True}
+
+    def set_replay_option(self, key: str, value) -> dict:
+        if key not in ("replay_file", "replay_loops", "replay_require_focus"):
+            return {"ok": False, "reason": "bad_key"}
+        if key == "replay_loops":
+            try:
+                value = max(0, int(value))
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "bad_value"}
+        if key == "replay_require_focus":
+            value = bool(value)
+        cfg.update({key: value})
+        return {"ok": True}
+
+    def _replay_recorder(self):
+        from core import replay
+        if getattr(self, "_recorder", None) is None:
+            self._recorder = replay.Recorder(lambda: self.game_hwnd,
+                                              lambda: self.gui_hwnd, self.push_log)
+        return self._recorder
+
+    def _replay_player(self):
+        from core import replay
+        if getattr(self, "_player", None) is None:
+            self._player = replay.Player(lambda: self.game_hwnd, self.push_log)
+        return self._player
+
+    def replay_start_recording(self) -> dict:
+        # Запись и автомат несовместимы: автомат сам двигает мышь, и это
+        # попало бы в файл как действия игрока.
+        if self.runner.is_running():
+            return {"ok": False, "reason": "macro_running"}
+        p = self._replay_player()
+        if p.running:
+            p.stop()
+        rec = self._replay_recorder()
+        if not rec.start():
+            return {"ok": False, "reason": "cant_start"}
+        self.push_log("[Повтор] Запись начата — играй как обычно.")
+        return {"ok": True}
+
+    def replay_stop_recording(self, name: str = "") -> dict:
+        from core import replay
+        rec = self._replay_recorder()
+        if not rec.running:
+            return {"ok": False, "reason": "not_recording"}
+        events = rec.stop()
+        acts = sum(1 for e in events if e.get("kind") != "move")
+        if acts == 0:
+            self.push_log("[Повтор] Записывать нечего: ни одного клика или нажатия.")
+            return {"ok": False, "reason": "empty"}
+        saved = replay.save(name, events, rec.base_w, rec.base_h)
+        cfg.update({"replay_file": saved})
+        st = replay.stats({"events": events})
+        self.push_log(f"[Повтор] Записано «{saved}»: {st['actions']} действий, {st['seconds']} с.")
+        return {"ok": True, "name": saved, **st}
+
+    def replay_recording_status(self) -> dict:
+        rec = getattr(self, "_recorder", None)
+        p = getattr(self, "_player", None)
+        return {
+            "recording": bool(rec and rec.running),
+            "recorded": rec.count if rec else 0,
+            "state": p.state if p else "idle",
+            "loop": p.loop_num if p else 0,
+            "index": p.index if p else 0,
+            "total": p.total if p else 0,
+            "name": p.name if p else "",
+        }
+
+    def replay_list(self) -> list:
+        from core import replay
+        return replay.listing()
+
+    def replay_delete(self, name: str) -> dict:
+        from core import replay
+        ok = replay.delete(name)
+        if ok and cfg.load().get("replay_file") == name:
+            cfg.update({"replay_file": ""})
+        return {"ok": ok}
+
+    def replay_rename(self, old: str, new: str) -> dict:
+        from core import replay
+        ok = replay.rename(old, new)
+        if ok and cfg.load().get("replay_file") == old:
+            cfg.update({"replay_file": replay.safe_name(new)})
+        return {"ok": ok}
+
+    def replay_play(self, name: str = "") -> dict:
+        from core import replay
+        data = cfg.load()
+        name = name or data.get("replay_file", "")
+        rec = replay.load(name)
+        if not rec:
+            return {"ok": False, "reason": "no_recording"}
+        if self.runner.is_running():
+            self.runner.stop()
+        p = self._replay_player()
+        ok = p.start(rec["events"], name,
+                     loops=int(data.get("replay_loops", 0) or 0),
+                     base_w=rec.get("base_w", 0), base_h=rec.get("base_h", 0),
+                     require_focus=bool(data.get("replay_require_focus", True)))
+        if ok:
+            loops = int(data.get("replay_loops", 0) or 0)
+            self.push_log(f"[Повтор] Играю «{name}», кругов: "
+                           + ("без конца" if loops == 0 else str(loops)))
+        return {"ok": ok}
+
+    def replay_stop(self) -> dict:
+        p = getattr(self, "_player", None)
+        if p:
+            p.stop()
+            self.push_log("[Повтор] Остановлено.")
+        return {"ok": True}
+
+    def replay_toggle_pause(self) -> dict:
+        p = getattr(self, "_player", None)
+        return {"ok": bool(p and p.toggle_pause())}
 
     def reload_vision_templates(self) -> dict:
         # Drops the in-memory cache of Assets/ui/*.png so a replaced
