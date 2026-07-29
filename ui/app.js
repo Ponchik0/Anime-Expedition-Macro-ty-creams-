@@ -191,7 +191,7 @@ function isBlockingOverlayOpen() {
     const el = document.getElementById(id);
     return el && el.style.display !== 'none' && el.style.display !== '';
   };
-  if (['update-modal', 'scale-warning-modal', 'onboarding-modal', 'subscribe-modal', 'faq-modal', 'share-code-modal'].some(isOpen)) return true;
+  if (['update-modal', 'scale-warning-modal', 'onboarding-modal', 'faq-modal', 'share-code-modal'].some(isOpen)) return true;
   if (!captureDanceActive && ['im-modal', 'pu-modal', 'path-name-modal'].some(isOpen)) return true;
   return false;
 }
@@ -383,7 +383,6 @@ function runPendingFirstRun() {
   const what = pendingFirstRun;
   pendingFirstRun = null;
   if (what === 'onboarding') showOnboarding();
-  else if (what === 'subscribe') showSubscribePrompt();
 }
 
 function showWaiting() {
@@ -1097,7 +1096,6 @@ async function loadSettingsUI() {
     // dialog opening into that is a tiny unreadable box -- which is exactly
     // what it did. See runPendingFirstRun.
     if (!s.onboarding_done) pendingFirstRun = 'onboarding';
-    else if (!s.subscribe_prompted) pendingFirstRun = 'subscribe';
     if (!s.theme_base && !s.theme_accent && s.theme && s.theme !== 'default') {
       // First load since the base/accent split -- migrate the old value
       // once, then persist the split so this branch never runs again.
@@ -1682,30 +1680,19 @@ async function closeOnboarding() {
   document.getElementById('onboarding-modal').style.display = 'none';
   try { await pywebview.api.set_setting('onboarding_done', true); } catch (e) {}
   restoreGameIfDashboard();
-  // Chain the one-time subscribe prompt after onboarding on a fresh install.
-  try {
-    const s = await pywebview.api.get_settings();
-    if (!s.subscribe_prompted) { showSubscribePrompt(); return; }
-  } catch (e) {}
 }
 
-// One-time subscribe prompt (see #subscribe-modal). Shown once per install;
-// dismissing it EITHER way sets the flag so it never returns. Same game-hide
-// dance as the other startup modals (the docked game paints over DOM).
-function showSubscribePrompt() {
-  document.getElementById('subscribe-modal').style.display = 'flex';
-  try { window.pywebview && pywebview.api.hide_game(); } catch (e) {}
-}
-
-async function closeSubscribePrompt() {
-  document.getElementById('subscribe-modal').style.display = 'none';
+// ФОРК: окно с просьбой подписаться на YouTube автора убрано.
+// Разметка #subscribe-modal удалена из index.html. Функции оставлены
+// заглушками — на них ссылается диспетчер первого запуска, и вычищать
+// все его ветки ради этого рискованнее, чем оставить три пустышки.
+function showSubscribePrompt() { markSubscribePrompted(); }
+function closeSubscribePrompt() { markSubscribePrompted(); }
+function subscribeAndClose() { markSubscribePrompted(); }
+async function markSubscribePrompted() {
+  // Флаг всё равно ставим: если когда-нибудь заберём обновление от
+  // автора, окно не выскочит задним числом.
   try { await pywebview.api.set_setting('subscribe_prompted', true); } catch (e) {}
-  restoreGameIfDashboard();
-}
-
-async function subscribeAndClose() {
-  try { await pywebview.api.open_youtube_channel(); } catch (e) {}
-  await closeSubscribePrompt();
 }
 
 // Settings > Debug > "Health Check" -- backend runs every environment probe;

@@ -525,7 +525,19 @@ body.compact-mode #screen-dashboard { padding-right: 0 !important; }
 /* Один язык на все кнопки приложения: заливка поверхности, граница 1px,
    скругление 6px. Первичная — акцентная подложка с акцентным контуром.
    Никаких вдавленных бликов inset и цветных теней. */
-.rp-controls { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: var(--s2); padding: 10px var(--s3) var(--s3); }
+/* Кнопки управления: «Старт» отдельной строкой во всю ширину, «Пауза» и
+   «Стоп» под ним пополам. Раньше все три стояли в ряд (1.4fr 1fr 1fr) — на
+   панели 324px это давало по 79px на кнопку, и значок горячей клавиши внутри
+   «Стоп» просто не помещался, из-за чего было не видно, на что она назначена.
+   Заодно так честнее по смыслу: «Старт» — главное действие, остальные два
+   доступны только когда макрос уже работает. */
+.rp-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s2);
+  padding: 10px var(--s3) var(--s3);
+}
+.rp-controls .rp-btn-start { grid-column: 1 / -1; }
 .rp-btn {
   display: flex; align-items: center; justify-content: center; gap: var(--s2);
   padding: var(--s2) var(--s3);
