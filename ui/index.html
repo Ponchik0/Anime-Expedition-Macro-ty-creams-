@@ -556,6 +556,14 @@
              once a team is actually chosen. -->
         <div id="creation-loadout" class="flex items-center gap-2"></div>
       </div>
+      <!-- Короткое объяснение, что вообще делает этот экран. Раньше его не
+           было: человек видел четыре пустые панели с английскими названиями
+           фаз и не понимал ни что такое сценарий, ни чем фазы отличаются.
+           Текст английский намеренно — перевод идёт через ui/i18n.js, чтобы
+           переключатель RU/EN работал и здесь. -->
+      <p id="creation-intro" class="flex-shrink-0" style="font-size: 12px; color: var(--text-muted);
+         line-height: 1.6; padding: 0 2px 2px;">A macro operation is what the bot does inside one match:
+         which units to place, when to upgrade, what to wait for. Drag blocks from the left into a phase.</p>
       <div id="creation-phases" class="flex-1 overflow-y-auto flex flex-col gap-2"></div>
     </div>
   </div>
