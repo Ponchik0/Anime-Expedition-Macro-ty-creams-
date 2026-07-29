@@ -975,17 +975,49 @@ class BlockOps:
 
         deadline = time.time() + PLACE_SEARCH_WIGGLE_TIMEOUT
         wiggle_idx = 0
+        # Сколько раз ещё согласны подождать, если ближайшая свободная клетка
+        # нашлась далеко от заданной точки. См. длинный комментарий ниже.
+        drift_waits_left = PLACE_DRIFT_WAIT_TRIES
         while True:
             if self._checkpoint(stop_event):
                 return None
             found = self._scan_place_search_box(left, top, orig_x, orig_y)
             if found is not None:
                 dx, dy = found
+                # СНОС ПОЗИЦИИ. Сканер отдаёт БЛИЖАЙШУЮ свободную клетку, и
+                # если она в 18 пикселях — значит на самой заданной точке
+                # клетки не было. В Expedition платформа едет, клетки под ней
+                # ползут, и такой промах ставит юнита не туда, куда ты
+                # задумал: в логах это выглядело как повторяющийся
+                # «offset (18, 17)» — ровно край области поиска.
+                #
+                # Раньше это молча принималось. Теперь: если снесло дальше
+                # порога — подождать и посмотреть ещё раз на ТУ ЖЕ точку.
+                # Клетка часто освобождается сама (платформа доехала, юнит
+                # доставлен), и со второй попытки попадание точное.
+                #
+                # Ждём ограниченное число раз: если клетка занята намертво,
+                # поставить рядом всё-таки лучше, чем не поставить вовсе, —
+                # но об этом честно пишем в журнал.
+                dist = max(abs(dx), abs(dy))
+                if dist > PLACE_MAX_DRIFT and drift_waits_left > 0:
+                    drift_waits_left -= 1
+                    self._log(f'[Macro] Place Unit "{name}": ближайшая клетка в {dist}px от заданной '
+                               f'точки — жду, пока освободится нужная '
+                               f'({PLACE_DRIFT_WAIT_TRIES - drift_waits_left}/{PLACE_DRIFT_WAIT_TRIES}).')
+                    time.sleep(PLACE_DRIFT_WAIT_S)
+                    self._mouse.move_to(left + orig_x, top + orig_y)
+                    time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
+                    continue
                 cx, cy = orig_x + dx, orig_y + dy
                 if (dx, dy) != (0, 0):
                     self._mouse.move_to(left + cx, top + cy)
                     time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
-                    self._log(f'[Macro] Place Unit "{name}": aligned to a valid tile at offset ({dx}, {dy}).')
+                    if dist > PLACE_MAX_DRIFT:
+                        self._log(f'[Macro] Place Unit "{name}": нужная клетка так и не освободилась — '
+                                   f'ставлю в {dist}px от заданной точки, offset ({dx}, {dy}).')
+                    else:
+                        self._log(f'[Macro] Place Unit "{name}": aligned to a valid tile at offset ({dx}, {dy}).')
                 return cx, cy
             if time.time() >= deadline:
                 # Nothing valid right AT the spot -- widen the hunt instead
