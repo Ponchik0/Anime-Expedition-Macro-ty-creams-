@@ -2138,6 +2138,10 @@ function defaultTask() {
     infinite_wave_limit: DEFAULT_INFINITE_WAVE_LIMIT,
     extract_after: '1',
     repeat: 1, team: '', equipment: 'include', play_mode: 'solo', macro: '',
+    // Таймер задачи (бета): 0 — выключен. timer_next — id задачи,
+    // на которую перейти, когда время выйдет; пусто — просто дальше
+    // по очереди. Проверяется МЕЖДУ матчами, см. core/runner.py.
+    timer_minutes: 0, timer_next: '',
     // Event-only: auto-clear Villian Invasion Act 4 when a Crow Relic drops.
     // act4_mode 'once' spends one relic then resumes; 'until_locked' spends
     // every banked relic. act4_macro is Act 4's own Macro Operation (it plays
@@ -2658,6 +2662,21 @@ function renderTaskBuilder() {
     field('Mode', sel('mode', Object.keys(TASK_DATA), k => TASK_DATA[k].label, 'Select game mode: Story, Raid, Expedition, or Event'), 'Choose game mode'),
     field('Repeat', `<div class="task-rep-group" style="width: 100%;">&times;<input type="number" min="1" value="${t.repeat}"
       oninput="setTaskProp('${t.id}', 'repeat', Math.max(1, parseInt(this.value, 10) || 1))"></div>`, 'Number of times to run this task'),
+    // ── Таймер задачи (бета) ──────────────────────────────────────────
+    // Отсчитывает ВРЕМЯ НА ЗАДАЧЕ и обнуляется при каждом заходе в неё.
+    // Срабатывает между матчами, поэтому начатый бой всегда доигрывается.
+    field('Таймер, мин <span style="opacity:.6">бета</span>',
+      `<input type="number" min="0" class="task-field-input" value="${t.timer_minutes || 0}"
+        oninput="setTaskProp('${t.id}', 'timer_minutes', Math.max(0, parseInt(this.value, 10) || 0))">`,
+      '0 — выключен. Иначе: столько минут на этой задаче, потом переход. Текущий матч всегда доигрывается.'),
+    field('Потом перейти к',
+      `<select class="task-select" onchange="setTaskProp('${t.id}', 'timer_next', this.value)">
+        <option value="">следующей по очереди</option>
+        ${taskCards.filter(o => o.id !== t.id).map((o, i) =>
+          `<option value="${o.id}"${o.id === t.timer_next ? ' selected' : ''}>${i + 1}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'задача')}</option>`
+        ).join('')}
+      </select>`,
+      'Куда перейти, когда таймер выйдет.'),
   ];
 
   if (t.mode === 'story' || t.mode === 'raid') {

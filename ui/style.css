@@ -218,6 +218,15 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.5; }
 
 /* Поле «Повторов» в конструкторе задач: значок × и само число в одной
    рамке. Раньше рамку рисовал контейнер, а поле внутри было голым. */
+.task-field-input {
+  width: 100%;
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--s1) var(--s2);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 .task-rep-group {
   display: flex;
   align-items: center;

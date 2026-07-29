@@ -203,6 +203,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # Сколько раз за забег пришлось полностью перезапускать Roblox
         # из-за чёрного экрана (см. _hard_restart_roblox).
         self._hard_restarts = 0
+        # Таймер задачи: когда началась текущая задача и куда прыгать, когда
+        # время выйдет. Отсчёт идёт ВРЕМЕНИ НА ЗАДАЧЕ и обнуляется при каждом
+        # заходе в неё — то есть вернувшись к задаче, ты снова получаешь
+        # полный интервал, а не остаток от прошлого раза.
+        self._task_started_at = 0.0
+        self._timer_jump_to = None
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -231,6 +237,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         self._consecutive_losses = 0
         self._consecutive_loss_map = None
         self._hard_restarts = 0
+        self._timer_jump_to = None
         self._thread = threading.Thread(
             target=self._run_session,
             args=(hwnd_getter, get_tasks, self._stop_event, scroll_power, coords, scroll_nudges,
@@ -353,6 +360,44 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
     def resume(self) -> dict:
         self._pause_event.clear()
         return {"ok": True}
+
+    def _timer_expired(self, task: dict) -> bool:
+        """Вышло ли время, отведённое на текущую задачу.
+
+        Считается ВРЕМЯ НА ЗАДАЧЕ: отсчёт стартует при каждом заходе в неё,
+        поэтому вернувшись к задаче по кругу очереди, ты снова получаешь
+        полный интервал. Так «фармить Expedition два часа» означает два часа
+        подряд на ней, а не два часа с момента запуска макроса.
+
+        Вызывать ТОЛЬКО между матчами (см. место вызова): бросать начатый
+        матч ради переключения — значит терять награду за него.
+        """
+        try:
+            minutes = float(task.get("timer_minutes") or 0)
+        except (TypeError, ValueError):
+            return False
+        if minutes <= 0:
+            return False            # таймер у этой задачи выключен
+        if not self._task_started_at:
+            return False
+        spent = time.time() - self._task_started_at
+        if spent < minutes * 60:
+            return False
+
+        nxt = task.get("timer_next") or ""
+        mins_spent = int(spent // 60)
+        if nxt:
+            self._timer_jump_to = nxt
+            self._log(f"[Таймер] На задаче {mins_spent} мин из {minutes:g} — время вышло, "
+                       f"матч доигран. Перехожу к назначенной задаче.")
+        else:
+            # Задача перехода не указана — просто заканчиваем эту и идём
+            # дальше по очереди. Это осмысленное поведение, а не ошибка:
+            # «поиграй тут столько-то и двигайся дальше».
+            self._log(f"[Таймер] На задаче {mins_spent} мин из {minutes:g} — время вышло, "
+                       f"перехожу к следующей задаче очереди.")
+        self._set_status(action="Таймер задачи вышел — перехожу")
+        return True
 
     def _check_stall(self, stop_event: threading.Event) -> None:
         """Сторож бездействия: макрос завис — остановить и сказать об этом.
@@ -739,7 +784,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             else:
                 self._log(f"[Macro] Task queue finished -- restarting from task 1 (pass {loop_pass}).")
 
-            for task_index, task in enumerate(tasks, start=1):
+            # Цикл по индексу, а не for-each: таймер задачи умеет
+            # ПЕРЕПРЫГИВАТЬ на другую задачу очереди, а for-each так не
+            # умеет. См. _timer_expired / self._timer_jump_to.
+            ti = 0
+            while ti < len(tasks):
+                task_index, task = ti + 1, tasks[ti]
+                ti += 1
                 if self._checkpoint(stop_event):
                     return
 
@@ -765,6 +816,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                                         scroll_nudges, default_walk_paths, webhook):
                     self._set_status(action="Idle")
                     return
+
+                # Таймер задачи вышел и указал, куда переходить. Ищем задачу
+                # по её id: индексы плывут, если очередь редактировали, а id
+                # у карточки постоянный.
+                jump = self._timer_jump_to
+                self._timer_jump_to = None
+                if jump:
+                    target = next((k for k, t in enumerate(tasks)
+                                    if str(t.get("id")) == str(jump)), None)
+                    if target is None:
+                        self._log("[Таймер] Задача, на которую нужно было перейти, из очереди "
+                                   "пропала — продолжаю по порядку.")
+                    else:
+                        ti = target
+                        self._log(f"[Таймер] Перехожу к задаче {target + 1}/{len(tasks)}: "
+                                   f'"{tasks[target].get("map") or "—"}".')
+                        continue
 
                 # Auto Crafting after each finished task (we're back at the
                 # lobby here). This is what catches the cases the between-
@@ -806,6 +874,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         map_name = task.get("map")
         mode = task.get("mode") or "story"
         repeat_total = max(1, int(task.get("repeat") or 1))
+        # Отсчёт таймера начинается здесь — то есть при КАЖДОМ заходе в
+        # задачу, включая возврат к ней по кругу очереди.
+        self._task_started_at = time.time()
 
         for recovery_attempt in range(1, TASK_RECOVERY_ATTEMPTS + 1):
             if self._checkpoint(stop_event):
@@ -869,6 +940,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             # silently skipped resuming a task after a Challenge interleave).
             fresh_entry = True
             for repeat_index in range(1, repeat_total + 1):
+                # ПРОВЕРКА ТАЙМЕРА СТОИТ ЗДЕСЬ, между матчами, и это главное
+                # в её размещении: посреди боя переключать задачу нельзя —
+                # получишь брошенный матч и потерянную награду. Здесь же
+                # предыдущий матч уже завершён, а следующий ещё не начат.
+                # Так само собой выполняется «если время вышло, а игрок в
+                # бою — дождаться конца боя и только потом переходить».
+                if self._timer_expired(task):
+                    break
                 self._set_status(current_repeat=f"{repeat_index} / {repeat_total}")
                 battle_started = time.time()
                 result = self._play_one_match(hwnd, stop_event, task, default_walk_paths,
