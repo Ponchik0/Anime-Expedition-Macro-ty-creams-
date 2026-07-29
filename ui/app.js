@@ -1119,6 +1119,11 @@ async function loadSettingsUI() {
       applyThemeBase(s.theme_base || 'default', false);
       applyThemeAccent(s.theme_accent || 'default', false);
     }
+    // Остальные ручки кастомизации — здесь же, при старте. Иначе они
+    // применялись бы только после захода в Настройки, где живёт czLoad().
+    for (const kind of ['density', 'corners', 'contrast', 'motion', 'status']) {
+      czApply(kind, s[CZ_KEY[kind]] || 'default', false);
+    }
     const scrollPowerEl = document.getElementById('story-scroll-power');
     if (scrollPowerEl) scrollPowerEl.value = s.story_scroll_power ?? 3;
     const scrollNudgesEl = document.getElementById('story-scroll-nudges');
@@ -6661,23 +6666,35 @@ const CZ_AC = {
 };
 const CZ_DENSITY = { tight:'Густо', default:'Обычно', roomy:'Просторно' };
 const CZ_CORNERS = { sharp:'Строгие', default:'Обычные', soft:'Мягкие' };
+// Контраст и движение — ручки под RDP: сжатие видео съедает слабые различия
+// яркости, а плавные переходы превращаются в кашу из кадров.
+const CZ_CONTRAST = { default:'Обычный', high:'Усиленный' };
+const CZ_MOTION   = { default:'Включены', off:'Выключены' };
+const CZ_STATUS   = { default:'Зелёный / красный', cb:'Синий / оранжевый' };
+
+const CZ_ATTR = { bg:'themeBase', accent:'accent', density:'density',
+                  corners:'corners', contrast:'contrast', motion:'motion',
+                  status:'status' };
+const CZ_KEY  = { bg:'theme_base', accent:'theme_accent', density:'ui_density',
+                  corners:'ui_corners', contrast:'ui_contrast', motion:'ui_motion',
+                  status:'ui_status' };
 
 function czApply(kind, value, save) {
   const root = document.documentElement;
-  const attr = { bg:'themeBase', accent:'accent', density:'density', corners:'corners' }[kind];
+  const attr = CZ_ATTR[kind];
+  if (!attr) return;
   if (!value || value === 'default') delete root.dataset[attr];
   else root.dataset[attr] = value;
   if (save) {
-    try { pywebview.api.set_setting({ bg:'theme_base', accent:'theme_accent',
-      density:'ui_density', corners:'ui_corners' }[kind], value || ''); } catch (e) {}
+    try { pywebview.api.set_setting(CZ_KEY[kind], value || ''); } catch (e) {}
   }
   czRender();
 }
 
 function czRender() {
   const d = document.documentElement.dataset;
-  const cur = { bg:d.themeBase||'default', accent:d.accent||'default',
-                density:d.density||'default', corners:d.corners||'default' };
+  const cur = {};
+  for (const k in CZ_ATTR) cur[k] = d[CZ_ATTR[k]] || 'default';
   const dots = (el, map, kind) => {
     const box = document.getElementById(el);
     if (!box) return;
@@ -6694,17 +6711,17 @@ function czRender() {
       `<button class="${k === cur[kind] ? 'active' : ''}"
                onclick="czApply('${kind}','${k}',true)">${label}</button>`).join('');
   };
-  seg('cz-density', CZ_DENSITY, 'density');
-  seg('cz-corners', CZ_CORNERS, 'corners');
+  seg('cz-density',  CZ_DENSITY,  'density');
+  seg('cz-corners',  CZ_CORNERS,  'corners');
+  seg('cz-contrast', CZ_CONTRAST, 'contrast');
+  seg('cz-motion',   CZ_MOTION,   'motion');
+  seg('cz-status',   CZ_STATUS,   'status');
 }
 
 async function czLoad() {
   try {
     const s = await pywebview.api.get_settings();
-    czApply('bg', s.theme_base || 'default', false);
-    czApply('accent', s.theme_accent || 'default', false);
-    czApply('density', s.ui_density || 'default', false);
-    czApply('corners', s.ui_corners || 'default', false);
+    for (const kind in CZ_KEY) czApply(kind, s[CZ_KEY[kind]] || 'default', false);
   } catch (e) { czRender(); }
 }
 

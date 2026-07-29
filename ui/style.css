@@ -1674,3 +1674,49 @@ body.compact-mode #compact-strip { display: flex; }
   }
   .loading-emblem-arc { animation: none; border-top-color: var(--accent); }
 }
+
+/* --- Контраст текста ----------------------------------------------------
+   Приглушённые тона подтягиваются к основному. Нужно, когда картинка идёт
+   через RDP: сжатие видео съедает именно слабые различия яркости. */
+:root[data-contrast="high"] {
+  --text-dim:   oklch(0.880 0.005 75);   /* #dad7d3 — было 8.61, стало 12.26 */
+  --text-muted: oklch(0.800 0.006 75);   /* #c0bdb9 — было 5.54, стало  9.39 */
+}
+:root[data-theme-base="light"][data-contrast="high"] {
+  --text-dim: #3a3733; --text-muted: #45413c;
+}
+
+/* --- Цвета статусов -----------------------------------------------------
+   Зелёный и красный неразличимы при дальтонизме, а это единственная пара,
+   которой макрос сообщает «работает» и «ошибка». Синий с оранжевым читаются
+   при любом типе. Контраст проверен на самых сложных фонах обеих тем. */
+:root[data-status="cb"] {
+  --ok:  oklch(0.740 0.110 240);   /* #65b4e9 — 6.20 на тёмном поле */
+  --err: oklch(0.740 0.140 55);    /* #ed914c — 5.86 */
+}
+:root[data-theme-base="light"][data-status="cb"] {
+  --ok:  oklch(0.520 0.130 245);   /* #036eae — 4.43 на светлом поле */
+  --err: oklch(0.545 0.155 50);    /* #b44d00 — 4.26 */
+}
+
+/* --- Анимации -----------------------------------------------------------
+   Через RDP каждый переход превращается в кашу из кадров. Обнуляем длительности
+   у токенов, а не режем сами правила: разметка и состояния не меняются. */
+:root[data-motion="off"] {
+  --t-hover: 0ms;
+  --t-tab:   0ms;
+}
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+/* Один в один как при системной «меньше движения»: обнулять длительность у
+   бесконечного вращения нельзя — получится дёргающийся круг вместо индикатора. */
+:root[data-motion="off"] .loading-emblem-arc {
+  animation: none;
+  border-top-color: var(--accent);
+}

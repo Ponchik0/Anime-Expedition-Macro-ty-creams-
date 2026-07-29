@@ -1,181 +1,213 @@
 <p align="center">
-  <img src="logo.ico" width="80" alt="Cream's Macro — Anime Expeditions logo">
+  <img src="logo.ico" width="80" alt="Anime Expeditions">
 </p>
 
-<h1 align="center">Cream's Macro | Anime Expeditions</h1>
+<h1 align="center">Anime Expeditions</h1>
 
 <p align="center">
-  <strong>Free, open-source auto-farm macro for the Roblox game Anime Expeditions</strong><br>
-  Vision-based (screen capture + image matching) — no injection, no memory reading.<br>
-  Docks Roblox directly inside its own window and automates the full Story/Raid/Expedition grind loop.
-</p>
-
-<p align="center">
-  <a href="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/releases/latest">
-    <img src="https://img.shields.io/github/v/release/Cweamy/Anime-Expeditions-Creams-Macro?style=flat-square&color=blue" alt="Latest Release">
-  </a>
-  <a href="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/releases/latest">
-    <img src="https://img.shields.io/github/downloads/Cweamy/Anime-Expeditions-Creams-Macro/total?style=flat-square&color=green" alt="Downloads">
-  </a>
-  <a href="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/actions/workflows/ci.yml">
-    <img src="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/actions/workflows/ci.yml/badge.svg" alt="CI">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT">
-  </a>
-  <a href="#requirements">
-    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20beta-0078D6.svg?style=flat-square" alt="Platform: Windows | macOS beta">
-  </a>
+  <strong>Макрос автофарма для игры Anime Expeditions в Roblox</strong><br>
+  Работает через зрение: снимает экран и ищет картинки. Никаких инъекций в процесс и чтения памяти.<br>
+  Roblox встраивается прямо внутрь окна макроса, весь цикл фарма — Story, Raid, Expedition — идёт сам.
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/FwU6ppjKNf">Discord</a> · <a href="https://www.youtube.com/@Cweamya">YouTube</a> · <a href="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/releases/latest">Download</a>
+  <a href="https://github.com/Ponchik0/ae/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Ponchik0/ae?style=flat-square&color=c9a227&label=версия" alt="Последняя версия">
+  </a>
+  <img src="https://img.shields.io/badge/платформа-Windows-555.svg?style=flat-square" alt="Windows">
 </p>
 
-> Looking for an **Anime Expeditions auto farm bot**, **Anime Expeditions macro**, or a way to **auto raid / auto story farm / auto expedition** in Anime Expeditions on Roblox? You're in the right place.
+---
 
-## Table of Contents
+## Что это
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Download & Install](#download--install)
-- [Usage](#usage)
-- [Auto-Updater](#auto-updater)
-- [Project Layout](#project-layout)
-- [Contributing](#contributing)
-- [Disclaimer](#disclaimer)
-- [License](#license)
+Личная сборка макроса для Anime Expeditions.
 
-## Features
+Раньше это был макрос на AutoHotkey. Всё ценное из него — координаты,
+привязки юнитов, пороги проверок, наблюдения за интерфейсом игры — перенесено
+в [`docs/from_ahk.md`](docs/from_ahk.md).
 
-- **Docked automation** — Roblox is embedded as a native child window inside the macro's own UI, not remote-controlled from outside, so clicks and key presses land exactly where they should.
-- **Task queue** — build a queue of Story, Raid, or Expedition tasks (map, stage/act/difficulty, Solo or Matchmaking, repeat count) and let the macro work through all of them in order.
-- **Repeat farming with automatic recovery** — farm the same stage N times via Repeat Stage without re-doing the lobby/map/stage picks each run. A stuck battle or a missed click backs out to the lobby and retries automatically instead of derailing an unattended session.
-- **Pre Start block builder (Macro Manager)** — a drag-and-drop editor for what happens before a match starts: place starter units (with click-verify and auto-nudge if a spot is rejected), flip in-game settings via hotkey, and mark any block "Once" so it only fires on a task's first entry into a stage, not every repeat.
-- **Walk path recorder** — record a WASD(+ability-key) movement path once per map and replay it automatically as part of Pre Start.
-- **Victory/Defeat detection + Discord match reports** — the result screen is detected automatically, recorded to your win/loss counts and run history, and (with a webhook configured) posted to Discord as a screenshot of the result screen plus a rendered win/loss card. Reading the match stats (clear time, Yen, kills, damage) and reward items off the screen is available on demand under Settings > Debug.
-- **Discord webhook reporting** — optional win/loss embeds posted to a Discord channel as the macro runs.
-- **Win/loss history & stats** — session and all-time win/loss counts, win rate, and a recent-run history, all in the Dashboard.
-- **Global hotkeys** — start/stop/pause without touching the mouse, with the bound key shown right on the Dashboard's controls.
-- **Regular Challenge automation** — its own tab: enable/disable each of the 3 stage slots independently, assign a Macro Operation per Story map (Challenge rotates a random map into each slot), and track today's play count against a daily cap. Resets on the same fixed :00/:30 clock every stage shares. Runs before the Task Queue every time you press Start.
-- **Multi-scale image matching** — automatically tries a template at a few scale factors when the exact size misses, absorbing UI that renders slightly bigger/smaller on someone else's setup instead of failing outright.
-- **Replaceable reference images** — if a button still isn't matching reliably on your setup, drop a same-named screenshot into Settings > General > "Open Assets Folder" to override it — no rebuild or reinstall needed (see [`Assets/ui/README.txt`](Assets/ui/README.txt) for the full catalog of what each image is for).
-- **Themes** — an independent Background (Dark, true Black, Slate, or Light) and Accent color pick, mix and match freely, under Settings > General.
-- **Self-updating** — checks GitHub for new releases and offers a one-click update from inside the app (see [Auto-Updater](#auto-updater)).
+## Возможности
 
-## Requirements
+### Прохождение и автоматизация
 
-- **Windows 10/11** (primary platform) — or **macOS** via the experimental testing build, see [macOS](#macos-experimental--testers-wanted)
-- **[Roblox](https://www.roblox.com/)** with Anime Expeditions
+- **Roblox внутри окна.** Игра встраивается как дочернее окно, а не управляется
+  снаружи. Клики и клавиши попадают ровно туда, куда нужно, даже если сверху
+  лежит другое окно.
+- **Очередь задач.** Собираешь список — карта, этап, сложность, соло или
+  матчмейкинг, число повторов — и макрос проходит его по порядку.
+- **Повторы с восстановлением.** Один этап фармится N раз без повторного выбора
+  карты. Если бой завис или клик промахнулся, макрос сам возвращается в лобби и
+  пробует снова, а не ломает всю ночную сессию.
+- **Конструктор Pre Start.** Редактор того, что происходит до начала боя:
+  расстановка юнитов с проверкой клика и сдвигом, если точка не принялась;
+  переключение настроек игры хоткеем; блок «один раз» — сработает только при
+  первом заходе на этап, а не на каждом повторе.
+- **Запись маршрута.** Путь на WASD записывается один раз на карту и
+  воспроизводится как часть Pre Start.
+- **Победа и поражение.** Экран результата распознаётся сам, идёт в счёт побед
+  и в историю запусков. С настроенным вебхуком — отчёт в Discord: скриншот
+  результата плюс карточка. Чтение статистики боя и наград (время, йены, урон)
+  включается отдельно в «Настройки → Отладка».
+- **Статистика.** Победы и поражения за сессию и за всё время, процент побед,
+  история последних запусков — всё на Дашборде.
+- **Горячие клавиши.** Старт, стоп, пауза без мыши.
+- **Regular Challenge.** Отдельная вкладка: три слота включаются независимо,
+  на каждую карту назначается свой сценарий, счётчик дневного лимита. Идёт
+  перед очередью задач при каждом старте.
+- **Поиск картинок в нескольких масштабах.** Если точный размер не совпал,
+  шаблон пробуется в нескольких масштабах — интерфейс, который на чужой машине
+  рисуется чуть крупнее, всё равно находится.
+- **Свои эталоны.** Если кнопка упорно не находится, положи свой скриншот с тем
+  же именем в папку Assets — пересборка не нужна.
+
+### Добавлено
+
+- **Полностью переделанный интерфейс.** Тёмная нейтральная тема, один акцент,
+  красный только для ошибок, зелёный только для работы. Плотная сетка, ровные
+  отступы, честные состояния наведения и фокуса.
+- **Русский язык.** Переключатель RU/EN в шапке, выбор запоминается. Журнал
+  намеренно остаётся как есть — это вывод макроса с именами юнитов и
+  координатами, переводить его вредно.
+- **Кастомизация.** Раздел в настройках: шесть фонов (от чёрного до светлого),
+  шесть акцентов, плотность интерфейса, скругления. Все сочетания проверены на
+  контраст.
+- **Приватный сервер.** Своя ссылка вместо общего входа в игру. Хранится
+  только локально, в репозиторий не попадает.
+- **Запись действий.** Режим в духе TinyTask: F8 начинает и заканчивает запись
+  мыши и клавиатуры, дальше запись играется как задача. Свои же хоткеи в
+  запись не попадают. На Дашборде живая панель — видно, что пишется прямо
+  сейчас.
+- **Проверка шаблонов.** Один снимок экрана прогоняется по всем эталонам и
+  показывает, что найдено уверенно, что на грани, а что не находится вообще.
+  Ничего не нажимает — только смотрит.
+- **Таймер задач.** У задачи можно задать лимит времени и следующую задачу.
+  Дожидается конца текущего боя и переходит — не рвёт матч на середине.
+- **Перезапуск при зависании.** Если прогресса нет 25 минут или игра ушла в
+  чёрный экран, Roblox закрывается и запускается заново по твоей ссылке.
+- **Ожидание уплывающих позиций.** Если точка установки юнита уехала дальше
+  допустимого, макрос ждёт и пробует то же место снова, а не ставит юнита
+  куда попало.
+- **Обновления из своего репозитория.** Проверка идёт по релизам этого
+  репозитория, а не авторского.
+
+## Требования
+
+- **Windows 10 или 11**
+- **[Roblox](https://www.roblox.com/)** с установленной Anime Expeditions
 - **Python 3.10+**
-- **[Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)** (preinstalled on most Win10/11 systems)
-- **[Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)** — required for reading match stats/rewards; pip cannot install this, grab the Windows installer from the link above
+- **[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)** —
+  на большинстве систем уже стоит
+- **[Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)** — нужен
+  только для чтения статистики и наград. Через pip не ставится, нужен
+  установщик по ссылке. Без него работает всё остальное.
 
-## Download & Install
-
-### Option A: Download (recommended)
-
-No `git clone`, no Python needed.
-
-1. Open the [**Releases page**](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/releases/latest)
-2. The newest release is shown at the top
-3. Under **Assets**, download **`Creams-Macro-Anime-Expeditions-Windows.zip`** (or the `-macOS` zip on a Mac)
-4. Extract it anywhere — you get the app `.exe` with an `Assets/` folder next to it — and run the exe
-
-The `Assets/` folder is every image the macro searches for on screen, kept **outside** the exe on purpose: one folder per button/text, and you can open, replace, or add extra crops freely (Settings > General > **Image Manager** captures and crops them for you, straight from your Roblox screen). Updates never overwrite images you've changed or added.
-
-(The old bootstrapper exe is no longer uploaded to releases — the zip is the one download. If you already have a bootstrapper from before, it keeps working: it fetches this same zip. Need a fresh one to share around? Build it locally with `build_bootstrap.py`.)
-
-> Windows SmartScreen may warn about an unrecognized app the first time (normal for small open-source tools) — click **More info → Run anyway**, or build it yourself from source below.
-
-The only other thing you need is [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) (pip can't install this one — grab the Windows installer from the link) for reading match stats/rewards; everything else works without it.
-
-### Option B: Run from source
+## Установка
 
 ```bash
-git clone https://github.com/Cweamy/Anime-Expeditions-Creams-Macro.git
-cd Anime-Expeditions-Creams-Macro
+git clone https://github.com/Ponchik0/ae.git
+cd ae
 pip install -r requirements.txt
 ```
 
-### macOS (experimental — testers wanted)
-
-Releases also publish **`Creams-Macro-Anime-Expeditions-macOS.zip`** (a `.app` + the same editable `Assets/` folder), and source runs work via `./run.sh`. Key differences and setup:
-
-1. **Permissions (required):** System Settings > Privacy & Security — grant the app (or your terminal, for source runs) **Accessibility**, **Input Monitoring**, and **Screen Recording**. Without them, clicks silently do nothing and captures come back black. The app logs a warning at startup if Accessibility is missing.
-2. **Side-by-side, not docked:** macOS can't embed another app's window, so Roblox is auto-arranged *next to* the control panel at the exact reference size instead of inside it. The panel sizes itself to whatever width the game doesn't need and to the full height of the screen's *visible* area (menu bar and Dock excluded), so nothing ends up under either.
-3. **Screen space:** side-by-side needs about **1564 logical points of width** (400 panel + 1152 game). If your display is set to fewer — a 13" MacBook left at its default scaled resolution is 1440 or even 1280 wide — Roblox lands partly off-screen; the app logs exactly this at startup. Fix it in System Settings > Displays by picking a resolution toward **"More Space"** (this is about *logical* points, not the physical panel, so a Retina display stays sharp).
-4. **The Dashboard drops the game slot.** On Windows the Dashboard reserves a 1152×756 hole for the embedded game; on mac there is nothing to put in it, so the Dashboard reflows to a single column — status, scoreboard, controls, run history, then the log — and the window widens to the full screen on the Task / Macro Manager / Challenge / Settings screens, which are multi-column and need the room. It stays narrow on the Dashboard so Roblox is visible beside it, and **never widens mid-run** (covering the game would break the reward/wave OCR, which reads the screen rather than the window).
-5. **Scaling:** all captures are normalized and clicks scaled automatically (Retina 2x included), so the same Assets images work — but expect to add your own crops via the Image Manager where Roblox's mac rendering differs. Image matching reads Roblox's own window contents rather than the screen, so another window sitting over the game doesn't break detection.
-6. **Self-update** isn't wired up for the mac build yet — replace the app with a freshly downloaded zip.
-7. Global hotkeys need elevated permissions on macOS; without them, use the on-screen buttons.
-
-Either way, install [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) if you haven't already (needed for stats/reward reading only — everything else works without it).
-
-## Usage
-
-If you're running from source, launch it with:
+Запуск:
 
 ```bash
 python main.py
 ```
 
-...or just double-click `run.bat`. (If you used the bootstrapper, just run it — it launches the app for you.) Start Roblox and join Anime Expeditions — the macro finds and docks the window automatically. From there:
+Или двойным щелчком по `run.bat`.
 
-1. **Task** — queue up what to farm (map, stage, difficulty, repeat count).
-2. **Macro Manager** — build a Pre Start routine (unit placement, settings, walk path, clicks) and save it as a template.
-3. **Challenge** — optionally enable Regular Challenge automation and assign a Macro Operation per map (runs before the Task Queue on Start).
-4. **Dashboard** — assign a template to a task, hit Start, and monitor progress/stats live.
-5. **Settings** — hotkeys, Discord webhook, default walk paths, themes, and calibration/debug tools.
+> **На новой машине** (например на RDP) не забудь `pip install -r requirements.txt` —
+> без него будет `ModuleNotFoundError: No module named 'requests'`.
 
-CLI diagnostics (no GUI) are available via:
+Диагностика без интерфейса:
 
 ```bash
 python main.py --test
 ```
 
-## Auto-Updater
+## Первый запуск
 
-On launch, the macro checks GitHub for a newer tagged release than the one you're running. If one exists, a popup shows the version and release notes with an **Update & Restart** button. What "Update" downloads depends on how you're running it — the packaged exe swaps itself for the new exe; running from source instead swaps in the new source over your local copy. Either way your `settings.json`, saved templates, walk paths, **and anything you've changed or added in the `Assets/` folder** are never touched — updates only ever *add* Assets images that are new in a release, and it relaunches automatically. You can also trigger a manual check any time by clicking the version badge in the titlebar. (If you're using the bootstrapper, it also checks for a newer app exe on every launch on its own, independently of this.)
+1. Запусти Roblox и зайди в Anime Expeditions — макрос сам найдёт окно и
+   встроит его в себя.
+2. **Задачи** — собери очередь: карта, этап, сложность, число повторов.
+3. **Сценарии** — собери routine до начала боя: расстановка юнитов,
+   настройки, маршрут — и сохрани как шаблон.
+4. **Дашборд** — назначь шаблон задаче и жми Старт.
+5. **Настройки** — хоткеи, вебхук Discord, приватный сервер, внешний вид,
+   отладка.
 
-## Project Layout
+Если что-то не находится на экране — открой **Настройки → Проверка шаблонов**.
+Она покажет, какие эталоны не совпадают именно на твоём разрешении. Дальше
+через **Менеджер изображений** снимаешь свой кроп прямо с экрана игры.
+
+> Эталоны кнопок обрезай **по тексту**, без фона. У кнопок в этой игре фон
+> анимированный — если захватить его, совпадение будет плавать.
+
+## Обновления
+
+Макрос сверяет файл `VERSION` с последним релизом на GitHub. При запуске
+проверяет сам, вручную — клик по номеру версии в шапке.
+
+**Как выпустить новую версию:**
+
+```bash
+# 1. подними номер
+echo 1.0.2 > VERSION
+git add -A && git commit -m "описание изменений"
+git push
+
+# 2. поставь тег с тем же номером и понятным описанием
+git tag -a v1.0.2 -m "что изменилось"
+git push origin v1.0.2
+```
+
+Тег запускает сборку на GitHub Actions — она собирает exe, кладёт рядом
+папку `Assets` и публикует релиз. После этого копии на других машинах увидят
+обновление.
+
+Важное: **одного пуша мало**, нужен именно тег. И номер в `VERSION` должен
+совпадать с тегом без буквы `v`.
+
+Обновление никогда не трогает `settings.json`, шаблоны, маршруты и твои
+картинки в `Assets` — оно только добавляет то, чего у тебя ещё нет.
+
+> На машине, где ты разрабатываешь, обновление не появится никогда: файлы
+> здесь и есть последняя версия. Уведомление увидят другие копии — например
+> на RDP.
+
+## Структура проекта
 
 ```
-main.py          # pywebview entry point / JS<->Python API bridge
-core/            # macro engine: vision (image matching), runner (match automation),
-                 # OCR, webhook, window docking, input, path recording, updater...
-core/constants.py # frozen-build-aware path resolution (BUNDLE_DIR/APP_DIR) --
-                 # every other core/*.py module's paths derive from this
-ui/              # frontend (HTML/CSS/JS) rendered inside the docked window
-tools/           # one-off scripts for scraping wiki data (stage rewards, item icons)
-Assets/ui/       # reference screenshots the macro's image search looks for --
-                 # one folder per searched name, every image inside it is tried
-                 # as a variant. User-editable (ships loose beside the exe, never
-                 # bundled) -- see Assets/ui/README.txt for the full catalog
-Assets/map/      # full map images for the Set Position picker
-Assets/maps/     # map name-label crops for map-select image search (same
-                 # folder-per-name layout as Assets/ui)
-Paths/defaults/  # known-good default walk paths, shipped with the repo
-bootstrap.py     # tiny installer exe -- downloads/extracts the release zip and launches
-                 # the app; built locally via build_bootstrap.py, not uploaded to releases
-build_pyinstaller.py # builds the real app exe
-build_bootstrap.py # builds bootstrap.py into its own small exe
+main.py            точка входа, мост между интерфейсом и Python
+core/              движок: поиск картинок, прохождение боя, OCR, вебхук,
+                   встраивание окна, ввод, запись маршрутов, обновления
+core/replay.py     запись и воспроизведение действий (режим TinyTask)
+core/joinlink.py   ссылка входа в игру, включая приватный сервер
+core/template_check.py  проверка эталонов без единого клика
+ui/                интерфейс: HTML, CSS, JS
+ui/i18n.js         перевод интерфейса на русский
+Assets/ui/         эталонные скриншоты, папка на каждое имя.
+                   Свои варианты можно докладывать
+Assets/maps/       названия карт для выбора карты
+Paths/defaults/    готовые маршруты передвижения
+docs/from_ahk.md   всё ценное из старого макроса на AutoHotkey
+docs/architecture.md  карта модулей
+tests/             тесты, запуск: python -m pytest tests/
 ```
 
-## Contributing
+## Тесты
 
-Issues and PRs are welcome. Every push/PR runs CI on Windows: the `tests/` unit suite under pytest, a compile check over every Python file, and a syntax check of `ui/app.js`. Run the suite locally with `pip install -r requirements-dev.txt` then `python -m pytest tests/`. It only covers the pure-logic modules (settings, pacing, webhook, and friends), so please also describe how you tested a change manually in your PR.
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/
+```
 
-To cut a release: bump `VERSION`, commit, then tag with an **annotated** tag whose message is a short, human-readable changelog: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. That message becomes both the GitHub Release body and what gets posted to Discord (see below) — a lightweight tag (no `-a`/`-m`) falls back to just the tagged commit's own message, which is usually not what you want announced. Pushing the tag triggers the release workflow, which builds the app exe with PyInstaller (see `build_pyinstaller.py`), packages it together with the user-editable `Assets/` folder into `Creams-Macro-Anime-Expeditions-Windows.zip` (a macOS job builds the `-macOS` twin) — the per-platform zips are the only uploaded assets, which new installs, the auto-updater, and any bootstrapper copies all read from — and publishes a GitHub Release.
+## Отказ от ответственности
 
-Every push to `main` posts a one-line summary to a Discord "git log" channel; every tagged release posts its changelog to a separate Discord "update log" channel. Both are wired via `DISCORD_GIT_LOGS_WEBHOOK`/`DISCORD_UPDATE_LOGS_WEBHOOK` repo secrets (Settings > Secrets and variables > Actions) — unset in a fork, so both steps just no-op instead of failing.
+Фанатский инструмент. Не связан с Roblox Corporation и с разработчиками
+Anime Expeditions, не одобрен ими. Автоматизация игры может нарушать правила
+игры или Roblox — используешь на свой страх и риск. Все игровые материалы
+принадлежат их владельцам, лицензией репозитория покрыт только код макроса.
 
-To build either exe locally instead of waiting on CI: `pip install pyinstaller`, then `python build_pyinstaller.py` / `python build_bootstrap.py`. Output lands in `dist/`.
-
-## Disclaimer
-
-This is a fan-made automation tool, not affiliated with, endorsed by, or associated with Roblox Corporation or the developers of Anime Expeditions. Automating gameplay may violate the game's or Roblox's Terms of Service — use it at your own risk and discretion. All game assets referenced (screenshots, names) belong to their respective owners; only the macro's own code is covered by this repository's license.
-
-## License
-
-[MIT](LICENSE) — see the LICENSE file for details.
