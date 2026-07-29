@@ -383,6 +383,7 @@ body:has(#titlebar[style*="flex"]) #screen-dashboard,
 body:has(#titlebar[style*="flex"]) #screen-task,
 body:has(#titlebar[style*="flex"]) #screen-creation,
 body:has(#titlebar[style*="flex"]) #screen-resource,
+body:has(#titlebar[style*="flex"]) #screen-replay,
 body:has(#titlebar[style*="flex"]) #screen-settings {
   padding-right: var(--rail-w);
 }

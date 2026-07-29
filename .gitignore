@@ -31,12 +31,6 @@ settings.json
 # Runtime log -- local troubleshooting only, no reason to version it.
 *.log
 
-# Старый AHK-макрос, с которого мы переехали. Лежит рядом как единственная
-# копия исходных данных калибровки — удалим, когда новый проект отработает
-# в бою. Всё ценное из него уже выписано в docs/from_ahk.md (это НЕ игнорится
-# и лежит в репозитории).
-_archive_ahk/
-
 # Python
 __pycache__/
 *.pyc

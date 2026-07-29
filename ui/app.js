@@ -414,7 +414,10 @@ function launchRoblox() {
 // other screens get the full window instead of Roblox showing through.
 let currentScreen = 'dashboard';
 let lastNonDashboardScreen = 'creation';
-const SCREENS = ['dashboard', 'task', 'creation', 'resource', 'settings'];
+// 'replay' — режим повтора записи. Регистрируется ВМЕСТЕ с разметкой
+// #screen-replay и кнопкой #nav-replay: без них цикл в switchScreen
+// спотыкался и не доходил до hide_game(), оставляя игру поверх вкладок.
+const SCREENS = ['dashboard', 'task', 'creation', 'resource', 'replay', 'settings'];
 
 // Only macOS cares: there the game sits BESIDE this window instead of inside
 // it, which changes both the Dashboard's layout and how much screen this
@@ -527,6 +530,7 @@ function switchScreen(name) {
   if (name === 'task') refreshTaskQueue();
   if (name === 'resource') { refreshCraftingScreen(); refreshChallengeScreen(); refreshBountyScreen(); }
   if (name === 'settings') { refreshSavedPaths(); loadMacroCoords(); loadRewardTestMaps(); }
+  if (name === 'replay') loadReplayScreen();
 
   // The Process Log only exists on the Dashboard, and a display:none element
   // has no scroll height -- so while another screen is up the list cannot
@@ -6502,4 +6506,115 @@ async function runTemplateCheck(btn) {
     addLog('[Проверка] Не удалось: ' + e);
   }
   if (btn) { btn.disabled = false; btn.textContent = was || 'Run'; }
+}
+
+// ══════════════════ ЭКРАН «ЗАПИСЬ» ══════════════════════════════════════
+// Ядро в core/replay.py, мост — методы replay_* в main.py. Здесь только
+// отрисовка и вызовы; никакой логики записи в браузере нет.
+
+let _recTimer = null;
+
+async function loadReplayScreen() {
+  try {
+    const m = await pywebview.api.get_run_mode();
+    document.getElementById('mode-auto').classList.toggle('active', m.mode !== 'replay');
+    document.getElementById('mode-replay').classList.toggle('active', m.mode === 'replay');
+    document.getElementById('mode-hint').textContent = m.mode === 'replay'
+      ? 'Сейчас «Старт» крутит выбранную запись. Очередь задач не запускается.'
+      : 'Сейчас «Старт» запускает обычный автоматический прогон по очереди задач.';
+    const loops = document.getElementById('rec-loops');
+    if (loops && document.activeElement !== loops) loops.value = m.loops ?? 0;
+    document.getElementById('rec-focus').classList.toggle('on', m.require_focus !== false);
+  } catch (e) {}
+  refreshRecordings();
+  if (!_recTimer) _recTimer = setInterval(pollRecordingState, 700);
+}
+
+async function setRunMode(mode) {
+  try { await pywebview.api.set_run_mode(mode); } catch (e) {}
+  loadReplayScreen();
+}
+
+async function saveReplayOption(key, value) {
+  try { await pywebview.api.set_replay_option(key, value); } catch (e) {}
+}
+
+function toggleReplayFocus(el) {
+  const on = !el.classList.contains('on');
+  el.classList.toggle('on', on);
+  saveReplayOption('replay_require_focus', on);
+}
+
+async function toggleRecording() {
+  const btn = document.getElementById('btn-rec');
+  try {
+    const st = await pywebview.api.replay_recording_status();
+    if (st.recording) {
+      const name = (document.getElementById('rec-name').value || '').trim();
+      const r = await pywebview.api.replay_stop_recording(name);
+      if (r && !r.ok && r.reason === 'empty') {
+        addLog('[Повтор] Записывать нечего: ни одного клика или нажатия.');
+      }
+      document.getElementById('rec-name').value = '';
+    } else {
+      const r = await pywebview.api.replay_start_recording();
+      if (r && !r.ok && r.reason === 'macro_running') {
+        addLog('[Повтор] Сначала останови автоматический прогон.');
+      }
+    }
+  } catch (e) {}
+  pollRecordingState();
+  refreshRecordings();
+}
+
+async function pollRecordingState() {
+  if (currentScreen !== 'replay') return;
+  try {
+    const st = await pywebview.api.replay_recording_status();
+    const btn = document.getElementById('btn-rec');
+    const lbl = document.getElementById('rec-state');
+    if (!btn || !lbl) return;
+    if (st.recording) {
+      btn.textContent = 'Остановить запись';
+      btn.classList.add('rp-btn-stop');
+      lbl.textContent = 'идёт запись · действий: ' + st.recorded;
+    } else {
+      btn.textContent = 'Начать запись';
+      btn.classList.remove('rp-btn-stop');
+      lbl.textContent = st.state === 'running'
+        ? 'играет «' + st.name + '» · круг ' + st.loop + ' · ' + st.index + '/' + st.total
+        : 'не идёт';
+    }
+  } catch (e) {}
+}
+
+async function refreshRecordings() {
+  const el = document.getElementById('rec-list');
+  if (!el) return;
+  let list = [];
+  try { list = await pywebview.api.replay_list(); } catch (e) {}
+  if (!list || !list.length) {
+    el.innerHTML = '<div class="empty-state">'
+      + '<div class="empty-state-title">Записей пока нет</div>'
+      + '<div class="empty-state-hint">Нажми «Начать запись», сыграй матч руками и останови. '
+      + 'Макрос повторит записанное тик в тик — ставить и настраивать ничего не нужно.</div></div>';
+    return;
+  }
+  el.innerHTML = list.map(r => `
+    <div class="rh-row">
+      <span class="rh-map">${r.name}</span>
+      <span class="rh-meta">${r.actions} действий · ${r.seconds} с</span>
+      <button class="task-icon-btn" onclick="playRecording('${r.name}')">Играть</button>
+      <button class="task-icon-btn" onclick="deleteRecording('${r.name}')">Удалить</button>
+    </div>`).join('');
+}
+
+async function playRecording(name) {
+  try { await pywebview.api.replay_play(name); } catch (e) {}
+  pollRecordingState();
+}
+
+async function deleteRecording(name) {
+  try { await pywebview.api.replay_delete(name); } catch (e) {}
+  refreshRecordings();
 }
