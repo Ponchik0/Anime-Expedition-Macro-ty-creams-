@@ -414,8 +414,7 @@ function launchRoblox() {
 // other screens get the full window instead of Roblox showing through.
 let currentScreen = 'dashboard';
 let lastNonDashboardScreen = 'creation';
-// 'replay' — режим повтора записи (см. ui/replay-ui.js и core/replay.py).
-const SCREENS = ['dashboard', 'task', 'creation', 'resource', 'replay', 'settings'];
+const SCREENS = ['dashboard', 'task', 'creation', 'resource', 'settings'];
 
 // Only macOS cares: there the game sits BESIDE this window instead of inside
 // it, which changes both the Dashboard's layout and how much screen this
@@ -478,8 +477,12 @@ function switchScreen(name) {
 
   for (const n of SCREENS) {
     const el = document.getElementById(`screen-${n}`);
+    // Отсутствующий экран НЕ должен ронять переключение: ниже по функции
+    // стоит hide_game(), который убирает окно Roblox с чужих вкладок, и
+    // исключение здесь оставило бы игру поверх настроек.
+    if (!el) continue;
     el.style.display = n === name ? 'flex' : 'none';
-    document.getElementById(`nav-${n}`).classList.toggle('active', n === name);
+    document.getElementById(`nav-${n}`)?.classList.toggle('active', n === name);
     // Re-trigger the entrance animation on the screen being revealed --
     // remove + reflow + re-add, since re-adding the same class without a
     // reflow in between wouldn't restart a finished animation. Skipped for
