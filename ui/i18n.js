@@ -292,6 +292,9 @@
     'Live': 'В работе',
     'PRESET': 'НАБОР',
     'Accent': 'Акцент',
+    'Background': 'Фон интерфейса',
+    'Dark, Black, Slate, Light, Space, Semi Gold, Semi Silver, or Liquid Glass.':
+      'Тёплый тёмный, чёрный (для OLED), холодный тёмный или светлый. Контраст каждого проверен — читаться будет везде.',
     'Background': 'Фон',
     'Record': 'Запись',
     'Start/stop recording your own play. Press it while you are IN the game -- that is the point: the macro then repeats exactly what you did.':
@@ -326,7 +329,6 @@
     'Bundles the latest debug screenshots, log tail, settings (webhook redacted) and a health check into one zip you can attach to a bug report.': 'Собирает в один архив свежие снимки, хвост журнала, настройки (ссылка вебхука вырезана) и проверку окружения — удобно приложить к сообщению об ошибке.',
     'Browse every image the macro searches for, and capture new ones from your Roblox screen -- add a crop whenever a search fails.': 'Показывает все картинки, которые макрос ищет, и позволяет снять новые со своего экрана. Не нашлась кнопка — добавь свою вырезку.',
     'A one-time checklist -- these are the things that cause almost every "it doesn\'t work". You can reopen it any time.': 'Список на один раз: здесь то, из-за чего почти всегда и бывает «не работает». Открыть заново можно в любой момент.',
-    'Dark, Black, Slate, Light, Space, Semi Gold, Semi Silver, or Liquid Glass.': 'Тема в этой сборке одна и подобрана целиком.',
     'Click to check for updates': 'Версия макроса',
     'Load tasks (and their macros) from a shared .json file': 'Загрузить задачи и их сценарии из файла .json',
     'Save this queue + its macros to a .json file to back up or share': 'Сохранить очередь и сценарии в файл .json',

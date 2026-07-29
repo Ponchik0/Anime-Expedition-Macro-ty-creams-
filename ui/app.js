@@ -923,15 +923,12 @@ async function resetHotkeys() {
 // comment on data-theme-base/data-theme-accent for how they combine. '' /
 // 'default' means "no override" for either, i.e. the plain :root palette.
 const THEME_BASES = {
-  default: { label: 'Dark', bg: '#171a26', border: '#2a2e42' },
-  black:   { label: 'Black', bg: '#0a0a0a', border: '#262626' },
-  slate:   { label: 'Slate', bg: '#1a1b1e', border: '#313338' },
-  light:   { label: 'Light', bg: '#ffffff', border: '#d8dbe4' },
-  space:   { label: 'Space', bg: '#0b0d19', border: '#1e2640' },
-  gold:    { label: 'Semi Gold', bg: '#2f2a20', border: '#524837' },
-  silver:  { label: 'Semi Silver', bg: '#262b34', border: '#434c5b' },
-  // Frosted panels over an animated in-app aurora -- see #glass-aurora in style.css.
-  glass:   { label: 'Liquid Glass', bg: 'linear-gradient(135deg, rgba(110,166,255,0.45), rgba(181,140,224,0.45))', border: 'rgba(255,255,255,0.25)' },
+  // Четыре фона, контраст каждого посчитан численно — см. раздел ТЕМЫ в
+  // style.css. Акцент один на все и здесь не выбирается.
+  default: { label: 'Тёплый тёмный', bg: '#1a1916', border: '#44403c' },
+  black:   { label: 'Чёрный',        bg: '#0a0a0a', border: '#333333' },
+  cool:    { label: 'Холодный',      bg: '#1a1c1e', border: '#404449' },
+  light:   { label: 'Светлый',       bg: '#fbfaf9', border: '#d3cfc8' },
 };
 const THEME_ACCENTS = {
   default: '#7c9dff', ocean: '#58a6ff', emerald: '#3fbf8f', sakura: '#e87a9e',
@@ -945,8 +942,7 @@ function applyThemeBase(name, announce) {
   if (activeThemeBase === 'default') delete document.documentElement.dataset.themeBase;
   else document.documentElement.dataset.themeBase = activeThemeBase;
   renderThemePicker();
-  if (activeThemeBase === 'glass') ensureLiquidLensMap();
-  if (announce) addLog(`[Theme] Background: ${THEME_BASES[activeThemeBase].label}`);
+  if (announce) addLog(`[Тема] Фон: ${THEME_BASES[activeThemeBase].label}`);
 }
 
 // ---- Liquid Glass lens ----------------------------------------------------

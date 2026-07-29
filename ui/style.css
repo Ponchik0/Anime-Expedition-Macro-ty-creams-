@@ -164,7 +164,7 @@ button:disabled { cursor: default; }
 /* Просим у системы тёмные нативные контролы: стрелки у полей с числом,
    выпадающий список у <select>, полосы прокрутки внутри них. Без этого
    Windows рисует их светлыми, и они выглядят вырезанными из чужого окна. */
-:root { color-scheme: dark; }
+:root { color-scheme: dark; }   /* светлая тема переопределяет, см. раздел ТЕМЫ */
 
 /* РАЗМЕР ИКОНКИ ПО УМОЛЧАНИЮ.
    Инлайновый <svg> без явных размеров раздувается на весь контейнер — и
@@ -1418,6 +1418,91 @@ body.compact-mode #compact-strip { display: flex; }
 /* На рельсе подпись уже видна под иконкой — подсказка там лишняя. */
 #rail .nav-btn::before { content: none; }
 
+
+/* ============================================ ТЕМЫ ФОНА ================== */
+/* Четыре варианта фона. Меняются ТОЛЬКО переменные — ни одно правило ниже по
+   файлу не переписывается: всё оформление и так идёт через :root, поэтому
+   тема переключается целиком одной строкой.
+
+   КОНТРАСТ КАЖДОЙ ПОСЧИТАН ЧИСЛЕННО (WCAG 2.1), не подобран на глаз. Все
+   четыре дают >=4.5 для текста и >=3.0 для акцента на любом из четырёх
+   уровней фона. Особое внимание на text-muted: он самый светлый из текстов
+   и в первой прикидке проваливался на полях ввода во всех темах — значения
+   подтянуты, пока не прошли.
+
+   Светлая тема — не инверсия тёмной: акцент, зелёный и красный там ЗАМЕТНО
+   темнее, иначе на белом они выцветают и перестают читаться. */
+
+/* --- Чёрный: нейтрально-серый, для OLED --- */
+:root[data-theme-base="black"] {
+  --bg-deep:    #020202;
+  --bg-card:    #0a0a0a;
+  --bg-surface: #141414;
+  --bg-field:   #1e1e1e;
+  --border:        #333333;
+  --border-strong: #4d4d4d;
+  --text:       #f0f0f0;
+  --text-dim:   #b7b7b7;
+  --text-muted: #8f8f8f;
+}
+
+/* --- Холодный тёмный: те же уровни, но нейтраль уведена в синеву --- */
+:root[data-theme-base="cool"] {
+  --bg-deep:    #111314;
+  --bg-card:    #1a1c1e;
+  --bg-surface: #232528;
+  --bg-field:   #2d2f32;
+  --border:        #404449;
+  --border-strong: #565b62;
+  --text:       #ebedef;
+  --text-dim:   #b4b8bc;
+  --text-muted: #93969b;
+}
+
+/* --- Светлый --- */
+:root[data-theme-base="light"] {
+  color-scheme: light;
+  --bg-deep:    #e9e7e5;
+  --bg-card:    #fbfaf9;
+  --bg-surface: #f3f1ee;
+  --bg-field:   #eae7e3;
+  --border:        #d3cfc8;
+  --border-strong: #a9a49c;
+  --text:       #26221e;
+  --text-dim:   #5a5651;
+  --text-muted: #6a655f;
+  /* Смысловые цвета темнее тёмнотемных: на белом светлые выцветают. */
+  --accent:       #9e671e;
+  --accent-hover: #7d5017;
+  --ok:  #157e3c;
+  --err: #c2272d;
+}
+/* На светлой теме тени должны быть заметно легче: те же значения, что на
+   тёмной, выглядят как грязь под панелью. */
+:root[data-theme-base="light"] .rp-rows-extra,
+:root[data-theme-base="light"] .modal-panel,
+:root[data-theme-base="light"] .log-jump,
+:root[data-theme-base="light"] .drag-ghost {
+  box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.22);
+}
+:root[data-theme-base="light"] .modal-overlay { background: rgb(0 0 0 / 0.35); }
+
+/* Плитка выбора фона в настройках */
+.theme-picker-grid { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.theme-base-tile {
+  width: 52px; height: 34px;
+  border-radius: var(--r-md);
+  background: var(--tb-bg, var(--bg-card));
+  border: 1px solid var(--tb-border, var(--border));
+  cursor: pointer;
+  transition: transform var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease);
+}
+.theme-base-tile:hover { border-color: var(--border-strong); }
+.theme-base-tile.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-wash);
+}
+
 /* =================================================== ОТКЛЮЧЁННЫЕ ОРГАНЫ === */
 /* Управление, которое после форка перестало иметь смысл. Прячем стилями, а
    не вырезаем из разметки: удалять куски index.html означало бы трогать
@@ -1428,11 +1513,8 @@ body.compact-mode #compact-strip { display: flex; }
    что апдейтер автора накатывает релиз поверх наших правок в core/ и ui/. */
 .setting-row:has(#btn-check-updates) { display: none; }
 
-/* Выбор темы: в этом форке тема одна и подобрана целиком (нейтральные
-   тёплые серые + один акцент). Десяти вариантов фона и семи акцентов
-   больше нет, а переключатель, который ничего не переключает, только
-   вводит в заблуждение. */
-.setting-row:has(#theme-base-picker),
+/* Выбор ФОНА вернулся (см. раздел ТЕМЫ выше) — прячем только выбор
+   акцента: акцент в этом форке один и подобран под все четыре фона. */
 .setting-row:has(#theme-accent-picker) { display: none; }
 
 /* Информационная плашка о ложных срабатываниях антивирусов была зелёной —
