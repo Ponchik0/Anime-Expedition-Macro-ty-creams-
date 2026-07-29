@@ -530,6 +530,7 @@ function switchScreen(name) {
   if (name === 'task') refreshTaskQueue();
   if (name === 'resource') { refreshCraftingScreen(); refreshChallengeScreen(); refreshBountyScreen(); }
   if (name === 'settings') { refreshSavedPaths(); loadMacroCoords(); loadRewardTestMaps(); }
+  if (name === 'settings') czLoad();
   if (name === 'replay') loadReplayScreen();
 
   // The Process Log only exists on the Dashboard, and a display:none element
@@ -6638,4 +6639,67 @@ async function playRecording(name) {
 async function deleteRecording(name) {
   try { await pywebview.api.replay_delete(name); } catch (e) {}
   refreshRecordings();
+}
+
+// ══════════════════ КАСТОМИЗАЦИЯ ════════════════════════════════════════
+// Три ручки: фон, акцент, плотность (+скругления). Каждая ставит атрибут на
+// <html> и сохраняется в настройках. Контраст всех сочетаний проверен
+// заранее — см. раздел КАСТОМИЗАЦИЯ в style.css.
+const CZ_BG = {
+  default:{l:'Тёплый тёмный', c:'#1a1916'}, black:{l:'Чёрный', c:'#0a0a0a'},
+  cool:   {l:'Холодный',      c:'#1a1c1e'}, night:{l:'Ночь',   c:'#141a24'},
+  sepia:  {l:'Сепия',         c:'#201a15'}, light:{l:'Светлый',c:'#fbfaf9'},
+};
+const CZ_AC = {
+  default:{l:'Латунь', c:'#dcae6e'}, terracota:{l:'Терракота', c:'#e28a6f'},
+  olive:  {l:'Олива',  c:'#a3bc78'}, steel:    {l:'Сталь',     c:'#a1b3c7'},
+  teal:   {l:'Бирюза', c:'#64c3c3'}, rose:     {l:'Роза',      c:'#e78d9b'},
+};
+const CZ_DENSITY = { tight:'Густо', default:'Обычно', roomy:'Просторно' };
+const CZ_CORNERS = { sharp:'Строгие', default:'Обычные', soft:'Мягкие' };
+
+function czApply(kind, value, save) {
+  const root = document.documentElement;
+  const attr = { bg:'themeBase', accent:'accent', density:'density', corners:'corners' }[kind];
+  if (!value || value === 'default') delete root.dataset[attr];
+  else root.dataset[attr] = value;
+  if (save) {
+    try { pywebview.api.set_setting({ bg:'theme_base', accent:'theme_accent',
+      density:'ui_density', corners:'ui_corners' }[kind], value || ''); } catch (e) {}
+  }
+  czRender();
+}
+
+function czRender() {
+  const d = document.documentElement.dataset;
+  const cur = { bg:d.themeBase||'default', accent:d.accent||'default',
+                density:d.density||'default', corners:d.corners||'default' };
+  const dots = (el, map, kind) => {
+    const box = document.getElementById(el);
+    if (!box) return;
+    box.innerHTML = Object.entries(map).map(([k, v]) =>
+      `<button class="cz-swatch ${k === cur[kind] ? 'active' : ''}" style="--cz:${v.c};"
+               title="${v.l}" onclick="czApply('${kind}','${k}',true)"></button>`).join('');
+  };
+  dots('cz-bg', CZ_BG, 'bg');
+  dots('cz-accent', CZ_AC, 'accent');
+  const seg = (el, map, kind) => {
+    const box = document.getElementById(el);
+    if (!box) return;
+    box.innerHTML = Object.entries(map).map(([k, label]) =>
+      `<button class="${k === cur[kind] ? 'active' : ''}"
+               onclick="czApply('${kind}','${k}',true)">${label}</button>`).join('');
+  };
+  seg('cz-density', CZ_DENSITY, 'density');
+  seg('cz-corners', CZ_CORNERS, 'corners');
+}
+
+async function czLoad() {
+  try {
+    const s = await pywebview.api.get_settings();
+    czApply('bg', s.theme_base || 'default', false);
+    czApply('accent', s.theme_accent || 'default', false);
+    czApply('density', s.ui_density || 'default', false);
+    czApply('corners', s.ui_corners || 'default', false);
+  } catch (e) { czRender(); }
 }

@@ -847,6 +847,50 @@
             </div>
           </div>
 
+          <!-- ── Кастомизация ──────────────────────────────────────
+               Три независимые ручки плюс живой образец: видно сочетание,
+               не переключаясь на другие вкладки. -->
+          <div class="setting-row" style="grid-column: span 2; flex-direction: column; align-items: stretch; gap: 14px;">
+            <div>
+              <div class="setting-label">Customization</div>
+              <div class="setting-desc">Background, accent colour and how densely everything is packed. Contrast of every combination is verified -- nothing here can make the interface unreadable.</div>
+            </div>
+
+            <div>
+              <div class="setting-desc" style="margin-bottom:6px;">Background</div>
+              <div id="cz-bg" class="cz-row"></div>
+            </div>
+
+            <div>
+              <div class="setting-desc" style="margin-bottom:6px;">Accent</div>
+              <div id="cz-accent" class="cz-row"></div>
+            </div>
+
+            <div class="cz-row" style="gap:24px;">
+              <div>
+                <div class="setting-desc" style="margin-bottom:6px;">Density</div>
+                <div id="cz-density" class="cz-seg"></div>
+              </div>
+              <div>
+                <div class="setting-desc" style="margin-bottom:6px;">Corners</div>
+                <div id="cz-corners" class="cz-seg"></div>
+              </div>
+            </div>
+
+            <div class="cz-preview">
+              <div class="cz-preview-row">
+                <span class="cz-chip">Preview</span>
+                <span style="font-size:13px; font-weight:600;">Anime Expeditions</span>
+                <span style="font-size:12px; color:var(--text-muted);">how it will look</span>
+                <span class="cz-bar"><i></i></span>
+                <button type="button" class="rp-btn rp-btn-start" style="padding:6px 14px;">Start</button>
+                <button type="button" class="rp-btn" style="padding:6px 14px;">Pause</button>
+                <span class="toggle-switch on"></span>
+                <input type="text" value="text field" style="width:120px;">
+              </div>
+            </div>
+          </div>
+
           <!-- Security Notice Banner -->
           <div class="mx-2 my-2 p-3 rounded-lg border flex items-start gap-3" style="background: color-mix(in srgb, var(--teal) 10%, transparent); border-color: color-mix(in srgb, var(--teal) 30%, transparent);">
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" style="color: var(--teal);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

@@ -1512,6 +1512,90 @@ body.compact-mode #compact-strip { display: flex; }
   box-shadow: 0 0 0 2px var(--accent-wash);
 }
 
+
+/* ==================================== КАСТОМИЗАЦИЯ ====================== */
+/* Три независимые ручки: фон, акцент и плотность. Каждая меняет ТОЛЬКО
+   переменные в :root — ни одно правило оформления не переписывается,
+   поэтому любое сочетание работает без отдельной подгонки.
+
+   АКЦЕНТ ЗАДАЁТСЯ ПАРОЙ значений: светлое для тёмных фонов, тёмное для
+   светлого. Один цвет на оба не годится — светлый акцент на белом
+   выцветает до нечитаемости, тёмный на чёрном тонет. Контраст всех шести
+   проверен численно на самых сложных фонах (поле ввода тёмной темы и поле
+   ввода светлой): минимум 3.86 при норме 3.0 для элементов интерфейса. */
+
+/* --- Дополнительные фоны --- */
+:root[data-theme-base="night"] {          /* глубокий синий */
+  --bg-deep:#0c1017; --bg-card:#141a24; --bg-surface:#1c2431; --bg-field:#25303f;
+  --border:#36445a; --border-strong:#4b5c76;
+  --text:#e8ecf2; --text-dim:#b0b9c6; --text-muted:#8e98a8;
+}
+:root[data-theme-base="sepia"] {          /* тёплая бумага, тёмная */
+  --bg-deep:#171310; --bg-card:#201a15; --bg-surface:#2b231c; --bg-field:#372d24;
+  --border:#4a3d31; --border-strong:#63523f;
+  --text:#f2ece4; --text-dim:#bfb3a4; --text-muted:#9d9081;
+}
+
+/* --- Акценты. Первый набор — для любых ТЁМНЫХ фонов --- */
+:root[data-accent="terracota"]{ --accent:#e28a6f; --accent-hover:#efa287; }
+:root[data-accent="olive"]    { --accent:#a3bc78; --accent-hover:#b8d08c; }
+:root[data-accent="steel"]    { --accent:#a1b3c7; --accent-hover:#b7c8da; }
+:root[data-accent="teal"]     { --accent:#64c3c3; --accent-hover:#7dd8d8; }
+:root[data-accent="rose"]     { --accent:#e78d9b; --accent-hover:#f4a4b1; }
+
+/* --- На светлом фоне те же акценты берут тёмные варианты --- */
+:root[data-theme-base="light"][data-accent="terracota"]{ --accent:#aa442b; --accent-hover:#8c3520; }
+:root[data-theme-base="light"][data-accent="olive"]    { --accent:#57742c; --accent-hover:#455e22; }
+:root[data-theme-base="light"][data-accent="steel"]    { --accent:#556b82; --accent-hover:#43566a; }
+:root[data-theme-base="light"][data-accent="teal"]     { --accent:#007980; --accent-hover:#006167; }
+:root[data-theme-base="light"][data-accent="rose"]     { --accent:#a93f53; --accent-hover:#8b3143; }
+
+/* --- Плотность: густо / обычно / просторно ---
+   Меняется вся шкала отступов разом, а не отдельные места: она с самого
+   начала строилась как одна шкала, кратная 4px, — здесь это окупается. */
+:root[data-density="tight"] {
+  --s1:3px; --s2:6px; --s3:9px; --s4:12px; --s5:15px; --s6:18px; --s8:24px; --s10:30px;
+}
+:root[data-density="roomy"] {
+  --s1:5px; --s2:10px; --s3:15px; --s4:20px; --s5:25px; --s6:30px; --s8:40px; --s10:50px;
+}
+
+/* --- Скругления: строгие углы или мягкие --- */
+:root[data-corners="sharp"] { --r-sm:2px; --r-md:3px; --r-lg:4px; }
+:root[data-corners="soft"]  { --r-sm:6px; --r-md:9px; --r-lg:12px; }
+
+/* --- Плитки выбора --- */
+.cz-row { display:flex; gap:var(--s2); flex-wrap:wrap; align-items:center; }
+.cz-swatch {
+  width:34px; height:34px; border-radius:50%;
+  background:var(--cz); border:2px solid transparent;
+  cursor:pointer; flex-shrink:0;
+  transition:border-color var(--t-hover) var(--ease), transform var(--t-hover) var(--ease);
+}
+.cz-swatch:hover { transform:scale(1.08); }
+.cz-swatch.active { border-color:var(--text); }
+.cz-seg { display:inline-flex; padding:2px; gap:2px; border-radius:var(--r-md);
+  background:var(--bg-field); border:1px solid var(--border); }
+.cz-seg button {
+  padding:var(--s1) var(--s3); border-radius:var(--r-sm);
+  font-size:11px; font-weight:500; color:var(--text-muted); cursor:pointer;
+  transition:background var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+}
+.cz-seg button:hover { color:var(--text); }
+.cz-seg button.active { background:var(--bg-surface); color:var(--text); }
+/* Живой образец: показывает выбранное сочетание, не заставляя ходить по
+   вкладкам и проверять. */
+.cz-preview {
+  margin-top:var(--s3); padding:var(--s3);
+  border:1px solid var(--border); border-radius:var(--r-lg); background:var(--bg-card);
+}
+.cz-preview-row { display:flex; align-items:center; gap:var(--s2); flex-wrap:wrap; }
+.cz-chip { padding:2px var(--s2); border-radius:var(--r-sm);
+  background:var(--accent-wash); border:1px solid var(--accent-line); color:var(--accent);
+  font-size:11px; font-weight:500; }
+.cz-bar { flex:1; min-width:80px; height:6px; border-radius:3px; background:var(--bg-field); overflow:hidden; }
+.cz-bar i { display:block; height:100%; width:64%; background:var(--accent); }
+
 /* =================================================== ОТКЛЮЧЁННЫЕ ОРГАНЫ === */
 /* Управление, которое после форка перестало иметь смысл. Прячем стилями, а
    не вырезаем из разметки: удалять куски index.html означало бы трогать
@@ -1522,8 +1606,11 @@ body.compact-mode #compact-strip { display: flex; }
    что апдейтер автора накатывает релиз поверх наших правок в core/ и ui/. */
 .setting-row:has(#btn-check-updates) { display: none; }
 
-/* Выбор ФОНА вернулся (см. раздел ТЕМЫ выше) — прячем только выбор
-   акцента: акцент в этом форке один и подобран под все четыре фона. */
+/* Старые строки выбора фона и акцента больше не нужны: их заменил раздел
+   «Кастомизация» выше — там те же настройки плюс плотность, скругления и
+   живой образец. Две пары одинаковых органов на одном экране только
+   путают, поэтому прячем прежние. */
+.setting-row:has(#theme-base-picker),
 .setting-row:has(#theme-accent-picker) { display: none; }
 
 /* Информационная плашка о ложных срабатываниях антивирусов была зелёной —

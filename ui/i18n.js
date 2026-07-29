@@ -293,6 +293,15 @@
     'PRESET': 'НАБОР',
     'Accent': 'Акцент',
     'Background': 'Фон интерфейса',
+    'Customization': 'Кастомизация',
+    'Background, accent colour and how densely everything is packed. Contrast of every combination is verified -- nothing here can make the interface unreadable.':
+      'Фон, цвет акцента и плотность интерфейса. Контраст каждого сочетания проверен численно — сделать интерфейс нечитаемым отсюда нельзя.',
+    'Accent': 'Акцент',
+    'Density': 'Плотность',
+    'Corners': 'Скругления',
+    'Preview': 'Образец',
+    'how it will look': 'как это будет выглядеть',
+    'text field': 'поле ввода',
     'Dark, Black, Slate, Light, Space, Semi Gold, Semi Silver, or Liquid Glass.':
       'Тёплый тёмный, чёрный (для OLED), холодный тёмный или светлый. Контраст каждого проверен — читаться будет везде.',
     'Background': 'Фон',

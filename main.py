@@ -708,6 +708,9 @@ class Api:
             "theme": data.get("theme", "default"),  # legacy combined value -- kept for one-time migration, see app.js
             "theme_base": data.get("theme_base", ""),
             "theme_accent": data.get("theme_accent", ""),
+            # Кастомизация: плотность интерфейса и скругления.
+            "ui_density": data.get("ui_density", ""),
+            "ui_corners": data.get("ui_corners", ""),
             "story_scroll_power": data.get("story_scroll_power", 3),
             "story_scroll_nudges": data.get("story_scroll_nudges", 8),
             "debug_screenshots": data.get("debug_screenshots", False),
