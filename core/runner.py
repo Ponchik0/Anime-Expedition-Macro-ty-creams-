@@ -2354,7 +2354,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
 
         self._set_status(action="Disconnected -- rejoining...")
         try:
-            os.startfile(REJOIN_DEEPLINK)
+            from core import joinlink
+            os.startfile(joinlink.get_join_link())
         except OSError as exc:
             self._log(f"[Macro] Couldn't launch the rejoin link: {exc}")
             return False

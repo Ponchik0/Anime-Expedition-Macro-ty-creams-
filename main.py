@@ -1227,6 +1227,20 @@ class Api:
     # не знает об игре ничего и потому работает где угодно.
     # Ядро — core/replay.py, здесь только мост в интерфейс.
 
+    # ================================================ ПРИВАТНЫЙ СЕРВЕР =====
+    def get_private_server(self) -> dict:
+        from core import joinlink
+        link = cfg.load().get("private_server_link", "")
+        return {"link": link, **joinlink.describe(link)}
+
+    def set_private_server(self, link: str) -> dict:
+        from core import joinlink
+        link = joinlink.normalize(link)
+        cfg.update({"private_server_link": link})
+        info = joinlink.describe(link)
+        self.push_log("[Сервер] " + info["text"])
+        return {"ok": True, "link": link, **info}
+
     def get_run_mode(self) -> dict:
         """auto — обычный автоматический прогон, replay — повтор записи."""
         data = cfg.load()
@@ -2191,15 +2205,20 @@ class Api:
         self.push_log("Skipped waiting for Roblox.")
 
     def launch_roblox(self) -> dict:
-        """Opens Roblox directly into Anime Expeditions via protocol deeplink."""
-        from core.runner_constants import REJOIN_DEEPLINK
+        """Открывает Roblox сразу в Anime Expeditions.
+
+        Если в настройках задан приватный сервер — заходим на него,
+        иначе в общее лобби (см. core/joinlink.py)."""
+        from core import joinlink
+        link = joinlink.get_join_link()
         try:
             if hasattr(os, "startfile"):
-                os.startfile(REJOIN_DEEPLINK)
+                os.startfile(link)
             else:
                 import webbrowser
-                webbrowser.open(REJOIN_DEEPLINK)
-            self.push_log("Launching Roblox via deeplink...")
+                webbrowser.open(link)
+            self.push_log("Открываю Roblox: "
+                           + ("приватный сервер" if joinlink.is_private() else "общее лобби"))
             return {"ok": True}
         except Exception as exc:
             self.push_log(f"Failed to launch Roblox: {exc}")
@@ -2935,14 +2954,13 @@ class Api:
         webbrowser.open(updater.RELEASES_PAGE_URL)
         return {"ok": True}
 
-    YOUTUBE_CHANNEL_URL = "https://www.youtube.com/@Cweamya/videos"
-
     def open_youtube_channel(self) -> dict:
-        # The one-time subscribe prompt's button -- opens the creator's
-        # channel in the default browser.
-        import webbrowser
-        webbrowser.open(self.YOUTUBE_CHANNEL_URL)
-        return {"ok": True}
+        # ФОРК: ссылка на YouTube-канал автора движка убрана вместе с окном
+        # подписки. Метод оставлен заглушкой — на него ссылается разметка,
+        # и вычищать все обращения ради мёртвой кнопки рискованнее.
+        # Атрибуция автора живёт в LICENSE и README, как требует MIT;
+        # промо-ссылок в интерфейсе быть не должно.
+        return {"ok": False, "reason": "disabled"}
 
     def export_failure_report(self) -> dict:
         """Settings > Debug > "Export Failure Report": bundles everything a
@@ -3646,10 +3664,10 @@ def _launch_ui():
                             api.push_log("Roblox closed mid-run, but other Roblox windows are open -- "
                                          "not auto-reopening (it would close them).")
                         else:
-                            from core.runner_constants import REJOIN_DEEPLINK
+                            from core import joinlink
                             api._roblox_relaunch_at = now
                             try:
-                                os.startfile(REJOIN_DEEPLINK)
+                                os.startfile(joinlink.get_join_link())
                                 api.push_log("Roblox closed mid-run -- reopening the game automatically...")
                             except OSError as exc:
                                 api.push_log(f"Couldn't auto-reopen Roblox: {exc}")

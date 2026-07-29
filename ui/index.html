@@ -764,6 +764,22 @@
             <button onclick="importSettings()" class="text-xs font-semibold px-2.5 py-1 rounded border flex-shrink-0 settings-action-btn" style="color: var(--text-dim); border-color: var(--border);" title="Import settings from a .json file">Import Settings</button>
             <button onclick="exportSettings()" class="text-xs font-semibold px-2.5 py-1 rounded border flex-shrink-0 settings-action-btn" style="color: var(--text-dim); border-color: var(--border);" title="Export all current settings to a .json file">Export Settings</button>
           </header>
+          <!-- Приватный сервер: куда заходить в Roblox.
+               Пусто -> общее лобби, как было в движке изначально. -->
+          <div class="setting-row" style="grid-column: span 2;">
+            <div style="flex: 1; min-width: 0;">
+              <div class="setting-label">Private Server</div>
+              <div class="setting-desc">Paste a VIP / private server link and the macro will join it instead of the public lobby. Leave it empty to use the public lobby. Stored only on this PC.</div>
+              <div class="wh-input-wrap" style="margin-top: 8px; max-width: 640px;">
+                <input id="private-server-link" type="text" spellcheck="false"
+                       placeholder="https://www.roblox.com/... privateServerLinkCode=..."
+                       oninput="savePrivateServer()">
+                <button type="button" class="wh-paste-btn" onclick="pastePrivateServer()">Paste</button>
+              </div>
+              <div id="private-server-state" class="wh-hint"></div>
+            </div>
+          </div>
+
           <!-- Security Notice Banner -->
           <div class="mx-2 my-2 p-3 rounded-lg border flex items-start gap-3" style="background: color-mix(in srgb, var(--teal) 10%, transparent); border-color: color-mix(in srgb, var(--teal) 30%, transparent);">
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" style="color: var(--teal);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2131,7 +2147,7 @@
             </button>
             <div class="faq-answer">
               <p><strong>Yes, the macro is safe and open-source.</strong></p>
-              <p>PyInstaller executables often trigger false positives in basic antivirus scans. You can inspect every line of code on our <a href="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro" target="_blank" style="color: var(--brand); text-decoration: underline;">GitHub repository</a> or run it directly from source.</p>
+              <p>PyInstaller executables often trigger false positives in basic antivirus scans. The whole thing is open source and can be run straight from source.</p>
             </div>
           </div>
 
@@ -2157,7 +2173,7 @@
             </button>
             <div class="faq-answer">
               <p>A running background process might lock the executable file from being overwritten.</p>
-              <p><strong>Fix:</strong> Close all macro processes in Task Manager, or download the latest <code>.zip</code> from <a href="https://github.com/Cweamy/Anime-Expeditions-Creams-Macro/releases/latest" target="_blank" style="color: var(--brand); text-decoration: underline;">GitHub Releases</a> and extract it to a new folder.</p>
+              <p><strong>Fix:</strong> Close all macro processes in Task Manager, or unpack a fresh copy of the macro into a new folder.</p>
             </div>
           </div>
 

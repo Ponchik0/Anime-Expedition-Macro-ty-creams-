@@ -1054,6 +1054,9 @@ function renderThemePicker() {
 }
 
 async function loadSettingsUI() {
+  // Приватный сервер живёт своей ручкой в API (get_private_server), не в
+  // общем get_settings — подтягиваем отдельно.
+  loadPrivateServer();
   try {
     const s = await pywebview.api.get_settings();
     document.getElementById('toggle-start-minimized').classList.toggle('on', !!s.start_minimized);
@@ -6433,4 +6436,42 @@ async function submitImportShareCode() {
       statusEl.style.display = 'block';
     }
   }
+}
+
+// ── Приватный сервер (Настройки > Общее) ──────────────────────────────────
+// Пусто -> макрос заходит в общее лобби, как движок делал изначально.
+// Ссылка лежит только в settings.json на этом компьютере.
+async function loadPrivateServer() {
+  try {
+    const s = await pywebview.api.get_private_server();
+    const el = document.getElementById('private-server-link');
+    if (el && document.activeElement !== el) el.value = s.link || '';
+    paintPrivateServerState(s);
+  } catch (e) {}
+}
+function paintPrivateServerState(s) {
+  const out = document.getElementById('private-server-state');
+  if (!out) return;
+  out.textContent = s.text || '';
+  out.style.color = s.state === 'bad' ? 'var(--err)'
+                  : s.state === 'ok'  ? 'var(--ok)'
+                  : 'var(--text-muted)';
+}
+let _privSrvTimer = null;
+function savePrivateServer() {
+  // Пишем не на каждую букву: пока человек печатает, ссылка заведомо
+  // неполная, и мигающая красная подпись под полем только мешает.
+  clearTimeout(_privSrvTimer);
+  _privSrvTimer = setTimeout(async () => {
+    const el = document.getElementById('private-server-link');
+    try { paintPrivateServerState(await pywebview.api.set_private_server(el.value)); } catch (e) {}
+  }, 400);
+}
+async function pastePrivateServer() {
+  try {
+    const txt = await navigator.clipboard.readText();
+    const el = document.getElementById('private-server-link');
+    el.value = (txt || '').trim();
+    paintPrivateServerState(await pywebview.api.set_private_server(el.value));
+  } catch (e) {}
 }
