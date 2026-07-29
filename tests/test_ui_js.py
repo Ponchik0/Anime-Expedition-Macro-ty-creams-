@@ -882,9 +882,20 @@ def test_nothing_queued_means_nothing_opens(tmp_path):
     assert out["shown"] == []
 
 
-def test_the_subscribe_prompt_waits_the_same_way(tmp_path):
-    out = run_js(_FIRSTRUN % ("'subscribe'", "runPendingFirstRun();"), tmp_path)
-    assert out["shown"] == ["subscribe"]
+def test_the_subscribe_prompt_is_gone(tmp_path):
+    """ФОРК: окно с просьбой подписаться на YouTube автора убрано.
+
+    Раньше здесь проверялось, что оно дожидается своей очереди наравне с
+    приветственным. Теперь проверяем обратное: разметки нет, в очередь
+    первого запуска оно не ставится, а оставшиеся функции-заглушки только
+    выставляют флаг — чтобы окно не выскочило задним числом, если когда-
+    нибудь заберём изменения от автора."""
+    html = open(INDEX_HTML, encoding="utf-8").read()
+    assert 'id="subscribe-modal"' not in html
+
+    src = open(os.path.join(os.path.dirname(INDEX_HTML), "app.js"), encoding="utf-8").read()
+    assert "pendingFirstRun = 'subscribe'" not in src
+    assert "showSubscribePrompt(); return;" not in src
 
 
 def test_both_dock_and_skip_release_it():

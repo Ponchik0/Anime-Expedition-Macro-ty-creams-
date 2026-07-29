@@ -308,8 +308,27 @@ def test_the_dirty_check_does_not_pop_a_console_window(tmp_path, monkeypatch):
     assert seen.get("creationflags") == getattr(_subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def test_stage_source_update_refuses_before_downloading_anything(tmp_path):
+def test_stage_source_update_refuses_while_updates_are_disabled(tmp_path):
+    """ФОРК: автообновление выключено (UPDATES_DISABLED в core/updater.py).
+    Апдейтер автора накатывает релиз поверх папки установки и затирает наши
+    правки в core/ и ui/, поэтому применить его нельзя даже прямым вызовом."""
     from core import updater
+
+    app = _repo(tmp_path / "app")
+    (app / "main.py").write_text("original")
+
+    with pytest.raises(RuntimeError, match="[Аа]втообновление отключено"):
+        updater.stage_source_update("https://example.invalid/x.zip", str(app), print)
+
+    assert (app / "main.py").read_text() == "original"
+
+
+def test_stage_source_update_refuses_before_downloading_anything(tmp_path, monkeypatch):
+    """А если обновления когда-нибудь включат обратно — вторая защита никуда
+    не делась: несохранённые правки в рабочей копии важнее апдейта."""
+    from core import updater
+
+    monkeypatch.setattr(updater, "UPDATES_DISABLED", False)
 
     app = _repo(tmp_path / "app")
     (app / "main.py").write_text("original\nmy own edit\n")
