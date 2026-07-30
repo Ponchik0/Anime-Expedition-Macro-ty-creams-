@@ -103,7 +103,10 @@ def test_find_next_bounty_finishes_current_card_before_later_card(monkeypatch):
         def move_to(self, *_args):
             pass
 
-        def nudge(self):
+        # dx/dy как у настоящего core.mouse.Mouse.nudge: расстановка зовёт его
+        # со смещением (nudge(wx, wy) в _find_valid_place_spot), и без этих
+        # параметров дубль падал бы TypeError, попади он на тот путь.
+        def nudge(self, dx=1, dy=0):
             pass
 
         def scroll(self, _amount):

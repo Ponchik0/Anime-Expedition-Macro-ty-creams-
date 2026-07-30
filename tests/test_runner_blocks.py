@@ -199,6 +199,14 @@ class _ShiftRunner(BlockOps):
         self._last_unit_ordinal = 0
         self._keyboard = MagicMock()
         self._keyboard.key_up = lambda vk: self.keyboard_events.append(("up", vk))
+        # Итог расстановки: пропущенный блок Place Unit теперь тоже попадает в
+        # него (см. runner_blocks._note_placement_skipped) -- шесть блоков без
+        # хоткея это то же пустое поле, что и шесть непоставленных юнитов, и в
+        # журнале это обязано быть видно одной строкой.
+        self._placement_tally = {"ok": 0, "failed": 0, "failed_names": [],
+                                 "skipped": 0, "skipped_names": [],
+                                 "reported": {"ok": 0, "failed": 0, "skipped": 0,
+                                              "failed_names": 0, "skipped_names": 0}}
 
     def _log(self, msg):
         self.logs.append(msg)

@@ -98,6 +98,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # a Crow Relic and the task opted into auto-clearing Act 4; read (and
         # cleared) by _run_task, which runs the divert. See _run_act4_diversion.
         self._act4_wants_in = False
+        # Ставится _handle_match_result'ом, когда он ушёл из этапа в лобби
+        # ВМЕСТО «Repeat Stage» (поражение в Expedition; кнопки повтора там
+        # просто нет — либо её не удалось найти в другом режиме). Читает
+        # _run_task: следующий повтор должен зайти в этап заново с лобби, а
+        # не ждать телепорта, которого не будет.
+        self._force_fresh_reentry = False
         # "Leave at Minute" battle block (see runner_blocks): battle clock +
         # the flag it sets when it leaves. Real values set per match in
         # _play_one_match; defaults here so the Settings > Debug battle test
@@ -171,6 +177,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # block skipped via "Once" on a repeat keeps whatever position its
         # first placement recorded rather than losing it.
         self._placed_unit_positions = {}
+        # Итог расстановки за текущую фазу Pre Start: сколько юнитов реально
+        # встало и сколько нет (см. _note_placement). Нужен для одной строки
+        # в журнале в конце Pre Start: раньше «юниты не ставятся» приходилось
+        # вычитывать по десяткам строк, а НУЛЕВАЯ расстановка -- это заведомо
+        # проигранный забег, и о ней надо говорить громко и сразу.
+        self._placement_tally = {"ok": 0, "failed": 0, "failed_names": [],
+                                 "skipped": 0, "skipped_names": []}
+        # ДОГОНЯЮЩАЯ РАССТАНОВКА. Блоки Place Unit, которые в Pre Start не
+        # встали (см. _remember_pending_placement): почти всегда потому, что
+        # на них не хватило стартовых денег. Здесь они ждут боя, где
+        # _retry_pending_placements доставляет их по одному, когда деньги
+        # накопились. Список живёт ровно один матч -- очищается в
+        # _play_one_match вместе с остальным состоянием боя.
+        self._pending_placements = []
+        # Момент начала боя: от него считаются PLACE_PENDING_FIRST_WAIT_S и
+        # PLACE_PENDING_DEADLINE_S. None -- бой ещё не начался.
+        self._pending_placements_battle_start = None
         # Whether Left Shift is currently being held down for a "quick
         # place" chain (see _run_place_unit_block) -- true from right
         # before the FIRST of a run of consecutive same-unit Place Unit
@@ -189,6 +212,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # the start of each match in _play_one_match.
         self._battle_block_index = 0
         self._battle_block_state = {}
+        # Последняя минута боя, отбитая в строку действия (см.
+        # _pulse_battle_status). None -- такта ещё не было.
+        self._battle_status_minute = None
         # How many times exp_extract has shown up THIS match, and which
         # sighting actually accepts it (see _check_expedition_wave_result)
         # -- both reset alongside the battle block state in _play_one_match.
@@ -410,10 +436,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         пока она меняется, макрос куда-то движется — ищет кнопку, ставит
         юнита, ждёт волну. Замерла на STALL_TIMEOUT_MIN минут — застрял.
 
-        ВАЖНО про порог. Он обязан быть БОЛЬШЕ самого длинного матча, иначе
-        сработает посреди боя на ровном месте: во время боя действие подолгу
-        не меняется, и это нормально. 25 минут с запасом перекрывают и
-        Expedition, и Infinite.
+        ПОЧЕМУ ЭТО НЕ СРАБАТЫВАЕТ ПОСРЕДИ БОЯ. Раньше — срабатывало. Порог
+        (25 мин) МЕНЬШЕ таймаута матча (MATCH_RESULT_TIMEOUT, 30 мин), а во
+        время боя строка действия не менялась: в Expedition её вообще никто не
+        трогал (там нет ни Battle-блоков по умолчанию, ни чтения волны), так
+        что длинный забег со вторым-третьим чекпойнтом останавливал ВЕСЬ прогон
+        с диагнозом «завис» — при том что макрос исправно следил за экраном.
+        Теперь бой сам отбивает такт раз в минуту (см. _pulse_battle_status),
+        поэтому замершая строка действия снова означает именно то, что должна:
+        никто ничего не делает.
 
         На паузе сторож молчит: пауза — это не зависание.
         """
@@ -443,6 +474,60 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         except Exception:
             pass
         stop_event.set()
+
+    def _is_early_expedition_loss(self, task: dict, result: str) -> bool:
+        """Умерли в Expedition, не дойдя до первой точки извлечения?
+
+        ЗАЧЕМ ЭТА ПРОВЕРКА ВООБЩЕ ЕСТЬ. В Expedition проиграть до чекпойнта --
+        ОБЫЧНОЕ дело, а не признак поломки: волны идут сами, а фейлсейф
+        «три поражения подряд на одной карте» (MAX_CONSECUTIVE_LOSSES_SAME_MAP,
+        см. _run_task) этого не различал. Три таких смерти подряд -- и он
+        закрывал Roblox через taskkill, переоткрывал по диплинку и присылал
+        красное уведомление в Discord. На задаче с repeat=999 это шло по кругу
+        и выглядело как «оно само перезапускается».
+
+        ПОЧЕМУ ПРИЗНАК ИМЕННО ТАКОЙ. _expedition_extract_count растёт на каждом
+        предложении Extract (см. _check_expedition_wave_result), так что ноль
+        означает: первого чекпойнта не было вовсе. Номер волны для этого не
+        годится -- в Expedition он не читается ни одной строкой кода. В логе
+        проигранного забега 21:54-21:59 ровно эта картина: ни одной строки
+        «Checkpoint offers Extract».
+
+        Дошли до чекпойнта и всё равно проиграли -- считается как раньше: это
+        уже похоже на настоящую проблему, и фейлсейф там уместен."""
+        return (result == "loss" and (task or {}).get("mode") == "expedition"
+                and self._expedition_extract_count == 0)
+
+    def _pulse_battle_status(self, mode: str = None) -> None:
+        """Часы боя в строке текущего действия, раз в минуту.
+
+        Две пользы, обе настоящие:
+
+        1. СТОРОЖ БЕЗДЕЙСТВИЯ. Он считает прогрессом изменение строки действия
+           (см. _check_stall). В Expedition во время боя её не менял никто, а
+           порог сторожа (25 мин) меньше таймаута матча (30 мин) — то есть
+           достаточно длинный забег гарантированно останавливал прогон
+           целиком с диагнозом «завис». Минутный такт закрывает эту дыру, не
+           ослабляя сторожа: замри цикл по-настоящему — такт тоже замрёт.
+        2. ВИДНО, ЧТО ИДЁТ. Вместо «Battle in progress...» на весь матч —
+           сколько минут в бою и сколько чекпойнтов извлечения пройдено.
+
+        Раз в минуту, а не каждый опрос: _set_status считает прогрессом только
+        ИЗМЕНИВШУЮСЯ строку, так что чаще незачем."""
+        # `is None`, а не `or`: 0.0 — допустимая отметка времени, а `or` считал
+        # бы её отсутствующей и обнулял такт на каждом опросе.
+        started = self._battle_started_at if self._battle_started_at is not None else time.time()
+        minute = int(max(0, time.time() - started) // 60)
+        if minute == self._battle_status_minute:
+            return
+        self._battle_status_minute = minute
+        where = f"Бой: {minute} мин"
+        if mode == "expedition":
+            # Чекпойнты извлечения -- единственный признак продвижения по
+            # забегу, который у Expedition вообще есть (номер волны там не
+            # читается, см. _check_expedition_wave_result).
+            where += f", чекпойнт {self._expedition_extract_count}/{self._expedition_extract_accept_at}"
+        self._set_status(action=where)
 
     def _checkpoint(self, stop_event: threading.Event) -> bool:
         """Call between every major step. Blocks here while paused (so Pause
@@ -965,6 +1050,30 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 # and the next repeat must re-enter from the lobby.
                 left_live_match = result in ("wave_limit", "left")
 
+                # RAID: раунд кончился, а мы всё ещё в этапе -- на экране снова
+                # «Start Game» (см. _round_ended_back_at_start_game). Экрана
+                # результата не было, обрабатывать нечего; выходить в лобби
+                # незачем и вредно -- мы стоим ровно там, где нужно. Просто
+                # начинаем следующий повтор здесь же: он заново отработает
+                # Pre Start (поле между раундами очищается, юнитов надо
+                # расставить) и сам нажмёт Start Game.
+                if result == RESULT_ROUND_ENDED:
+                    # Уведомление всё равно уходит -- та же карточка, что после
+                    # expedition, только с честным «исход не распознан». Раньше
+                    # после raid не приходило НИЧЕГО: карточку отправляет
+                    # _handle_match_result, а сюда он не попадает.
+                    self._report_round_ended(hwnd, task, duration, webhook)
+                    if repeat_index == repeat_total:
+                        # Последний повтор задачи -- уходим из этапа, иначе
+                        # следующая задача начнётся не с лобби, а изнутри этапа.
+                        self._log("[Macro] Последний повтор задачи -- выхожу из этапа в лобби.")
+                        if not self._leave_stage_to_lobby(hwnd, stop_event, "Раунд кончился"):
+                            if stop_event.is_set():
+                                return False
+                            task_failed = True
+                            break
+                    continue
+
                 # Consecutive-loss fail-safe: a genuine unbroken loss streak
                 # on THIS map (not just losses somewhere in the run) usually
                 # means something's actually wrong -- a bad loadout, a stuck
@@ -973,7 +1082,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 # keep feeding it more attempts. Any win, or a loss on a
                 # DIFFERENT map (Challenge/task interleaving can switch maps
                 # between repeats), resets the count.
-                if result == "loss" and self._consecutive_loss_map == map_name:
+                #
+                # Смерть в Expedition до первого чекпойнта извлечения в эту
+                # серию НЕ идёт -- см. _is_early_expedition_loss.
+                if self._is_early_expedition_loss(task, result):
+                    self._log("[Macro] Поражение в Expedition до первого чекпойнта извлечения — "
+                               "это обычный проигранный забег, а не поломка: серию поражений не считаю "
+                               "и Roblox не перезапускаю.")
+                elif result == "loss" and self._consecutive_loss_map == map_name:
                     self._consecutive_losses += 1
                 elif result == "loss":
                     self._consecutive_loss_map = map_name
@@ -1114,11 +1230,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                     continue
 
                 if not is_last_repeat:
-                    if left_live_match or task.get("play_mode") == "matchmaking":
+                    if left_live_match or task.get("play_mode") == "matchmaking" or self._force_fresh_reentry:
                         # Leave Stage (see _handle_match_result -- matchmaking
                         # always leaves, never Repeat Stage), or the Infinite
                         # wave-limit exit, puts us back in the lobby rather
                         # than a repeat teleport -- re-enter from scratch.
+                        # _force_fresh_reentry -- то же самое, но по решению
+                        # _handle_match_result: поражение в Expedition (там
+                        # нет кнопки повтора) или не найденная «Repeat Stage»
+                        # в любом другом режиме.
                         if not self._run_task_setup(hwnd, stop_event, task, mode, map_name, coords,
                                                       scroll_power, scroll_nudges, webhook):
                             if stop_event.is_set():
@@ -1403,6 +1523,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # Reset per match so the minute is measured from THIS battle's start.
         self._battle_started_at = time.time()
         self._battle_leave_requested = False
+        # Догоняющая расстановка (см. _retry_pending_placements): бой начался,
+        # с этого момента можно доставлять то, что не встало в Pre Start.
+        # Сам список набрался только что, в Pre Start, поэтому здесь он НЕ
+        # обнуляется -- обнуляется он в начале Pre Start (_reset_placement_tally).
+        self._pending_placements_battle_start = time.time()
         # Loop A / Loop B: their own index+state, ticked and restarted every
         # poll alongside Battle (see _tick_loop_phases).
         loop_blocks = self._load_loop_blocks(task)
@@ -1423,8 +1548,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # (see _click_close_popup_if_found) only ever shows up there.
         watch_close_popup = (task.get("mode") == "raid" and task.get("map") == "Spirit City"
                               and str(task.get("stage")) == "3")
-        return self._wait_for_match_result(hwnd, stop_event, battle_blocks, first_repeat, task.get("macro"),
-                                             task.get("mode"), watch_close_popup, webhook, task)
+        result = self._wait_for_match_result(hwnd, stop_event, battle_blocks, first_repeat, task.get("macro"),
+                                              task.get("mode"), watch_close_popup, webhook, task)
+        # Итог расстановки ЗА БОЙ -- всё, что встало (или не встало) уже после
+        # Pre Start: блоки Place Unit из Battle/Loop и догоняющая расстановка.
+        # До этого такие расстановки в итог не попадали вообще (итог печатался
+        # ровно один раз, в конце Pre Start), и непоставленное подкрепление
+        # оставалось невидимым.
+        self._log_placement_tally(PLACEMENT_PHASE_BATTLE)
+        return result
 
 
     @staticmethod
@@ -1530,13 +1662,27 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             )
         else:
             deadline = time.time() + MATCH_RESULT_TIMEOUT
+        self._battle_status_minute = None  # свежий матч -- свежий такт (см. _pulse_battle_status)
+        polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
         while deadline is None or time.time() < deadline:
             if self._checkpoint(stop_event):
                 return None
+            # Такт боя ПЕРЕД проверками, а не после: если ниже что-то надолго
+            # заблокируется, минутная отметка уже стоит и сторож бездействия
+            # отсчитывает от неё, а не от начала матча.
+            self._pulse_battle_status(mode)
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)
                 if self._checkpoint(stop_event):
                     return None
+            # Догоняющая расстановка: доставить то, что не встало в Pre Start
+            # из-за нехватки стартовых денег (см. _retry_pending_placements).
+            # По одному юниту за опрос, чтобы не задерживать слежку за
+            # Victory/Defeat; ничего не делает, если очередь пуста -- то есть в
+            # обычном забеге этот вызов бесплатный.
+            self._retry_pending_placements(hwnd, stop_event)
+            if self._checkpoint(stop_event):
+                return None
             # Loop phases cycle continuously for the whole match, not once
             # through -- ticked here every poll right after Battle.
             self._tick_loop_phases(hwnd, stop_event, first_repeat, macro_name)
@@ -1603,12 +1749,129 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             if defeat_match is not None:
                 self._log(f"[Macro] Defeat. (score {defeat_match['score']:.2f})")
                 return "loss"
+            # Ни один баннер не совпал -- но это ещё не значит, что матч идёт.
+            # Второй, независимый признак конца матча -- кнопка «Repeat Stage»
+            # (см. _match_ended_without_a_banner). Без него макрос стоял на
+            # законченном матче полные 30 минут и валил задачу.
+            polls += 1
+            if polls % MATCH_END_CHECK_EVERY == 0:
+                ended = self._match_ended_without_a_banner(hwnd)
+                if ended is not None:
+                    return ended
             time.sleep(MATCH_RESULT_POLL_INTERVAL)
         self._log(f'[Macro] Neither "victory" nor "defeat" matched within {MATCH_RESULT_TIMEOUT / 60:.0f} min. '
                    f'If the result screen was actually showing, its reference image isn\'t matching your '
                    f'setup -- add your own crop via Settings > General > Image Manager.')
         self._save_debug_screenshot_unconditional(hwnd, "match_result_timeout")
         return None
+
+    def _match_ended_without_a_banner(self, hwnd):
+        """Матч кончился, хотя баннер «Victory»/«Defeat» не совпал? Возвращает
+        "win"/"loss"/RESULT_UNKNOWN/RESULT_ROUND_ENDED если кончился, иначе None.
+
+        ЗАЧЕМ. Конец матча определялся ровно по двум картинкам-баннерам. Не
+        совпал ни один -- и другого признака не было вообще: макрос опрашивал
+        экран ПОЛНЫЕ 30 минут, стоя на уже законченном матче, а потом объявлял
+        задачу сломанной и сжигал попытку восстановления. Со стороны это ровно
+        «игра кончилась, а переигровка не работает». Шаблоны баннеров сняты на
+        настройках автора движка, и совпадают они не у всех -- то есть дыра
+        открывается не от поломки, а от другого качества графики или разрешения.
+
+        ПОЧЕМУ ИМЕННО КНОПКА ПОВТОРА. Она есть только на экране результата: в
+        бою на её месте живой «Leave Stage», а это отдельное имя поиска
+        (Assets/ui/leave_stage/*_live*), так что спутать нельзя. Плюс это
+        крупный текст на ровной плашке -- он совпадает надёжнее стилизованного
+        баннера с эффектами.
+
+        Дальше исход всё-таки пробуем определить: раз панель на экране, баннер
+        там тоже есть, просто не дотянул до обычного порога -- перепроверяем
+        мягче (MATCH_RESULT_RELAXED_THRESHOLD). Не получилось -- честно
+        возвращаем RESULT_UNKNOWN: фарм продолжится, но в статистику и в
+        предохранитель серии поражений ничего не соврём."""
+        try:
+            end_button = vision.find_image(hwnd, MATCH_END_BUTTON_NAME)
+        except vision.TemplateNotFound:
+            end_button = None  # шаблона кнопки нет -- этой страховки просто не будет
+        if end_button is None:
+            # ВТОРАЯ ФОРМА КОНЦА МАТЧА, ИМЕННО ТАК В RAID: экрана результата
+            # нет вовсе, раунд просто кончился и снова висит «Start Game» --
+            # этап готов к следующему забегу прямо на месте.
+            return self._round_ended_back_at_start_game(hwnd)
+
+        for name, outcome in (("victory", "win"), ("defeat", "loss")):
+            try:
+                match = vision.find_image(hwnd, name, threshold=MATCH_RESULT_RELAXED_THRESHOLD)
+            except vision.TemplateNotFound:
+                continue
+            if match is not None:
+                self._log(f'[Macro] Матч кончился: вижу кнопку повтора, а «{name}» совпал только на '
+                           f'ослабленном пороге (score {match["score"]:.2f}). Итог: '
+                           f'{"победа" if outcome == "win" else "поражение"}. Если это повторяется — '
+                           f'добавь свою вырезку баннера через Настройки > Общие > Менеджер картинок.')
+                return outcome
+
+        # Панель результата на экране, но какая именно -- не понять.
+        shot = self._save_debug_screenshot_unconditional(hwnd, "match_result_unknown")
+        self._log('[Macro] Матч кончился (на экране кнопка «Repeat Stage»), но какой именно баннер — '
+                   'не распознал: ни «Victory», ни «Defeat» не совпали даже мягко. Продолжаю фарм, '
+                   'но этот матч НЕ пойдёт в статистику. Чтобы исход определялся, добавь свою вырезку '
+                   'баннера через Настройки > Общие > Менеджер картинок'
+                   + (f' (скриншот: {shot})' if shot else '') + '.')
+        return RESULT_UNKNOWN
+
+    def _report_round_ended(self, hwnd, task: dict, duration: str, webhook: dict) -> None:
+        """Уведомление о раунде, который кончился без экрана результата (raid,
+        см. RESULT_ROUND_ENDED).
+
+        Раньше после raid не приходило НИЧЕГО: карточку результата отправляет
+        _handle_match_result, а при таком исходе он не вызывается вовсе -- это и
+        было «в expedition инфа приходит, а в raid нет». Теперь карточка та же,
+        только вердикт в ней честный: исход не распознан, в счётчики раунд не
+        пошёл. Скриншот прикладывается ОБЯЗАТЕЛЬНО -- по нему и делается
+        недостающая вырезка баннера.
+
+        Отправка в фоне, как и обычный результат: сеть не должна задерживать
+        следующий забег."""
+        shot = self._capture_result_screenshot(hwnd) if (
+            webhook and webhook.get("enabled") and webhook.get("url")) else None
+        placement = dict(getattr(self, "_placement_tally", None) or {})
+        map_name = task.get("map") or "-"
+        threading.Thread(
+            target=self._finish_match_result_background,
+            args=(RESULT_ROUND_ENDED, map_name, duration, task, webhook, shot, placement),
+            kwargs={"record": False},  # исход неизвестен -- в статистику не пишем
+            daemon=True,
+        ).start()
+
+    def _round_ended_back_at_start_game(self, hwnd):
+        """Раунд кончился и этап снова показывает «Start Game»? Возвращает
+        RESULT_ROUND_ENDED, иначе None.
+
+        ТАК УСТРОЕН RAID. Экрана результата с «Repeat Stage» там нет: раунд
+        заканчивается, и на экране снова висит кнопка старта. Макрос про такой
+        исход не знал вообще -- ждал баннер, ждал кнопку повтора, не дожидался
+        ни того ни другого и через 30 минут валил задачу.
+
+        ПОЧЕМУ НЕЛЬЗЯ ПРОСТО НАЖАТЬ ЭТУ КНОПКУ ЗДЕСЬ (так делает Expedition,
+        см. _check_expedition_wave_result): между раундами поле очищается, и
+        забег, начатый одним кликом, пойдёт БЕЗ ЮНИТОВ -- то есть гарантированно
+        проигранным. Поэтому мы выходим из ожидания результата, и следующий
+        повтор задачи заново отрабатывает Pre Start (расставит юнитов) и уже
+        сам нажимает Start Game. Ни лобби, ни телепорта: мы и так стоим в этапе.
+
+        ПОЧЕМУ ЕСТЬ ПОРОГ ПО ВРЕМЕНИ. Кнопка старта видна и в первые секунды
+        боя -- пока не прожалась до конца или пока анимация не доиграла. Без
+        MATCH_END_START_GAME_MIN_S это читалось бы как «раунд кончился» сразу
+        после старта, и задача крутилась бы вхолостую."""
+        started = self._battle_started_at if self._battle_started_at is not None else time.time()
+        if time.time() - started < MATCH_END_START_GAME_MIN_S:
+            return None
+        name, match = self._find_start_game_button(hwnd)
+        if match is None:
+            return None
+        self._log(f'[Macro] Раунд кончился: экрана результата нет, на экране снова «{name}» — '
+                   f'этап готов к следующему забегу. Начинаю его здесь же, без выхода в лобби.')
+        return RESULT_ROUND_ENDED
 
 
 
@@ -1672,7 +1935,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
 
     def _handle_match_result(self, hwnd, stop_event: threading.Event, task: dict, result: str, duration: str,
                               webhook: dict, repeat: bool) -> bool:
-        label = "Victory" if result == "win" else "Defeat"
+        # RESULT_UNKNOWN -- матч точно кончился, но какой баннер был, не
+        # распознали (см. _match_ended_without_a_banner). Дальше он идёт по тому
+        # же пути, что победа и поражение: та же кнопка повтора, тот же выход в
+        # лобби. Отличие ровно одно -- ничего не пишем в статистику и не
+        # отправляем как результат, потому что нечего писать.
+        outcome_known = result in ("win", "loss")
+        label = "Victory" if result == "win" else ("Defeat" if result == "loss" else "Матч кончился")
 
         # Count a qualifying win (Mastery Story / Challenge) toward the next
         # Auto Crafting pass. This is the single choke point both farms' wins
@@ -1710,6 +1979,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # starts from the lobby. The Act 4 run itself happens back in _run_task
         # (see the _act4_wants_in branch there).
         self._act4_wants_in = False
+        # Сбрасывается на каждом результате, чтобы решение прошлого матча не
+        # заставило следующий заходить заново без причины.
+        self._force_fresh_reentry = False
         if (result == "win" and task.get("mode") == "event" and task.get("act4_on_drop")
                 and self._relic_dropped(hwnd)):
             self._act4_wants_in = True
@@ -1717,12 +1989,41 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             self._log("[Macro] Crow Relic dropped -- leaving this stage to go clear Act 4.")
 
         map_name = task.get("map") or "-"
-        threading.Thread(
-            target=self._finish_match_result_background,
-            args=(result, map_name, duration, task, webhook, result_screenshot),
-            daemon=True,
-        ).start()
-        self._log(f"[Macro] {label} ({duration}) -- reporting in the background.")
+        # Итог расстановки СНИМАЕТСЯ ЗДЕСЬ, а не читается из потока: отправка
+        # идёт фоном, а Pre Start следующего матча заменяет _placement_tally
+        # новым пустым. Поток мог бы успеть прочитать уже его и приложить к
+        # этому матчу чужие (пустые) числа.
+        # getattr, а не прямое обращение: результат матча -- горячий путь, и
+        # уронить из-за него весь прогон нельзя. Отсутствующий итог означает
+        # только «поля про расстановку в уведомлении не будет».
+        placement = dict(getattr(self, "_placement_tally", None) or {})
+        if outcome_known:
+            threading.Thread(
+                target=self._finish_match_result_background,
+                args=(result, map_name, duration, task, webhook, result_screenshot, placement),
+                daemon=True,
+            ).start()
+            self._log(f"[Macro] {label} ({duration}) -- reporting in the background.")
+        else:
+            # Исход неизвестен -- в статистику и в уведомление о результате
+            # такое не пишем (там пришлось бы соврать «победа» или
+            # «поражение»). Зато СОБЫТИЕМ сказать надо: человек должен узнать,
+            # что баннер не распознаётся, иначе счётчики будут молча
+            # недосчитывать матчи.
+            self._log(f"[Macro] {label} ({duration}) -- исход не распознан, в статистику не пишу.")
+            self._send_event_webhook(
+                webhook, task, "Итог матча не распознан",
+                f"Матч на **{map_name}** кончился ({duration}), но баннер «Victory»/«Defeat» не совпал.\n"
+                f"Фарм продолжается, но этот матч не попал в статистику.\n\n"
+                f"Добавь свою вырезку баннера: Настройки → Общие → Менеджер картинок.",
+                0xE3B158, result_screenshot)
+            # Скриншот -- временный файл: обычно его удаляет
+            # _finish_match_result_background, но этой ветки он не касается.
+            if result_screenshot:
+                try:
+                    os.remove(result_screenshot)
+                except OSError:
+                    pass
 
         # The cursor is moved to the same near-empty corner
         # _reset_unit_info_panel uses first, so a leftover hover
@@ -1769,6 +2070,25 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # _wait_teleport_in whenever this is why it's about to see Leave
         # Stage clicked with more repeats still left).
         is_matchmaking = task.get("play_mode") == "matchmaking"
+
+        # ПОРАЖЕНИЕ В EXPEDITION -- «Repeat Stage» там не существует.
+        # Из реального лога: погибли на 3-й волне (до босса, то есть до
+        # точки извлечения), макрос честно увидел Defeat, а потом восемь
+        # секунд искал кнопку повтора, не нашёл, ОБЪЯВИЛ ЗАДАЧУ СЛОМАННОЙ и
+        # сжёг попытку восстановления (2 из 3). Три смерти подряд до босса --
+        # и задача снималась целиком, хотя ничего не сломалось: забег просто
+        # проигран, и его надо переиграть.
+        #
+        # Успешный забег уходит в лобби через Extract, а этот теперь уходит
+        # туда же через Leave Stage. Один и тот же путь на оба исхода --
+        # ровно та проверка, которой не хватало.
+        expedition_loss = task.get("mode") == "expedition" and result == "loss"
+        if repeat and expedition_loss:
+            self._log("[Macro] Поражение в Expedition -- кнопки «Repeat Stage» на этом экране нет, "
+                       "выхожу в лобби и захожу в этап заново.")
+            repeat = False
+            self._force_fresh_reentry = True
+
         if repeat and not is_matchmaking:
             # More repeats left on this task -- Repeat Stage re-queues the
             # same stage directly, skipping the lobby/gamemode/map/stage
@@ -1776,29 +2096,54 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             # task, not once per repeat).
             self._set_status(action=f"{label} -- clicking Repeat Stage...")
             if not self._click_and_verify_gone(hwnd, stop_event, "repeat_stage", NAV_CLICK_TIMEOUT):
-                self._log('[Macro] "Repeat Stage" not found -- can\'t continue this task\'s repeats, stopping.')
-                return False
-            # _click_and_verify_gone only confirms the repeat_stage BUTTON
-            # image is gone, not that the whole Victory/Defeat results panel
-            # actually closed -- confirmed from a real capture: the button
-            # itself can visually change/disappear (so the check above
-            # reports success) while the full result modal is still up on
-            # screen behind it, and Pre Start went on to place units right
-            # through/behind it. The banner ribbon is the more reliable
-            # "actually closed" signal, so wait for THAT to clear too before
-            # treating the repeat as ready to continue into. Best-effort --
-            # a still-showing banner after the timeout just gets logged, not
-            # treated as a hard failure, since the repeat may have gone
-            # through fine underneath anyway.
-            self._wait_for_image_gone(hwnd, (label.lower(),), REPEAT_STAGE_MODAL_CLEAR_TIMEOUT, stop_event)
-            return True
+                if stop_event is not None and stop_event.is_set():
+                    return False
+                # НЕ поломка задачи. Кнопки повтора может не быть на этом
+                # экране вовсе (так в Expedition, см. проверку выше), а
+                # объявлять из-за этого задачу сломанной значит тратить
+                # попытку восстановления и в итоге снять задачу целиком.
+                # Выход в лобби + повторный заход делают то же самое, только
+                # без потерь -- ниже как раз этот путь, туда и падаем.
+                self._log('[Macro] "Repeat Stage" не нашлась -- выхожу в лобби и захожу в этап заново '
+                           '(этот повтор задачи не потерян).')
+                self._force_fresh_reentry = True
+            else:
+                # _click_and_verify_gone only confirms the repeat_stage BUTTON
+                # image is gone, not that the whole Victory/Defeat results panel
+                # actually closed -- confirmed from a real capture: the button
+                # itself can visually change/disappear (so the check above
+                # reports success) while the full result modal is still up on
+                # screen behind it, and Pre Start went on to place units right
+                # through/behind it. The banner ribbon is the more reliable
+                # "actually closed" signal, so wait for THAT to clear too before
+                # treating the repeat as ready to continue into. Best-effort --
+                # a still-showing banner after the timeout just gets logged, not
+                # treated as a hard failure, since the repeat may have gone
+                # through fine underneath anyway.
+                #
+                # Ждём БАННЕР, когда он известен, и саму кнопку повтора, когда
+                # нет: при неизвестном исходе `label` -- человеческая фраза, а
+                # не имя картинки, и искать её было бы бессмысленно.
+                closing = (label.lower(),) if outcome_known else (MATCH_END_BUTTON_NAME,)
+                self._wait_for_image_gone(hwnd, closing, REPEAT_STAGE_MODAL_CLEAR_TIMEOUT, stop_event)
+                return True
 
         # Last repeat of this task (or the whole queue) -- back out to the
         # lobby so the next task's setup (or a clean stop) starts from a
-        # known state instead of sitting on the result screen. Verified/
-        # retried, not a one-shot click -- a dropped click here used to
-        # just leave the run sitting on the result screen forever with
-        # nothing else ever noticing or retrying.
+        # known state instead of sitting on the result screen.
+        return self._leave_stage_to_lobby(hwnd, stop_event, label)
+
+    def _leave_stage_to_lobby(self, hwnd, stop_event: threading.Event, label: str) -> bool:
+        """Leave Stage -> Return to Lobby. Возвращает, получилось ли.
+
+        Verified/retried, not a one-shot click -- a dropped click here used to
+        just leave the run sitting on the result screen forever with nothing
+        else ever noticing or retrying.
+
+        Отдельным методом, потому что нужен из двух разных мест: с экрана
+        результата (_handle_match_result) и прямо из этапа, когда экрана
+        результата вообще не было (raid, см. RESULT_ROUND_ENDED). `label` --
+        только для строки состояния, чтобы было видно, откуда уходим."""
         self._set_status(action=f"{label} -- clicking Leave Stage...")
         if not self._click_and_verify_gone(
                 hwnd, stop_event, "leave_stage", NAV_CLICK_TIMEOUT, success_name="return"):
@@ -1808,10 +2153,16 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         return True
 
     def _finish_match_result_background(self, result: str, map_name: str, duration: str, task: dict,
-                                          webhook: dict, result_screenshot: str = None) -> None:
-        self._record_result(result, map_name, duration)
+                                          webhook: dict, result_screenshot: str = None,
+                                          placement: dict = None, record: bool = True) -> None:
+        # record=False -- исход не распознан (raid, см. RESULT_ROUND_ENDED):
+        # уведомление уходит, но в счётчики побед/поражений писать нечего, а
+        # записать наугад значит испортить и винрейт, и предохранитель серии
+        # поражений (он закрывает Roblox через taskkill).
+        if record:
+            self._record_result(result, map_name, duration)
         try:
-            self._send_result_webhook(webhook, result, task, duration, result_screenshot)
+            self._send_result_webhook(webhook, result, task, duration, result_screenshot, placement)
         finally:
             # A temp file per match -- deleted once it's been sent (or the
             # send was skipped), whatever the outcome, so they don't pile up.
@@ -1871,13 +2222,20 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         return f"{s}s"
 
     def _send_result_webhook(self, webhook: dict, result: str, task: dict, duration: str,
-                              screenshot_path: str = None) -> None:
+                              screenshot_path: str = None, placement: dict = None) -> None:
         url = (webhook or {}).get("url")
         if not url or not webhook.get("enabled"):
             return
         from . import webhook as webhook_module
 
         is_win = result == "win"
+        # Исход может быть НЕ ИЗВЕСТЕН, и это нормальное состояние, а не сбой:
+        # в raid экрана результата с баннером «Victory»/«Defeat» нет вовсе --
+        # раунд просто кончается (см. RESULT_ROUND_ENDED). Раньше уведомление
+        # в таком случае не уходило совсем, то есть после raid не приходило
+        # НИЧЕГО, хотя после expedition приходила полная карточка. Теперь
+        # карточка та же, только вердикт в ней честный: «не распознан».
+        outcome_known = result in ("win", "loss")
         map_name = task.get("map") or "-"
         mode = task.get("mode") or "story"
         raw_stage = task.get("stage") or "-"
@@ -1922,7 +2280,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # grid live in the separate status-card image below.
         fields = [
             {"name": "⚔️ Match", "value": self._tree_rows([
-                ("Result", "Victory \U0001F3C6" if is_win else "Defeat \U0001F480"),
+                ("Result", ("Victory \U0001F3C6" if is_win else "Defeat \U0001F480")
+                            if outcome_known else "не распознан"),
                 ("Duration", duration or "-"),
             ] + ([("Stage", where)] if where else [])), "inline": True},
             {"name": "\U0001F4CA Session", "value": self._tree_rows([
@@ -1937,27 +2296,65 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 ("Rate", all_time_rate),
             ]), "inline": False},
         ]
-        # A plain incoming webhook can't render real buttons (those need a
-        # bot/app-owned webhook) -- so the links go here as clickable masked
-        # markdown links, which render everywhere. Full width, at the bottom.
-        links = (f"[\U0001F4AC Discord]({DISCORD_INVITE_URL})   •   "
-                 f"[\U0001F4FA YouTube]({YOUTUBE_URL})   •   "
-                 f"[\U00002B50 GitHub]({GITHUB_REPO_URL})")
-        fields.append({"name": "\U0001F517 Links", "value": links, "inline": False})
-        result_word = "Victory" if is_win else "Defeat"
-        description = (f"{result_word} on **{where}** — session match **#{sw + sl}**."
-                       if where else f"{result_word} — session match **#{sw + sl}**.")
+        # РАССТАНОВКА -- поле появляется только когда с ней было не всё в
+        # порядке. Освободившееся от «Links» место отдано тому, что реально
+        # решает исход забега: юнит, не вставший до старта, стоит матча, а
+        # заметить это в журнале постфактум невозможно -- забег уже проигран.
+        # Пустой итог (всё встало) поля не добавляет: уведомление не должно
+        # обрастать строками, которые всегда одинаковые.
+        tally = placement or {}
+        if tally.get("failed") or tally.get("skipped"):
+            rows = []
+            if tally.get("ok"):
+                rows.append(("Встало", tally["ok"]))
+            if tally.get("failed"):
+                rows.append(("Не встало", f'{tally["failed"]} ({", ".join(tally.get("failed_names") or [])})'))
+            if tally.get("skipped"):
+                rows.append(("Пропущено", f'{tally["skipped"]} ({", ".join(tally.get("skipped_names") or [])})'))
+            fields.append({"name": "\U000026A0\U0000FE0F Расстановка", "inline": False,
+                            "value": self._tree_rows(rows)})
+
+        # Блока «Links» (Discord • YouTube • GitHub) здесь больше нет: он
+        # висел на КАЖДОМ результате матча, то есть по многу раз в час, и
+        # занимал целое поле во весь размах эмбеда, вытесняя то, за чем на
+        # уведомление вообще смотрят. Сами адреса остались только в
+        # runner_constants (DISCORD_INVITE_URL и рядом) -- в интерфейсе и в
+        # README их нет, так что если ссылки понадобятся снова, их надо будет
+        # ставить туда осознанно, а не возвращать в каждое уведомление.
+        if outcome_known:
+            result_word = "Victory" if is_win else "Defeat"
+            description = (f"{result_word} on **{where}** — session match **#{sw + sl}**."
+                           if where else f"{result_word} — session match **#{sw + sl}**.")
+        else:
+            # Раунд отыгран, но кто победил -- по экрану не понять (raid). В
+            # счётчики сессии он не попал, поэтому и «матч #N» тут не пишем: он
+            # бы соврал. Зато сразу говорим, как это починить.
+            description = (f"Раунд отыгран на **{where}**." if where else "Раунд отыгран.")
+            description += ("\nИсход не распознан — экрана с «Victory»/«Defeat» не было, "
+                            "поэтому в счётчики этот раунд не пошёл. Добавь свою вырезку баннера: "
+                            "Настройки → Общие → Менеджер картинок.")
+        # Полоска серии под описанием -- шкала винрейта сессии на 10 делений.
+        # Место, освободившееся от «Links», отдано тому, что реально читают:
+        # как идёт сессия, видно с одного взгляда, без вычитывания процентов.
+        if sw + sl:
+            filled = int(round(sw / (sw + sl) * 10))
+            description += f"\n`{'▰' * filled}{'▱' * (10 - filled)}` **{session_rate}** за сессию"
 
         version = snap.get("version")
         footer = "Anime Expeditions" + (f" · v{version}" if version else "")
         main_embed = {
-            "title": "Victory! \U0001F3C6" if is_win else "Defeat \U0001F480",
-            "color": 0x3FBF6F if is_win else 0xE05A6D,
+            "title": ("Victory! \U0001F3C6" if is_win else "Defeat \U0001F480")
+                      if outcome_known else "Раунд отыгран \U0001F3C1",
+            "color": (0x3FBF6F if is_win else 0xE05A6D) if outcome_known else 0xE3B158,
             "description": description,
             "fields": fields,
             "footer": {"text": footer},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        # Строка автора над заголовком: какой сценарий и режим отработал.
+        # Полезно, когда в очереди несколько задач и уведомления идут подряд.
+        macro_label = task.get("macro") or "-"
+        main_embed["author"] = {"name": f"{mode.capitalize()} · {macro_label}"}
         mention_id = (webhook or {}).get("mention_id")
         content = f"<@{mention_id}>" if mention_id else ""
         silent = bool(webhook.get("silent"))
@@ -1968,21 +2365,26 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # render/read just drops that one image, never the whole notification.
         embeds = [main_embed]
         files = []
-        try:
-            import cv2
-            from . import status_card
-            card = status_card.render_status_card_bgr(
-                is_win=is_win, action="Match Finished", last_run_duration=duration,
-                last_run_win=is_win, time_until_challenge=tuc,
-                session_wins=sw, session_losses=sl, all_time_wins=aw, all_time_losses=al,
-                runs_per_hour=runs_per_hour, results=snap.get("results"))
-            if card is not None:
-                ok, buf = cv2.imencode(".png", card)
-                if ok:
-                    files.append(("card.png", buf.tobytes()))
-                    main_embed["image"] = {"url": "attachment://card.png"}
-        except Exception as exc:
-            self._log(f"[Macro] Couldn't render the status card: {exc}")
+        # Карточка рисуется в цветах победы или поражения, поэтому при
+        # НЕИЗВЕСТНОМ исходе её не рисуем вовсе: нарисованная «как поражение»,
+        # она сказала бы то, чего мы не знаем. Скриншот при этом остаётся -- он
+        # тут даже важнее обычного, по нему и делается недостающая вырезка.
+        if outcome_known:
+            try:
+                import cv2
+                from . import status_card
+                card = status_card.render_status_card_bgr(
+                    is_win=is_win, action="Match Finished", last_run_duration=duration,
+                    last_run_win=is_win, time_until_challenge=tuc,
+                    session_wins=sw, session_losses=sl, all_time_wins=aw, all_time_losses=al,
+                    runs_per_hour=runs_per_hour, results=snap.get("results"))
+                if card is not None:
+                    ok, buf = cv2.imencode(".png", card)
+                    if ok:
+                        files.append(("card.png", buf.tobytes()))
+                        main_embed["image"] = {"url": "attachment://card.png"}
+            except Exception as exc:
+                self._log(f"[Macro] Couldn't render the status card: {exc}")
         if screenshot_path and os.path.isfile(screenshot_path):
             try:
                 with open(screenshot_path, "rb") as f:

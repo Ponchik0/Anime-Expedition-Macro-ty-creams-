@@ -753,6 +753,7 @@ class BlockOps:
         self._set_status(action=f'Running "{macro_name}" Pre Start blocks...')
         self._last_unit_ordinal = 0
         self._quick_place_shift_down = False
+        self._reset_placement_tally()
         try:
             # An index loop (not enumerate) so detect/_jump control blocks can
             # jump over the branch not taken. `step` numbers only real,
@@ -803,6 +804,10 @@ class BlockOps:
             # it. Whatever else happens, Shift never leaves this function
             # still held.
             self._release_quick_place_shift()
+            # Итог расстановки -- в finally вместе с Shift: он нужен и когда
+            # фазу прервали посреди списка, иначе как раз о самом проблемном
+            # забеге в журнале не останется ни строки.
+            self._log_placement_tally(PLACEMENT_PHASE_PRESTART)
 
     def _run_prestart_single_block(self, hwnd, stop_event: threading.Event, task: dict, default_walk_paths: dict,
                                      block: dict, i: int, macro_name: str, first_repeat: bool, next_block: dict) -> None:
@@ -814,8 +819,12 @@ class BlockOps:
             next_is_same_unit = bool(
                 next_block and next_block.get("type") == "place_unit"
                 and block.get("hotkey") and next_block.get("hotkey") == block.get("hotkey"))
+            # pending_ok=True только здесь: не вставший в Pre Start юнит имеет
+            # смысл догнать в бою (деньги накопятся), не вставшее в бою
+            # подкрепление догонять некуда -- бой уже идёт.
             self._run_place_unit_block(hwnd, stop_event, *wm.get_window_rect_screen(hwnd)[:2], block, i, macro_name,
-                                         block.get("_ordinal", i), next_is_same_unit=next_is_same_unit, verify=False)
+                                         block.get("_ordinal", i), next_is_same_unit=next_is_same_unit, verify=False,
+                                         pending_ok=True)
         elif btype == "setting_change":
             self._run_setting_block(hwnd, stop_event, block, i)
         elif btype == "auto_upgrade_unit":
@@ -918,10 +927,31 @@ class BlockOps:
     def _scan_place_search_box(self, left: int, top: int, orig_x: int, orig_y: int):
         """One capture of the PLACE_SEARCH_BOX_SIZE x PLACE_SEARCH_BOX_SIZE
         region around (orig_x, orig_y) -- window-client coords -- scanned in
-        memory for a pixel at/near 0xffffff (white, within
-        PLACE_VALID_PIXEL_TOLERANCE per channel). Returns the (dx, dy) offset
-        of whichever valid pixel is CLOSEST to (orig_x, orig_y), or None if
-        nothing valid was found anywhere in the box.
+        memory for the placement highlight: pixels at/near 0xffffff (white,
+        within PLACE_VALID_PIXEL_TOLERANCE per channel) grouped into connected
+        BLOBS. Returns a (dx, dy) offset from (orig_x, orig_y), or None if
+        the box holds nothing white at all.
+
+        ТРИ УРОВНЯ, И ЭТО СОЗНАТЕЛЬНО.
+        1. Сама запрошенная точка уже белая -- смещения нет, (0, 0). Курсор
+           стоит на клетке, двигать его некуда и незачем. Этот уровень стоит
+           ПЕРВЫМ ещё и потому, что подсветка обычно КРУПНЕЕ области поиска:
+           центр такого пятна -- это центр области, а не позиция курсора, и
+           брать его значило бы сдвигать точный клик без всякой причины.
+        2. Точка не белая, но рядом есть достаточно крупное пятно
+           (PLACE_HIGHLIGHT_MIN_PIXELS и PLACE_HIGHLIGHT_MIN_SIDE) -- идём в
+           его ЦЕНТР. Центр клетки нажимается надёжнее её кромки.
+        3. Крупного пятна нет -- откат к прежнему поведению: ближайший белый
+           пиксель. Так ничего из работавшего раньше не ломается: если
+           подсветка в чьей-то сборке рисуется рябью из отдельных точек,
+           расстановка продолжит работать ровно как до этой правки.
+
+        БЫЛО: только пункт 3, всегда. Белый текст (имена юнитов, урон, номер
+        волны), частицы и светлая кромка платформы проходили такую проверку
+        насквозь -- в логе повторялся «offset (18, 17)», ровно угол области
+        поиска, то есть клик уходил на 25px мимо клетки и юнит не ставился.
+        Пункт 2 забирает такие случаи себе, а те, что всё же проскочат,
+        добивает проверка клика (см. _click_place_spot).
 
         The box is CLAMPED to the game window. Centering it blindly meant a
         spot within half a box of an edge captured pixels from outside the
@@ -935,6 +965,7 @@ class BlockOps:
         Clamping shifts the box, so the "closest" test and the returned
         offset are both measured from where the caller actually asked about,
         not from the middle of the captured region."""
+        import cv2
         import numpy as np
         from core.ocr import capture_region
         size = PLACE_SEARCH_BOX_SIZE
@@ -947,15 +978,281 @@ class BlockOps:
         patch = capture_region(left + box_x, top + box_y, size, size)
         b, g, r = patch[:, :, 0].astype(int), patch[:, :, 1].astype(int), patch[:, :, 2].astype(int)
         floor = 255 - PLACE_VALID_PIXEL_TOLERANCE
-        valid_mask = (r >= floor) & (g >= floor) & (b >= floor)
-        ys, xs = np.where(valid_mask)
-        if len(xs) == 0:
+        valid_mask = ((r >= floor) & (g >= floor) & (b >= floor)).astype(np.uint8)
+        if not valid_mask.any():
             return None
         # Where the requested spot sits inside the (possibly shifted) box.
-        cx, cy = orig_x - box_x, orig_y - box_y
+        # Clamped: окно уже меньше запрошенного размера (DPI, масштаб) -- и
+        # индекс уехал бы за край снимка.
+        cx = max(0, min(orig_x - box_x, valid_mask.shape[1] - 1))
+        cy = max(0, min(orig_y - box_y, valid_mask.shape[0] - 1))
+
+        # Уровень 1: курсор уже на подсвеченной клетке -- никуда не двигаемся.
+        if valid_mask[cy, cx]:
+            return 0, 0
+
+        # Уровень 2: белые пиксели -> связные пятна. stats даёт габариты и
+        # площадь каждого, centroids -- его центр; нужны оба, поэтому
+        # connectedComponentsWithStats, а не просто labels.
+        count, _labels, stats, centroids = cv2.connectedComponentsWithStats(valid_mask, connectivity=8)
+        best = None
+        best_dist = None
+        for i in range(1, count):  # 0 -- фон
+            area = stats[i, cv2.CC_STAT_AREA]
+            width, height = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
+            if area < PLACE_HIGHLIGHT_MIN_PIXELS:
+                continue
+            if width < PLACE_HIGHLIGHT_MIN_SIDE or height < PLACE_HIGHLIGHT_MIN_SIDE:
+                continue  # штрих буквы/тонкая кромка -- не клетка
+            bx, by = float(centroids[i][0]), float(centroids[i][1])
+            dist = (bx - cx) ** 2 + (by - cy) ** 2
+            if best_dist is None or dist < best_dist:
+                best, best_dist = (bx, by), dist
+        if best is not None:
+            return int(round(best[0])) - cx, int(round(best[1])) - cy
+
+        # Уровень 3: крупного пятна нет -- прежнее поведение, ближайший
+        # белый пиксель (см. докстринг: страховка от того, что подсветка
+        # окажется рябью, а не сплошным пятном).
+        ys, xs = np.where(valid_mask)
         dists = (xs - cx) ** 2 + (ys - cy) ** 2
-        best = int(np.argmin(dists))
-        return int(xs[best]) - cx, int(ys[best]) - cy
+        nearest = int(np.argmin(dists))
+        return int(xs[nearest]) - cx, int(ys[nearest]) - cy
+
+    def _note_placement(self, name: str, landed: bool) -> None:
+        """Записывает исход одной расстановки в итог фазы (см.
+        _placement_tally и _log_placement_tally)."""
+        tally = self._placement_tally
+        if landed:
+            tally["ok"] += 1
+        else:
+            tally["failed"] += 1
+            if name not in tally["failed_names"]:
+                tally["failed_names"].append(name)
+
+    def _note_placement_skipped(self, name: str) -> None:
+        """Блок Place Unit, который вообще не пытались выполнить: не задана
+        точка или хоткей. В журнале про каждый такой блок и раньше была своя
+        строка, но в ИТОГЕ их не было видно -- а шесть пропущенных блоков это
+        то же пустое поле, что и шесть непоставленных юнитов. Ровно так
+        выглядел лог в 14:32: шесть «has no hotkey set -- skipping», и ни
+        одной строки о том, что забег пошёл вообще без юнитов."""
+        tally = self._placement_tally
+        tally["skipped"] += 1
+        if name not in tally["skipped_names"]:
+            tally["skipped_names"].append(name)
+
+    def _reset_placement_tally(self) -> None:
+        self._placement_tally = {"ok": 0, "failed": 0, "failed_names": [],
+                                 "skipped": 0, "skipped_names": [],
+                                 # Сколько из этого уже ушло в журнал: итог
+                                 # печатается дважды за матч (после Pre Start и
+                                 # после боя), и второй раз обязан показать
+                                 # только НОВОЕ, а не сумму заново.
+                                 "reported": {"ok": 0, "failed": 0, "skipped": 0,
+                                              "failed_names": 0, "skipped_names": 0}}
+        # Догоняющая расстановка начинается с чистого листа на каждый Pre
+        # Start: недоставленные юниты прошлого матча к этому уже не относятся.
+        self._pending_placements = []
+        self._pending_placements_battle_start = None
+
+    def _log_placement_tally(self, phase_label: str = "Pre Start") -> None:
+        """Одна строка вместо вычитывания десятка. Ноль поставленных при
+        непустом списке блоков -- почти гарантированно проигранный забег
+        (пустое поле), поэтому такой случай отмечается отдельно.
+
+        Считает только то, что появилось ПОСЛЕ прошлого вызова. Расстановка
+        идёт не только в Pre Start: блоки Place Unit бывают и в Battle, и в
+        Loop A/B, плюс догоняющая расстановка (_retry_pending_placements).
+        Раньше итог печатался ровно один раз, в конце Pre Start, и всё
+        остальное молча пропадало -- то есть именно про непоставленное в бою
+        подкрепление в журнале не оставалось ни строки."""
+        tally = self._placement_tally
+        done = tally["reported"]
+        ok = tally["ok"] - done["ok"]
+        failed = tally["failed"] - done["failed"]
+        skipped = tally["skipped"] - done["skipped"]
+        # Имена дедуплицированы и добавляются по порядку, поэтому «новые» --
+        # это хвост списка за прошлой отметкой.
+        new_failed_names = tally["failed_names"][done["failed_names"]:]
+        new_skipped_names = tally["skipped_names"][done["skipped_names"]:]
+        done.update({"ok": tally["ok"], "failed": tally["failed"], "skipped": tally["skipped"],
+                     "failed_names": len(tally["failed_names"]),
+                     "skipped_names": len(tally["skipped_names"])})
+        if not ok and not failed and not skipped:
+            return
+        if ok and not failed and not skipped:
+            self._log(f"[Macro] {phase_label}: расставлено юнитов {ok}/{ok}.")
+            return
+        troubles = []
+        if failed:
+            troubles.append(f"не встало {failed} ({self._quoted_names(new_failed_names)})")
+        if skipped:
+            troubles.append(f"пропущено {skipped} ({self._quoted_names(new_skipped_names)})")
+        if not ok and phase_label == PLACEMENT_PHASE_PRESTART:
+            # Только для Pre Start это приговор забегу: ноль юнитов на старте =
+            # пустое поле. В бою ноль доставленных -- просто «подкрепление не
+            # прошло», поле уже не пустое.
+            self._log(f"[Macro] {phase_label}: НИ ОДИН юнит не встал — {'; '.join(troubles)}. "
+                       f"Забег пойдёт с ПУСТЫМ ПОЛЕМ. Если юниты «пропущены» — задай им хоткей и точку "
+                       f"в Macro Manager; если «не встало» — проверь координаты и настройку камеры.")
+            return
+        if not ok:
+            self._log(f"[Macro] {phase_label}: {'; '.join(troubles)}.")
+            return
+        self._log(f"[Macro] {phase_label}: расставлено {ok}, {', '.join(troubles)}.")
+
+    @staticmethod
+    def _quoted_names(names) -> str:
+        """`dps`, `farm` -> `"dps", "farm"`. Отдельным методом только потому,
+        что вложенные кавычки внутри f-строки читаются отвратительно."""
+        return ", ".join(f'"{n}"' for n in names)
+
+    def _tile_still_highlighted(self, left: int, top: int, x: int, y: int) -> bool:
+        """Горит ли подсветка ПРЯМО ПОД КУРСОРОМ в (x, y) -- координаты
+        клиентской области окна. Снимает пятачок PLACE_CONFIRM_PROBE_SIZE и
+        отвечает «да», если белого в нём не меньше PLACE_CONFIRM_PROBE_RATIO.
+
+        Отдельно от _scan_place_search_box намеренно: тот ищет клетку ГДЕ-ТО
+        рядом (это его работа), а здесь нужно ровно обратное -- ответить про
+        одну конкретную точку, не считая за неё ни соседние подсвеченные
+        клетки, ни белую подпись над только что поставленным юнитом. См.
+        PLACE_CONFIRM_PROBE_SIZE."""
+        import numpy as np
+        from core.ocr import capture_region
+        size = PLACE_CONFIRM_PROBE_SIZE
+        half = size // 2
+        box_x = max(0, min(x - half, FIXED_WIN_W - size))
+        box_y = max(0, min(y - half, FIXED_WIN_H - size))
+        patch = capture_region(left + box_x, top + box_y, size, size)
+        b, g, r = patch[:, :, 0].astype(int), patch[:, :, 1].astype(int), patch[:, :, 2].astype(int)
+        floor = 255 - PLACE_VALID_PIXEL_TOLERANCE
+        white = (r >= floor) & (g >= floor) & (b >= floor)
+        return bool(np.mean(white) >= PLACE_CONFIRM_PROBE_RATIO)
+
+    def _click_place_spot(self, hwnd, stop_event: threading.Event, left: int, top: int,
+                            cur_x: int, cur_y: int, name: str, allow_retry: bool = True) -> bool:
+        """Clicks the tile at (cur_x, cur_y) and CONFIRMS the click actually
+        registered, re-clicking up to PLACE_CONFIRM_ATTEMPTS times if it
+        didn't. Returns whether the placement looks like it landed.
+
+        Как проверяется, без единого шаблона (см. _tile_still_highlighted):
+        пока юнит в руке, под курсором горит подсветка клетки. Клик прошёл ->
+        клетку занял юнит (подсветка на ней гаснет) либо режим расстановки
+        вышел (подсветки нет вовсе).
+        Подсветка на том же месте осталась -> клик не прошёл. Раньше этого
+        не проверялось вообще: Pre Start верил белому пикселю ДО клика и
+        писал «placed» даже когда на поле ничего не появлялось -- ровно то,
+        что видно в логе как «юниты не ставятся».
+
+        ПОВТОРНЫЙ КЛИК НЕ ЖМЁТ ХОТКЕЙ ЗАНОВО, и это важно: если юнит всё-таки
+        встал, значит в руке его больше нет и лишний клик поставить дубль
+        физически не может (максимум откроет панель юнита, её закрывает
+        _reset_unit_info_panel). А вот при удержанном Shift (quick-place)
+        юнит остаётся выбранным, и повторный клик поставил бы второго --
+        поэтому там allow_retry=False и мы только честно пишем в журнал."""
+        self._mouse.click(left + cur_x, top + cur_y)
+        time.sleep(PLACE_UNIT_CLICK_SETTLE)
+        attempts = PLACE_CONFIRM_ATTEMPTS if allow_retry else 1
+        for attempt in range(1, attempts + 1):
+            if self._checkpoint(stop_event):
+                return False
+            time.sleep(PLACE_CONFIRM_SETTLE)
+            if not self._tile_still_highlighted(left, top, cur_x, cur_y):
+                return True  # подсветки на клетке больше нет -- клик прошёл
+            if attempt == attempts:
+                break
+            self._log(f'[Macro] Place Unit "{name}": подсветка на ({cur_x}, {cur_y}) не погасла — '
+                       f'клик не прошёл, жму ещё раз ({attempt}/{attempts - 1}).')
+            self._mouse.move_to(left + cur_x, top + cur_y)
+            self._mouse.nudge()  # реальное относительное движение, иначе игра не пересчитает наведение
+            time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
+            self._mouse.click(left + cur_x, top + cur_y)
+            time.sleep(PLACE_UNIT_CLICK_SETTLE)
+        if allow_retry:
+            # Могли попасть по уже стоящему юниту и открыть его панель --
+            # закрываем, иначе следующий блок будет работать по чужому экрану.
+            self._reset_unit_info_panel(hwnd)
+        return False
+
+    # ── Догоняющая расстановка ────────────────────────────────────────────
+    # Три метода ниже -- один механизм: запомнить непоставленного юнита в Pre
+    # Start и доставить его в бою. См. PLACE_PENDING_* в runner_constants.
+
+    def _remember_pending_placement(self, block: dict, index: int, macro_name: str,
+                                      unit_ordinal, name: str) -> None:
+        """Кладёт непоставленный блок Place Unit в очередь на доставку в бою.
+
+        Зачем вообще: клетка нашлась, клик нажат, подсветка не погасла -- это
+        почти всегда «не хватило денег», а не сломанные координаты. В логе от
+        14:33 так не встал ЧЕТВЁРТЫЙ подряд DPS, то есть ровно тот, на кого
+        стартового баланса уже не осталось. Раньше блок просто выбрасывался, и
+        забег шёл без юнита; теперь он подождёт первых волн."""
+        if self._pending_placements is None:
+            self._pending_placements = []
+        self._pending_placements.append({
+            "block": block, "index": index, "macro_name": macro_name,
+            "ordinal": unit_ordinal, "name": name,
+            "tries": 0,
+            # Первая попытка -- не раньше, чем через PLACE_PENDING_FIRST_WAIT_S
+            # после начала боя; точное время считается в
+            # _retry_pending_placements, здесь его ещё неоткуда взять (бой не
+            # начался).
+            "next_at": None,
+        })
+        self._log(f'[Macro] Place Unit "{name}": ставлю в очередь на доставку в бою — '
+                   f'скорее всего не хватило денег, попробую ещё раз, когда накопятся.')
+
+    def _retry_pending_placements(self, hwnd, stop_event: threading.Event) -> None:
+        """Доставляет ОДИН юнит из очереди за вызов. Зовётся раз в опрос из
+        _wait_for_match_result, между тиками Battle-блоков.
+
+        Один за вызов намеренно: расстановка занимает секунды (наведение,
+        поиск клетки, проверка клика), а опрос обязан продолжать следить за
+        Victory/Defeat. Пачкой это заблокировало бы цикл на десятки секунд.
+
+        Не жадничает: каждому юниту PLACE_PENDING_MAX_TRIES подходов с паузой
+        PLACE_PENDING_RETRY_S, и вся затея сворачивается после
+        PLACE_PENDING_DEADLINE_S от начала боя -- дальше догонять нечего."""
+        if not self._pending_placements:
+            return
+        started = self._pending_placements_battle_start
+        if started is None:
+            return  # бой ещё не начался
+        now = time.time()
+        if now - started < PLACE_PENDING_FIRST_WAIT_S:
+            return  # дать волне начаться и деньгам капнуть
+        if now - started > PLACE_PENDING_DEADLINE_S:
+            names = self._quoted_names([p["name"] for p in self._pending_placements])
+            self._log(f"[Macro] Догоняющая расстановка: время вышло, так и не встали {names}. "
+                       f"Если это повторяется -- скорее всего юнитов в сборке больше, чем позволяет "
+                       f"стартовый баланс: перенеси лишние блоки Place Unit из Pre Start в Battle.")
+            self._pending_placements = []
+            return
+
+        for pending in list(self._pending_placements):
+            if pending["next_at"] is not None and now < pending["next_at"]:
+                continue
+            pending["tries"] += 1
+            pending["next_at"] = now + PLACE_PENDING_RETRY_S
+            name, tries = pending["name"], pending["tries"]
+            self._log(f'[Macro] Догоняю "{name}": подход {tries}/{PLACE_PENDING_MAX_TRIES} '
+                       f'(не встал до старта).')
+            left, top, _, _ = wm.get_window_rect_screen(hwnd)
+            # pending_ok=False -- догоняющая попытка НЕ кладёт себя в очередь
+            # заново, иначе очередь никогда не опустеет. Счётчик подходов ведём
+            # здесь.
+            landed = self._run_place_unit_block(
+                hwnd, stop_event, left, top, pending["block"], pending["index"],
+                pending["macro_name"], pending["ordinal"],
+                next_is_same_unit=False, verify=False, pending_ok=False)
+            if landed:
+                self._log(f'[Macro] Догнал "{name}" — юнит встал.')
+                self._pending_placements.remove(pending)
+            elif tries >= PLACE_PENDING_MAX_TRIES:
+                self._log(f'[Macro] "{name}" не встал и с {tries} подходов — больше не пытаюсь.')
+                self._pending_placements.remove(pending)
+            return  # один юнит за вызов, см. докстринг
 
     def _find_valid_place_spot(self, hwnd, stop_event: threading.Event, left: int, top: int,
                                  orig_x: int, orig_y: int, name: str):
@@ -1070,7 +1367,18 @@ class BlockOps:
 
     def _run_place_unit_block(self, hwnd, stop_event: threading.Event, left: int, top: int, block: dict,
                                 index: int, macro_name: str, unit_ordinal: int = None,
-                                next_is_same_unit: bool = False, verify: bool = True) -> None:
+                                next_is_same_unit: bool = False, verify: bool = True,
+                                pending_ok: bool = False) -> bool:
+        """Ставит одного юнита. ВОЗВРАЩАЕТ, встал ли он.
+
+        Возврат добавлен ради догоняющей расстановки (см.
+        _retry_pending_placements): ей нужно знать исход, а прежде исход был
+        виден только в журнале. Прежние вызывающие результат игнорируют, так
+        что для них ничего не изменилось.
+
+        pending_ok -- разрешено ли поставить непоставленный блок в очередь на
+        доставку в бою. True только из Pre Start: в бою очередь пополнять
+        нельзя, иначе она никогда не опустеет."""
         params = block.get("params") or {}
         name = params.get("name") or f"#{index}"
         hotkey = block.get("hotkey")
@@ -1079,6 +1387,7 @@ class BlockOps:
 
         if not (orig_x or orig_y):
             self._log(f'[Macro] Place Unit "{name}" has no position set -- skipping.')
+            self._note_placement_skipped(name)
             # Every other early return below honours this guard; this one used
             # to return before reaching any of them. If this block was a
             # quick-place chain member, Shift stayed held with nothing left to
@@ -1087,7 +1396,7 @@ class BlockOps:
             # skipped its own hotkey, and put THIS unit on that unit's tile.
             if not next_is_same_unit:
                 self._release_quick_place_shift()
-            return
+            return False
         orig_x, orig_y = int(orig_x), int(orig_y)
 
         # Quick place: a run of consecutive Place Unit blocks for the SAME
@@ -1103,18 +1412,18 @@ class BlockOps:
         # breaks the whole point of quick-place: a click, then wait, then
         # (if not immediately confirmed) ANOTHER click and up to
         # PLACE_UNIT_VERIFY_TIMEOUT more seconds, before the next hover-and-
-        # click can even start. The pre-click pixel-white confirmation is
-        # already solid evidence the placement landed -- good enough for a
-        # fast consecutive run, even without also re-confirming after.
+        # click can even start. Вместо этого расстановка подтверждается по
+        # подсветке клетки (_click_place_spot) -- один снимок 38x38 вместо
+        # поиска шаблона, то есть скорость quick-place сохраняется, но
+        # непоставленный юнит больше не выдаётся за поставленный.
         is_quick_place = self._quick_place_shift_down or next_is_same_unit
         # verify=False for every Pre Start placement, not just quick-place
         # chains (see _run_prestart_blocks/_run_battle_blocks_tick's own
         # calls) -- the wait-for-unit_exist-then-maybe-double-click-to-
         # recheck step only makes sense for a mid-battle reinforcement,
         # where confirming it actually landed matters more than speed.
-        # Pre Start already trusts the pre-click pixel-white confirmation
-        # for quick-place; this extends that same trust to every other
-        # Pre Start placement too instead of just the chained ones.
+        # skip_verify относится ТОЛЬКО к поиску unit_exist: быстрая проверка
+        # по подсветке клетки (_click_place_spot) работает и здесь.
         skip_verify = is_quick_place or not verify
 
         # "Keep Placing" (block toggle): keep re-doing the whole placement
@@ -1124,9 +1433,8 @@ class BlockOps:
         # signal to know when to stop, and it never applies to a quick-place
         # chain (those can't verify mid-run).
         if bool(block.get("retryUntilPlaced")) and not is_quick_place:
-            self._place_unit_retrying(hwnd, stop_event, left, top, name, hotkey,
-                                       orig_x, orig_y, block, unit_ordinal)
-            return
+            return self._place_unit_retrying(hwnd, stop_event, left, top, name, hotkey,
+                                              orig_x, orig_y, block, unit_ordinal)
 
         if self._quick_place_shift_down:
             self._log(f'[Macro] Place Unit "{name}": quick-placing (Shift held, same unit as last).')
@@ -1139,12 +1447,14 @@ class BlockOps:
             # only logging a warning and clicking anyway.
             if not hotkey:
                 self._log(f'[Macro] Place Unit "{name}" has no hotkey set -- skipping this block.')
-                return
+                self._note_placement_skipped(name)
+                return False
             vk = keys.key_name_to_vk(hotkey)
             if vk is None:
                 self._log(f'[Macro] Place Unit "{name}": hotkey "{hotkey}" isn\'t recognized -- '
                            f'skipping this block.')
-                return
+                self._note_placement_skipped(name)
+                return False
 
             # Z first, always -- clears whatever the cursor/UI was last doing
             # so the hotkey press right after it reliably starts a fresh
@@ -1173,20 +1483,27 @@ class BlockOps:
             spot = self._find_valid_place_spot(hwnd, stop_event, left, top, orig_x, orig_y, name)
         if self._checkpoint(stop_event):
             self._release_quick_place_shift()
-            return
+            return False
         if spot is None:
             self._log(f'[Macro] Place Unit "{name}": no valid (white) tile found at ({orig_x}, {orig_y}) '
                        f'or within {PLACE_SPIRAL_RADII[-1]}px around it -- giving up on this block.')
+            self._note_placement(name, False)
+            # В очередь на доставку НЕ кладём: клетки не нашлось вообще, а это
+            # не про деньги -- это либо не та точка, либо камера смотрит не
+            # туда, и в бою повторится один в один.
             if not next_is_same_unit:
                 self._release_quick_place_shift()
-            return
+            return False
         cur_x, cur_y = spot
 
-        self._mouse.click(left + cur_x, top + cur_y)
-        time.sleep(PLACE_UNIT_CLICK_SETTLE)
+        # allow_retry=False на quick-place: там юнит остаётся в руке под
+        # удержанным Shift, и повторный клик поставил бы второго (см.
+        # _click_place_spot).
+        landed = self._click_place_spot(hwnd, stop_event, left, top, cur_x, cur_y, name,
+                                        allow_retry=not is_quick_place)
         if self._checkpoint(stop_event):
             self._release_quick_place_shift()
-            return
+            return False
 
         # max_placement_reached is optional (like nav_disband) -- a missing
         # image just means this check is silently skipped, not that the
@@ -1197,9 +1514,12 @@ class BlockOps:
             limit_match = None
         if limit_match is not None:
             self._log(f'[Macro] Place Unit "{name}": max placement limit reached -- skipping this block.')
+            # Лимит юнитов на поле -- не «не хватило денег», догонять нечем:
+            # место освободится только если что-то продать. В очередь не кладём.
+            self._note_placement(name, False)
             if not next_is_same_unit:
                 self._release_quick_place_shift()
-            return
+            return False
 
         # Last of this quick-place run (or not part of one at all) --
         # release Shift now that the click that needed it is done.
@@ -1207,15 +1527,25 @@ class BlockOps:
             self._release_quick_place_shift()
 
         if skip_verify:
-            # No verify here -- see skip_verify's own comment above.
-            # Position is still recorded, just without waiting on
-            # unit_exist first; the white-pixel hit before the click is
-            # what's trusted instead.
+            # Без unit_exist, но и НЕ вслепую: _click_place_spot выше уже
+            # сказал, погасла ли подсветка на клетке, то есть прошёл ли клик.
+            # Раньше здесь всегда писалось «placed» -- и именно поэтому
+            # «юниты не ставятся» выглядело в логе как успешная расстановка.
             reason = 'quick-place' if is_quick_place else 'Pre Start'
-            self._log(f'[Macro] Place Unit "{name}": placed at ({cur_x}, {cur_y}) ({reason}).')
-            if unit_ordinal is not None:
-                self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
-            return
+            if landed:
+                self._log(f'[Macro] Place Unit "{name}": placed at ({cur_x}, {cur_y}) ({reason}).')
+                self._note_placement(name, True)
+                if unit_ordinal is not None:
+                    self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
+            else:
+                self._log(f'[Macro] Place Unit "{name}": НЕ ВСТАЛ на ({cur_x}, {cur_y}) ({reason}) — '
+                           f'подсветка клетки не погасла, клик не зарегистрировался.')
+                self._note_placement(name, False)
+                # Клетка была, клик был, юнит не встал -- это тот самый случай
+                # «не хватило денег» (см. _remember_pending_placement).
+                if pending_ok:
+                    self._remember_pending_placement(block, index, macro_name, unit_ordinal, name)
+            return landed
 
         # Verify: look for unit_exist FIRST, before clicking anything -- it
         # may already be visible with no extra input needed at all. Only if
@@ -1226,7 +1556,7 @@ class BlockOps:
         clicked_to_verify = False
         for verify_attempt in range(1, PLACE_UNIT_VERIFY_ATTEMPTS + 1):
             if self._checkpoint(stop_event):
-                return
+                return False
             if verify_attempt > 1:
                 self._mouse.click(left + cur_x, top + cur_y)
                 clicked_to_verify = True
@@ -1248,36 +1578,52 @@ class BlockOps:
             self._reset_unit_info_panel(hwnd)
 
         if exists_match is None:
-            self._log(f'[Macro] Place Unit "{name}": placed at ({cur_x}, {cur_y}) but couldn\'t verify '
-                       f'(no unit_exist match) -- add Assets/ui/unit_exist.png to enable this check.')
-            return
+            # unit_exist не подтвердил, но проверка подсветки выше могла уже
+            # ответить -- берём её ответ вместо прежнего «placed, но не
+            # проверили», чтобы в журнале не оставалось ложного успеха.
+            self._log(f'[Macro] Place Unit "{name}": {"placed at" if landed else "НЕ ВСТАЛ на"} '
+                       f'({cur_x}, {cur_y}), unit_exist не подтвердил '
+                       f'-- add Assets/ui/unit_exist.png to enable this check.')
+            self._note_placement(name, landed)
+            if landed and unit_ordinal is not None:
+                self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
+            elif not landed and pending_ok:
+                self._remember_pending_placement(block, index, macro_name, unit_ordinal, name)
+            return landed
 
         self._log(f'[Macro] Place Unit "{name}": verified placed at ({cur_x}, {cur_y}) '
                    f'(score {exists_match["score"]:.2f}).')
+        self._note_placement(name, True)
         if unit_ordinal is not None:
             self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
+        return True
 
     def _place_unit_retrying(self, hwnd, stop_event: threading.Event, left: int, top: int,
                                name: str, hotkey, orig_x: int, orig_y: int, block: dict,
-                               unit_ordinal: int) -> None:
+                               unit_ordinal: int) -> bool:
         """Place Unit with "Keep Placing" on: run the full select -> find
         spot -> click -> verify sequence and, if unit_exist doesn't confirm
         the unit landed, do the WHOLE thing again (re-select the unit, find
         a valid tile, click, re-verify) up to PLACE_RETRY_UNTIL_PLACED_
         ATTEMPTS times. Never a quick-place chain member (see the caller),
-        so no Shift is ever held here."""
+        so no Shift is ever held here.
+
+        Возвращает, встал ли юнит -- как и _run_place_unit_block, который этот
+        результат прокидывает наружу."""
         if not hotkey:
             self._log(f'[Macro] Place Unit "{name}" has no hotkey set -- skipping this block.')
-            return
+            self._note_placement_skipped(name)
+            return False
         vk = keys.key_name_to_vk(hotkey)
         if vk is None:
             self._log(f'[Macro] Place Unit "{name}": hotkey "{hotkey}" isn\'t recognized -- skipping this block.')
-            return
+            self._note_placement_skipped(name)
+            return False
 
         n = PLACE_RETRY_UNTIL_PLACED_ATTEMPTS
         for attempt in range(1, n + 1):
             if self._checkpoint(stop_event):
-                return
+                return False
             # Select the unit fresh each attempt (Z-deselect first, as every
             # placement does).
             self._keyboard.tap(ord("Z"))
@@ -1292,16 +1638,21 @@ class BlockOps:
             else:
                 spot = self._find_valid_place_spot(hwnd, stop_event, left, top, orig_x, orig_y, name)
             if self._checkpoint(stop_event):
-                return
+                return False
             if spot is None:
                 self._log(f'[Macro] Place Unit "{name}": no valid tile (attempt {attempt}/{n}) -- retrying.')
                 continue
             cur_x, cur_y = spot
 
-            self._mouse.click(left + cur_x, top + cur_y)
-            time.sleep(PLACE_UNIT_CLICK_SETTLE)
+            # Никогда не звено quick-place цепочки (см. докстринг), поэтому
+            # перещёлкивание здесь безопасно -- allow_retry по умолчанию.
+            landed = self._click_place_spot(hwnd, stop_event, left, top, cur_x, cur_y, name)
             if self._checkpoint(stop_event):
-                return
+                return False
+            if not landed:
+                self._log(f'[Macro] Place Unit "{name}": клик не прошёл (попытка {attempt}/{n}) — '
+                           f'начинаю расстановку заново.')
+                continue
 
             try:
                 limit_match = vision.find_image(hwnd, "max_placement_reached", threshold=MAX_PLACEMENT_THRESHOLD)
@@ -1309,7 +1660,8 @@ class BlockOps:
                 limit_match = None
             if limit_match is not None:
                 self._log(f'[Macro] Place Unit "{name}": max placement limit reached -- skipping this block.')
-                return
+                self._note_placement(name, False)
+                return False
 
             # Verify: search for unit_exist first, click once to open the
             # info panel if not seen, up to PLACE_UNIT_VERIFY_ATTEMPTS.
@@ -1317,7 +1669,7 @@ class BlockOps:
             clicked_to_verify = False
             for va in range(1, PLACE_UNIT_VERIFY_ATTEMPTS + 1):
                 if self._checkpoint(stop_event):
-                    return
+                    return False
                 if va > 1:
                     self._mouse.click(left + cur_x, top + cur_y)
                     clicked_to_verify = True
@@ -1332,9 +1684,10 @@ class BlockOps:
                         self._reset_unit_info_panel(hwnd)
                     self._log(f'[Macro] Place Unit "{name}": placed at ({cur_x}, {cur_y}) but "Keep Placing" '
                                f'needs Assets/ui/unit_exist.png to know when to stop -- treating as placed.')
+                    self._note_placement(name, True)
                     if unit_ordinal is not None:
                         self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
-                    return
+                    return True
                 if exists_match is not None:
                     break
             if clicked_to_verify:
@@ -1343,12 +1696,15 @@ class BlockOps:
             if exists_match is not None:
                 self._log(f'[Macro] Place Unit "{name}": verified placed at ({cur_x}, {cur_y}) '
                            f'(score {exists_match["score"]:.2f}, attempt {attempt}/{n}).')
+                self._note_placement(name, True)
                 if unit_ordinal is not None:
                     self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
-                return
+                return True
             self._log(f'[Macro] Place Unit "{name}": not confirmed placed (attempt {attempt}/{n}) -- placing again.')
 
         self._log(f'[Macro] Place Unit "{name}": still not confirmed placed after {n} attempts -- giving up.')
+        self._note_placement(name, False)
+        return False
 
     def _reset_unit_info_panel(self, hwnd) -> None:
         # Closes whatever info panel double-clicking a placed unit opened

@@ -23,8 +23,11 @@ WALK = {"type": "walk_path", "params": {}, "once": True, "mode": "auto", "pathNa
 
 
 class _Mouse:
-    def __init__(self):
+    def __init__(self, occupied=None):
         self.clicks = []
+        # Клетки, по которым уже щёлкнули -- фальшивая игра гасит на них
+        # подсветку, см. фикстуру sim.
+        self.occupied = occupied if occupied is not None else set()
 
     def move_to(self, x, y):
         pass
@@ -35,6 +38,7 @@ class _Mouse:
     def click(self, x=None, y=None, button="left", hold=0.05):
         if x is not None:
             self.clicks.append((int(x), int(y)))
+            self.occupied.add((int(x), int(y)))
 
     def double_click(self, x=None, y=None, **kw):
         pass
@@ -77,9 +81,22 @@ def sim(monkeypatch):
     # well under one.
     monkeypatch.setattr(runner_blocks.time, "sleep", lambda s: None)
 
-    white = np.full((38, 38, 3), 255, np.uint8)
-    monkeypatch.setattr(ocr, "capture_region", lambda l, t, w, h: white[:h, :w])
-    monkeypatch.setattr(runner_blocks, "capture_region", lambda l, t, w, h: white[:h, :w], raising=False)
+    # Фальшивое поле: всё свободно и подсвечено, КРОМЕ клеток, куда уже
+    # щёлкнули. Занятая клетка перестаёт быть белой -- ровно этот признак
+    # расстановка и читает, чтобы понять, что клик зарегистрировался (см.
+    # runner_blocks._tile_still_highlighted). Без этого фальшивая игра
+    # утверждала бы, что клик не проходит НИКОГДА.
+    occupied = set()
+
+    def capture_region(l, t, w, h):
+        patch = np.full((h, w, 3), 255, np.uint8)
+        for (px, py) in occupied:
+            if l <= px < l + w and t <= py < t + h:
+                patch[:, :] = 0
+        return patch
+
+    monkeypatch.setattr(ocr, "capture_region", capture_region)
+    monkeypatch.setattr(runner_blocks, "capture_region", capture_region, raising=False)
 
     def found(name):
         return {"x": 0, "y": 0, "w": 10, "h": 10, "cx": 5, "cy": 5, "score": 0.99}
@@ -95,8 +112,18 @@ def sim(monkeypatch):
                         if "unit_exist" in names else (None, None))
     monkeypatch.setattr(vision, "save_match_debug", lambda *a, **k: None)
 
-    runner = MacroRunner(_Mouse(), _Keyboard(), lambda msg: None)
+    runner = MacroRunner(_Mouse(occupied), _Keyboard(), lambda msg: None)
     runner._run_walk_path_block = lambda *a, **k: None
+
+    # Новый заход в этап -- поле снова пустое. Иначе второй повтор не нашёл бы
+    # ни одной свободной клетки: они все остались бы «занятыми» с первого.
+    real_prestart = runner._run_prestart_blocks
+
+    def prestart(*args, **kwargs):
+        occupied.clear()
+        return real_prestart(*args, **kwargs)
+
+    runner._run_prestart_blocks = prestart
     return runner
 
 
