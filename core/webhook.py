@@ -32,8 +32,56 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 # both. The frequent send -- match results -- already runs on a background
 # thread (see runner._finish_match_result_background), so the brief wait
 # here doesn't stall the macro loop.
-_RETRY_MAX = 3          # attempts after the first, on a 429
+_RETRY_MAX = 3          # attempts after the first (429, 5xx, обрыв связи -- см. ниже)
 _RETRY_WAIT_CAP = 5.0   # never sleep longer than this per retry, whatever Discord asks
+
+# ПОВТОРЯЕМ НЕ ТОЛЬКО 429. Раньше повтор был ровно один -- на «слишком
+# часто». Всё остальное отбрасывало уведомление с первой же осечки: разрыв
+# соединения, таймаут, 502/503/504 от Cloudflare перед Discord'ом. Ровно эти
+# три вещи и случаются чаще всего на домашнем интернете и при коротких
+# сбоях Discord, то есть уведомления терялись именно тогда, когда за ними
+# следят. Теперь такие ответы -- тоже повтор, с растущей паузой.
+_RETRY_STATUS = (500, 502, 503, 504)
+_RETRY_BACKOFF = (0.5, 1.5, 3.0)  # пауза перед 1-й, 2-й и 3-й повторной попыткой
+
+
+def _backoff_wait(attempt: int) -> float:
+    """Пауза перед повторной попыткой номер `attempt` (с нуля)."""
+    return _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+
+
+# ── Одно правило повтора на все три отправки ──────────────────────────────
+# Отправок здесь три (send / send_file / send_rich), и решение «повторять или
+# сдаться» раньше было переписано в каждой отдельно -- четыре ветки на три
+# функции, двенадцать мест, которые обязаны совпадать. Такое расходится:
+# именно так 5xx долго повторялся в одной отправке и не повторялся в двух
+# других. Теперь правило одно, и обе функции ниже возвращают одно и то же:
+# СКОЛЬКО СПАТЬ перед повтором, либо None -- «повторять нельзя, отдавай ошибку».
+
+
+def _retry_wait_for_status(source, status: int, attempt: int):
+    """Пауза перед повтором для КОДА ОТВЕТА, или None если повторять нельзя.
+
+    429 -- ждём столько, сколько попросил Discord (он присылает точное число).
+    5xx -- растущая пауза: это Cloudflare/Discord прилёг на секунды.
+    Всё остальное (401/403/404 -- вебхук удалён, токен не тот, ссылка не та)
+    повтором не лечится: столько же попыток, столько же ошибок."""
+    if attempt >= _RETRY_MAX:
+        return None
+    if status == 429:
+        return _retry_after(source)
+    if status in _RETRY_STATUS:
+        return _backoff_wait(attempt)
+    return None
+
+
+def _retry_wait_for_exception(attempt: int):
+    """Пауза перед повтором для СБОЯ СЕТИ (обрыв, таймаут), или None если
+    попытки кончились. Домашний интернет отваливается на секунду-две, и без
+    повтора уведомление терялось с первой же осечки."""
+    if attempt >= _RETRY_MAX:
+        return None
+    return _backoff_wait(attempt)
 
 
 def _retry_after(source) -> float:
@@ -132,9 +180,13 @@ def send(url: str, embed: dict, content: str = "", silent: bool = False) -> dict
                     return {"ok": True, "reason": ""}
                 return {"ok": False, "reason": f"HTTP {resp.status}"}
         except urllib.error.HTTPError as exc:
-            if exc.code == 429 and attempt < _RETRY_MAX:
-                time.sleep(_retry_after(exc))
-                continue  # Discord asked us to slow down -- wait and resend
+            # _retry_after читает тело ответа, поэтому вызывается ДО того, как
+            # тело прочитают для сообщения об ошибке -- иначе на 429 он получил
+            # бы пустой поток и вернул паузу по умолчанию.
+            wait = _retry_wait_for_status(exc, exc.code, attempt)
+            if wait is not None:
+                time.sleep(wait)
+                continue
             body = ""
             try:
                 body = exc.read().decode("utf-8", errors="replace")[:200]
@@ -142,8 +194,12 @@ def send(url: str, embed: dict, content: str = "", silent: bool = False) -> dict
                 pass
             return {"ok": False, "reason": f"HTTP {exc.code}: {body}" if body else f"HTTP {exc.code}"}
         except (urllib.error.URLError, OSError) as exc:
-            return {"ok": False, "reason": str(exc)}
-    return {"ok": False, "reason": "rate limited -- gave up after retries"}
+            wait = _retry_wait_for_exception(attempt)
+            if wait is None:
+                return {"ok": False, "reason": str(exc)}
+            time.sleep(wait)
+            continue
+    return {"ok": False, "reason": "gave up after retries"}
 
 
 def send_file(url: str, embed: dict, screenshot_path: str, content: str = "", silent: bool = False) -> dict:
@@ -192,14 +248,19 @@ def send_file(url: str, embed: dict, screenshot_path: str, content: str = "", si
                 url, data=data, files={"file": (filename, file_bytes, "image/png")},
                 headers={"User-Agent": USER_AGENT}, timeout=15)
         except requests.RequestException as exc:
-            return {"ok": False, "reason": str(exc)}
+            wait = _retry_wait_for_exception(attempt)
+            if wait is None:
+                return {"ok": False, "reason": str(exc)}
+            time.sleep(wait)
+            continue
         if 200 <= resp.status_code < 300:
             return {"ok": True, "reason": ""}
-        if resp.status_code == 429 and attempt < _RETRY_MAX:
-            time.sleep(_retry_after(resp))
+        wait = _retry_wait_for_status(resp, resp.status_code, attempt)
+        if wait is not None:
+            time.sleep(wait)
             continue
         return {"ok": False, "reason": f"HTTP {resp.status_code}: {resp.text[:200]}"}
-    return {"ok": False, "reason": "rate limited -- gave up after retries"}
+    return {"ok": False, "reason": "gave up after retries"}
 
 
 def send_rich(url: str, embeds: list = None, file_attachments: list = None,
@@ -207,8 +268,10 @@ def send_rich(url: str, embeds: list = None, file_attachments: list = None,
     """A fuller send than send()/send_file(): MULTIPLE embeds, MULTIPLE image
     attachments, and message components (a link-button action row) in one
     message -- what the match-result webhook needs to show the status card
-    and the game screenshot as two separate images with Join Discord/GitHub
-    buttons under them.
+    and the game screenshot as two separate images in one notification.
+    (`components` больше не используется отправкой результата: блок ссылок
+    из уведомления убран, но параметр оставлен -- он не про ссылки, а про
+    компоненты в целом.)
 
     `file_attachments` is a list of (filename, bytes); an embed references
     one via {"image": {"url": "attachment://<filename>"}}. `components` is a
@@ -248,11 +311,16 @@ def send_rich(url: str, embeds: list = None, file_attachments: list = None,
                 resp = requests.post(
                     url, json=payload, headers={"User-Agent": USER_AGENT}, timeout=15)
         except requests.RequestException as exc:
-            return {"ok": False, "reason": str(exc)}
+            wait = _retry_wait_for_exception(attempt)
+            if wait is None:
+                return {"ok": False, "reason": str(exc)}
+            time.sleep(wait)
+            continue
         if 200 <= resp.status_code < 300:
             return {"ok": True, "reason": ""}
-        if resp.status_code == 429 and attempt < _RETRY_MAX:
-            time.sleep(_retry_after(resp))
+        wait = _retry_wait_for_status(resp, resp.status_code, attempt)
+        if wait is not None:
+            time.sleep(wait)
             continue
         return {"ok": False, "reason": f"HTTP {resp.status_code}: {resp.text[:200]}"}
-    return {"ok": False, "reason": "rate limited -- gave up after retries"}
+    return {"ok": False, "reason": "gave up after retries"}
