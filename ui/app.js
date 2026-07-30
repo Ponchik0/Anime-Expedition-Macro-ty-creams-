@@ -3769,6 +3769,7 @@ async function openCoordPicker(prefix) {
 
   document.getElementById('pu-canvas-wrap').style.display = 'none';
   document.getElementById('pu-category-tabs').innerHTML = '';
+  setPlaceUnitDefaultControlsVisible(false);  // здесь режима нет, см. функцию
   const grid = document.getElementById('pu-map-grid');
   grid.style.display = '';
   grid.innerHTML = '<div class="rh-empty">Capturing the Roblox screen...</div>';
@@ -4492,6 +4493,10 @@ let puState = {
   // 1 (awaiting row 2), coordFirst is row 1's point, coordPreview the derived
   // row markers.
   coordHeightKey: null, coordStep: null, coordFirst: null, coordPreview: null,
+  // Режим, под который сохраняется и подставляется снимок по умолчанию (см.
+  // resolvePlaceUnitMode). К категории каталога это НЕ то же самое: category --
+  // где сейчас листают карты, mode -- чей снимок считать своим.
+  mode: 'story',
 };
 
 // Remembers whichever map was picked last (see selectPlaceUnitMap), across
@@ -4500,6 +4505,149 @@ let puState = {
 // having to re-click category -> thumbnail every single time for that was
 // the actual complaint.
 const RECENT_PLACE_UNIT_MAP_KEY = 'aecm-recent-place-unit-map';
+
+// ── Снимок по умолчанию для режима ─────────────────────────────────────────
+// Готовых карт в поставке нет и не будет: клик по чужому кадру промахивается,
+// ракурс камеры у каждого свой (см. Assets/map/README.txt). Значит точный путь
+// один -- «Снимок из игры», и раньше его приходилось повторять на КАЖДУЮ
+// точку: свернуть интерфейс, показать игру, дождаться кадра, снять. На сборке
+// из шести юнитов это шесть одинаковых снимков одного и того же экрана.
+//
+// Теперь кадр сохраняется под режим (core/maps.py: MODE_CATEGORIES) и дальше
+// подставляется сам, как только выбор точки открыт для сценария этого режима.
+//
+// Ключ -- режим, а не карта, потому что точка задаётся в экранных координатах
+// и зависит от ракурса камеры, а камеру макрос выставляет одинаково для всего
+// режима (см. runner._run_prestart).
+const PLACE_UNIT_MODE_KEY = 'aecm-place-unit-mode';
+
+function getRememberedPlaceUnitMode() {
+  try {
+    return localStorage.getItem(PLACE_UNIT_MODE_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function rememberPlaceUnitMode(mode) {
+  try {
+    localStorage.setItem(PLACE_UNIT_MODE_KEY, mode);
+  } catch (e) {}
+}
+
+// Какой режим считать текущим для открытого сценария.
+// Сценарий сам по себе к режиму НЕ привязан -- в Macro Manager у него только
+// имя и блоки (см. Templates/raid.json). Зато задачи ссылаются на сценарий по
+// имени и режим у них есть, поэтому режим выводится из очереди задач: если
+// сценарий используется ровно в одном режиме -- он и берётся. Неоднозначно
+// или сценарий ещё нигде не используется -- берём прошлый выбор, а его
+// всегда можно поменять селектором в окне.
+function resolvePlaceUnitMode() {
+  const templateName = (document.getElementById('template-name')?.value || '').trim();
+  if (templateName) {
+    const modes = new Set(
+      taskCards.filter(t => taskMacroNames(t).includes(templateName))
+               .map(t => t.mode).filter(Boolean));
+    if (modes.size === 1) return [...modes][0];
+  }
+  const remembered = getRememberedPlaceUnitMode();
+  if (remembered && TASK_DATA[remembered]) return remembered;
+  return 'story';
+}
+
+function renderPlaceUnitModeSelect() {
+  const el = document.getElementById('pu-mode');
+  if (!el) return;
+  el.innerHTML = Object.entries(TASK_DATA)
+    .map(([mode, data]) => `<option value="${mode}"${mode === puState.mode ? ' selected' : ''}>`
+                           + `${data.label}</option>`).join('');
+}
+
+async function onPlaceUnitModeChange(mode) {
+  puState.mode = mode;
+  rememberPlaceUnitMode(mode);
+  await refreshDefaultSnapshotNote();
+}
+
+// Строка под панелью: есть ли снимок по умолчанию для выбранного режима.
+// Отдельной функцией, потому что зовётся из трёх мест -- при открытии окна,
+// при смене режима и после сохранения/удаления снимка.
+async function refreshDefaultSnapshotNote() {
+  const note = document.getElementById('pu-default-note');
+  if (!note) return;
+  let has = false;
+  try {
+    const result = await pywebview.api.has_mode_map_snapshot(puState.mode);
+    has = !!(result && result.has);
+  } catch (e) {}
+  const label = (TASK_DATA[puState.mode] || {}).label || puState.mode;
+  if (!has) {
+    note.innerHTML = `Для режима <b>${label}</b> снимка по умолчанию пока нет. `
+      + 'Нажми «Снимок из игры», а потом «Сделать снимком по умолчанию» — '
+      + 'и больше снимать для этого режима не придётся.';
+    return;
+  }
+  note.innerHTML = `Снимок по умолчанию для <b>${label}</b> подставляется сам. `
+    + '<a href="#" onclick="deleteDefaultModeSnapshot(); return false;">Удалить его</a>';
+}
+
+async function saveDefaultModeSnapshot() {
+  // Сохраняется ПОСЛЕДНИЙ снятый кадр (его помнит Python, см.
+  // main.save_mode_map_snapshot) -- то есть ровно то, что сейчас на холсте.
+  // Поэтому без снимка кнопка ничего сделать не может, и об этом надо сказать
+  // прямо, а не молча ничего не сделать.
+  let result = null;
+  try {
+    result = await pywebview.api.save_mode_map_snapshot(puState.mode);
+  } catch (e) {}
+  if (!result || !result.ok) {
+    const reason = (result && result.reason) || 'error';
+    addLog(reason === 'no_capture'
+      ? '[Positions] Сначала нажми «Снимок из игры» — сохранять пока нечего.'
+      : `[Positions] Не удалось сохранить снимок по умолчанию: ${reason}`);
+    return;
+  }
+  // Снимок лёг в каталог карт как обычная картинка, поэтому категория режима
+  // могла появиться только что -- перечитываем список, иначе её вкладка не
+  // покажется до переоткрытия окна.
+  try {
+    puState.categories = await pywebview.api.list_map_categories();
+  } catch (e) {}
+  renderPlaceUnitCategoryTabs();
+  await refreshDefaultSnapshotNote();
+  addLog(`[Positions] Снимок сохранён по умолчанию для режима ${puState.mode}.`);
+}
+
+async function deleteDefaultModeSnapshot() {
+  try {
+    await pywebview.api.delete_mode_map_snapshot(puState.mode);
+  } catch (e) {}
+  await refreshDefaultSnapshotNote();
+}
+
+// Это же окно открывается из Настроек > Отладка для выбора координат
+// (openCoordPicker). Там режима нет и снимок по умолчанию не при чём, поэтому
+// его органы управления просто скрываются -- иначе они предлагали бы сохранить
+// кадр «для режима Story», когда речь про координату кнопки в интерфейсе.
+function setPlaceUnitDefaultControlsVisible(show) {
+  for (const id of ['pu-default-controls', 'pu-save-default', 'pu-default-note']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? '' : 'none';
+  }
+}
+
+// Подставить снимок по умолчанию, если он есть. Возвращает, получилось ли --
+// openPlaceUnitModal по этому решает, показывать ли сетку карт.
+async function loadDefaultModeSnapshot(reqId) {
+  let result = null;
+  try {
+    result = await pywebview.api.get_mode_map_snapshot(puState.mode);
+  } catch (e) {}
+  if (reqId !== puRequestId) return false;
+  if (!result || !result.ok) return false;
+  loadPlaceUnitImage(result.data_uri, reqId);
+  return true;
+}
 
 function getRecentPlaceUnitMap() {
   try {
@@ -4533,6 +4681,16 @@ async function openPlaceUnitModal(blockId) {
   document.getElementById('pu-pos-readout').textContent = puState.markX != null ? `X ${puState.markX}, Y ${puState.markY}` : 'Not set';
   document.getElementById('pu-modal').style.display = 'flex';
 
+  // Режим и его снимок по умолчанию -- ПЕРВЫМ делом: если снимок есть, окно
+  // сразу открывается на нём, и ни сетка карт, ни ещё один снимок из игры уже
+  // не нужны. Ровно за этим всё и делалось: сфотографировал один раз.
+  puState.mode = resolvePlaceUnitMode();
+  setPlaceUnitDefaultControlsVisible(true);
+  renderPlaceUnitModeSelect();
+  refreshDefaultSnapshotNote();
+  if (await loadDefaultModeSnapshot(reqId)) return;
+  if (reqId !== puRequestId) return;
+
   try {
     puState.categories = await pywebview.api.list_map_categories();
   } catch (e) {
@@ -4550,6 +4708,9 @@ async function openPlaceUnitModal(blockId) {
       + '<div class="empty-state-title">Готовых карт нет — и это нормально</div>'
       + '<div class="empty-state-hint">Нажми <b>«Снимок из игры»</b> вверху: макрос возьмёт кадр прямо из окна Roblox, '
       + 'и ты кликнешь по своему настоящему экрану. Это точнее любой готовой картинки — ракурс камеры у каждого свой.'
+      + '<br><br>Чтобы не снимать каждый раз: после снимка нажми '
+      + '<b>«Сделать снимком по умолчанию»</b> — кадр запомнится за выбранным режимом '
+      + 'и дальше будет подставляться сам, как только откроешь выбор точки.'
       + '<br><br>Хочешь свою карту на будущее — положи файл в <code>Assets/map/&lt;Категория&gt;/&lt;Название&gt;.png</code>, '
       + 'подробности в <code>Assets/map/README.txt</code>.</div></div>';
     return;

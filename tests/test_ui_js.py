@@ -45,11 +45,17 @@ function extract(name) {
 
 
 def run_js(body, tmp_path):
-    """Run a node snippet with extract() available; return its parsed stdout."""
+    """Run a node snippet with extract() available; return its parsed stdout.
+
+    encoding="utf-8" задано ЯВНО: без него text=True декодирует вывод node
+    кодировкой системы (на русской Windows это cp1251), и любая строка с
+    кириллицей приезжает искажённой -- сравнение с ней проваливается, хотя код
+    вернул ровно то, что нужно. Node всегда печатает UTF-8."""
     script = tmp_path / "t.js"
     script.write_text(_EXTRACT + textwrap.dedent(body), encoding="utf-8")
     env = {**os.environ, "APP_JS": APP_JS}
-    proc = subprocess.run(["node", str(script)], capture_output=True, text=True, env=env, timeout=60)
+    proc = subprocess.run(["node", str(script)], capture_output=True, text=True,
+                          encoding="utf-8", env=env, timeout=60)
     assert proc.returncode == 0, f"node failed:\n{proc.stdout}\n{proc.stderr}"
     return json.loads(proc.stdout.strip().splitlines()[-1])
 

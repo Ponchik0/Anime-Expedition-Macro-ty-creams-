@@ -3254,11 +3254,65 @@ class Api:
             return {"ok": False, "reason": str(exc)}
 
         import base64
+        # Кадр запоминается ЗДЕСЬ, а не пересобирается из data-URI при
+        # сохранении: сохранить снимок по умолчанию (save_mode_map_snapshot)
+        # надо ровно те байты, что человек видел на холсте, а не новый снимок
+        # экрана -- игра к тому моменту уже нарисует другую волну. Тот же
+        # приём, что у Image Manager (_image_search_png).
+        self._map_snapshot_png = png_bytes
         return {
             "ok": True,
             "data_uri": "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii"),
             "width": width, "height": height,
         }
+
+    # ── Снимок по умолчанию для режима ────────────────────────────────────
+    # «Сделал фотку один раз — и она подставляется сама, пока я в этом
+    # режиме». Хранится обычным PNG в каталоге карт (см. core/maps.py:
+    # MODE_CATEGORIES), поэтому виден и как обычная карта, и удаляется
+    # простым стиранием файла.
+
+    def get_mode_map_snapshot(self, mode: str) -> dict:
+        from core import maps
+        if not maps.category_for_mode(mode):
+            return {"ok": False, "reason": "bad_mode"}
+        uri = maps.mode_snapshot_data_uri(mode)
+        if not uri:
+            return {"ok": False, "reason": "not_found"}
+        return {"ok": True, "data_uri": uri, "category": maps.category_for_mode(mode),
+                "name": maps.MODE_SNAPSHOT_NAME}
+
+    def has_mode_map_snapshot(self, mode: str) -> dict:
+        from core import maps
+        return {"ok": True, "has": maps.has_mode_snapshot(mode)}
+
+    def save_mode_map_snapshot(self, mode: str) -> dict:
+        """Сохраняет ПОСЛЕДНИЙ снятый кадр как снимок по умолчанию для режима.
+
+        Работает по кэшу get_roblox_snapshot, а не снимает заново: сохранять
+        надо именно тот кадр, который человек видит на холсте."""
+        from core import maps
+        if not maps.category_for_mode(mode):
+            return {"ok": False, "reason": "bad_mode"}
+        png = getattr(self, "_map_snapshot_png", None)
+        if not png:
+            return {"ok": False, "reason": "no_capture"}
+        try:
+            maps.save_mode_snapshot(mode, png)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "reason": str(exc)}
+        self.push_log(f"[Positions] Снимок из игры сохранён как снимок по умолчанию "
+                      f"для режима {mode} — дальше он подставляется сам.")
+        return {"ok": True, "category": maps.category_for_mode(mode), "name": maps.MODE_SNAPSHOT_NAME}
+
+    def delete_mode_map_snapshot(self, mode: str) -> dict:
+        from core import maps
+        if not maps.category_for_mode(mode):
+            return {"ok": False, "reason": "bad_mode"}
+        removed = maps.delete_mode_snapshot(mode)
+        if removed:
+            self.push_log(f"[Positions] Снимок по умолчанию для режима {mode} удалён.")
+        return {"ok": True, "removed": removed}
 
     def get_reward_region(self) -> dict:
         data = cfg.load()

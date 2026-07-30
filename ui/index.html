@@ -2049,8 +2049,25 @@
         <div class="flex items-center gap-2 flex-wrap" style="margin-bottom: 10px;">
           <div id="pu-category-tabs" class="flex items-center gap-1"></div>
           <span class="flex-1"></span>
+          <!-- Снимок по умолчанию для режима: снял кадр один раз -- и он
+               подставляется сам, пока работаешь со сценарием этого режима.
+               Режим здесь можно переключить: сценарий сам по себе к режиму
+               не привязан (см. resolvePlaceUnitMode).
+               Скрывается целиком, когда это же окно открыто для выбора
+               координат из Настроек (openCoordPicker) -- там режима нет. -->
+          <span id="pu-default-controls" class="flex items-center gap-2">
+            <label class="text-[10px]" style="color: var(--text-muted);" for="pu-mode">Mode</label>
+            <select id="pu-mode" class="task-select" style="width: auto;"
+                    onchange="onPlaceUnitModeChange(this.value)"></select>
+          </span>
           <button class="task-toolbar-btn" onclick="usePlaceUnitRobloxScreen()">Use Roblox Screen</button>
+          <button id="pu-save-default" class="task-toolbar-btn" onclick="saveDefaultModeSnapshot()"
+                  title="Save the frame on screen as this mode's default snapshot">
+            Set as Default Snapshot</button>
         </div>
+        <!-- Строка состояния снимка по умолчанию: есть он для этого режима или
+             нет, и как его убрать. Пусто, когда снимка нет и говорить нечего. -->
+        <div id="pu-default-note" class="text-[10px]" style="color: var(--text-muted); margin-bottom: 8px;"></div>
 
         <div id="pu-map-grid" class="pu-map-grid"></div>
 
