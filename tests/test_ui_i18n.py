@@ -54,6 +54,11 @@ function fn(name) {
   throw new Error('unbalanced braces in ' + name);
 }
 global.RU = eval('(' + literal('const RU = {', '{', '}') + ')');
+global.RU_STATE = eval('(' + literal('const RU_STATE = {', '{', '}') + ')');
+// `state` -- однострочная стрелка, скобочным балансом её не взять. Берём сам
+// текст определения, а не переписываем его здесь: переписанная копия рано или
+// поздно разойдётся с оригиналом, и тест начнёт проверять не тот код.
+global.state = eval('(' + /const state = ([^;]+);/.exec(src)[1] + ')');
 global.RU_PATTERNS = eval('(' + literal('const RU_PATTERNS = [', '[', ']') + ')');
 global.translate = eval('(' + fn('translate') + ')');
 """
@@ -118,6 +123,28 @@ def test_patterns_are_anchored(tmp_path):
                      "Log: Downloading update... 3.2 MB (retry)",
                      "Downloading update... soon")
     assert out == [None, None]
+
+
+def test_the_challenge_card_summary_keeps_its_slot_numbers(tmp_path):
+    """Подпись карточки Challenge склеивается в app.js из состояний и номеров
+    слотов, поэтому точного совпадения у неё быть не может. Числа и «#1» --
+    данные, они обязаны пережить перевод нетронутыми."""
+    out = _translate(tmp_path, "Daily: Off | Regular: #1 3/5, #2 Off")
+    assert out == ["Ежедневный: выкл | Обычный: #1 3/5, #2 выкл"]
+
+
+def test_the_fuel_card_summary_keeps_its_countdown(tmp_path):
+    """Таймер обратного отсчёта проходит через перевод как есть -- переводятся
+    только названия ресурсов и словесные состояния."""
+    out = _translate(tmp_path, "Resource Drill: 03:12:45 | Gold Mine: Off")
+    assert out == ["Буровая: 03:12:45 | Золотая шахта: выкл"]
+
+
+def test_a_bare_state_word_is_not_touched_by_the_card_patterns(tmp_path):
+    """RU_STATE применяется ТОЛЬКО внутри составных подписей. Сам по себе
+    'Off' живёт в интерфейсе и в других смыслах, и переводить его как «выкл»
+    через эти шаблоны нельзя."""
+    assert _translate(tmp_path, "Off") == [None]
 
 
 def test_an_exact_hit_wins_over_the_patterns(tmp_path):

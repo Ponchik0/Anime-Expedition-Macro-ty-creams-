@@ -520,6 +520,42 @@
     'Check GitHub for the latest releases, bug fixes, and feature updates.':
       'Проверять на GitHub новые версии и исправления.',
     'Check for Updates': 'Проверить обновления',
+
+    // --- Ресурсы: карточки, Заправка, Challenge, Bounty (из апстрима) ---
+    // Пришло вместе с обновлениями автора и в разметке по-английски, как и
+    // всё остальное: словарь -- единственное место, где интерфейс переводится
+    // (см. шапку файла).
+    'Auto Fuel': 'Автозаправка',
+    'Enable Auto Fuel': 'Включить автозаправку',
+    'Include in Auto Fuel': 'Заправлять автоматически',
+    'Auto Fuel Walking Paths': 'Маршруты автозаправки',
+    'Fuel amount': 'Сколько заливать',
+    'Next refill:': 'Следующая заправка:',
+    'Refill this resource': 'Заправить этот ресурс',
+    'Reset Fuel Timer': 'Сбросить таймер заправки',
+    'Test Auto Refuel': 'Проверить автозаправку',
+    'Makes every enabled resource ready for an immediate refill.':
+      'Помечает все включённые ресурсы как готовые к заправке прямо сейчас.',
+    'Resource Drill': 'Буровая',
+    'Gold Mine': 'Золотая шахта',
+    'No resources': 'Ресурсов нет',
+    'Waiting': 'Ждёт',
+    'Ready': 'Готово',
+    'Enabled': 'Включено',
+    'Enable Daily Challenge': 'Включить ежедневный Challenge',
+    'Enable Regular Challenge': 'Включить обычный Challenge',
+    'Reset Challenge Status Now': 'Сбросить статус Challenge',
+    'Challenge Play Mode': 'Режим игры для Challenge',
+    'Solo or Matchmaking for Daily and Regular Challenge.':
+      'Один или с игроками — для ежедневного и обычного Challenge.',
+    "Set to 1 if today's Daily Challenge was already completed manually":
+      'Поставь 1, если сегодняшний ежедневный Challenge уже пройден вручную',
+    'Bounty Story Maps': 'Карты Story для Bounty',
+    'Solo or Matchmaking for bounty stages.':
+      'Один или с игроками — для этапов Bounty.',
+    'Complete supported Bounty Board objectives before other automation.':
+      'Выполнять поддержанные цели с доски заданий раньше остальной автоматики.',
+    'Auto Upgrade (In Game)': 'Авто-апгрейд (в игре)',
   };
 
   // ------------------------------------------------------- ДИНАМИЧЕСКИЕ СТРОКИ
@@ -528,9 +564,28 @@
   // строкой (main.Api._apply_update_background) и показывается в интерфейсе,
   // поэтому словарём его не покрыть. Шаблон обязан быть привязан к началу и
   // концу строки, иначе под него начнёт попадать что попало.
+  // Односложные состояния, которые app.js СКЛЕИВАЕТ в подписи карточек
+  // ресурсов (renderChallengeResourceCard, renderFuelTimers). Отдельным
+  // словарём, потому что переводятся они только ВНУТРИ таких строк: сами по
+  // себе 'Off' и 'Complete' встречаются в интерфейсе и в других смыслах.
+  const RU_STATE = {
+    'Off': 'выкл', 'Ready': 'готов', 'Complete': 'пройден',
+    'Waiting': 'ждёт', 'Disabled': 'выключено',
+  };
+  const state = s => RU_STATE[s] || s;
+
   const RU_PATTERNS = [
     [/^Downloading update\.\.\. ([\d.]+) \/ ([\d.]+) MB$/, 'Загружаю обновление... $1 / $2 МБ'],
     [/^Downloading update\.\.\. ([\d.]+) MB$/, 'Загружаю обновление... $1 МБ'],
+    // Подпись карточки Challenge: "Daily: Off | Regular: #1 3/5, #2 Off".
+    // Номера слотов и счётчики остаются как есть -- это данные, а не слова.
+    [/^Daily: ([\w ]+) \| Regular: (.+)$/,
+      (_, daily, regular) => `Ежедневный: ${state(daily)} | Обычный: `
+        + regular.split(', ').map(part => part.replace(/\b(Off|Ready)$/, m => state(m))).join(', ')],
+    // Подпись карточки Заправки: "Resource Drill: 03:12:45 | Gold Mine: Off".
+    // Таймер обратного отсчёта проходит через state() без изменений.
+    [/^(Resource Drill|Gold Mine): (\S+) \| (Resource Drill|Gold Mine): (\S+)$/,
+      (_, a, av, b, bv) => `${RU[a]}: ${state(av)} | ${RU[b]}: ${state(bv)}`],
   ];
 
   // Единая точка перевода: сначала точное совпадение, потом шаблоны.
