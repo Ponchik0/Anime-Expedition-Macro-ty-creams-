@@ -777,12 +777,29 @@ body.compact-mode #screen-dashboard { padding-right: 0 !important; }
   font-weight: 500; color: var(--text-dim);
   flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.rh-meta { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+/* tabular-nums — от автора: числа в строке не должны прыгать по ширине. */
+.rh-meta {
+  font-size: 11px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
 /* Пустое состояние должно объяснять, а не показывать пустоту. */
 .rh-empty {
   padding: var(--s6) var(--s4);
   font-size: 12px; color: var(--text-muted);
   text-align: center; line-height: 1.6;
+}
+/* Bounty без настроенных макросов карт: предупреждение над списком задач.
+   Наши переменные вместо авторских пикселей -- иначе плашка не отзывалась бы
+   на плотность и скругления из «Кастомизации». */
+.bounty-setup-warning {
+  margin-bottom: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid color-mix(in srgb, var(--rose) 55%, var(--border));
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--rose) 10%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 /* ============================================================ НАСТРОЙКИ === */
@@ -1301,6 +1318,101 @@ body.compact-mode #screen-dashboard { padding-right: 0 !important; }
   transition: color var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease);
 }
 .challenge-cooldown-btn:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* ============================================================== РЕСУРСЫ === */
+/* Автоматизация ресурсов — растущий список (Крафт, Challenge, Bounty,
+   Заправка), поэтому каждая фича живёт в своей карточке, свёрнутой по
+   умолчанию, а не добавляет ещё один этаж всегда развёрнутых настроек.
+   Родные details/summary: доступно с клавиатуры и не требует хранить
+   состояние раскрытия.
+
+   Перенесено из апстрима, но переписано на наши переменные: у автора здесь
+   были пиксели и градиенты, а у нас плотность, скругления и акцент
+   настраиваются в «Кастомизации» — правила на пикселях выпали бы из системы
+   и не отзывались бы на эти ручки. */
+.resource-card {
+  --resource-accent: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  transition: border-color var(--t-tab) var(--ease);
+}
+.resource-card:hover, .resource-card[open] {
+  border-color: color-mix(in srgb, var(--resource-accent) 42%, var(--border));
+}
+.resource-card-head {
+  list-style: none;
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  cursor: pointer; user-select: none;
+  background: var(--bg-surface);
+}
+.resource-card-head::-webkit-details-marker { display: none; }
+.resource-card-head:focus-visible { outline: 2px solid var(--resource-accent); outline-offset: -3px; }
+.resource-card-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-md);
+  color: var(--resource-accent);
+  background: color-mix(in srgb, var(--resource-accent) 14%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--resource-accent) 38%, var(--border));
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+}
+.resource-card-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.resource-card-title { color: var(--text); font-size: 13px; font-weight: 600; }
+/* Подпись рассказывает состояние («Крафт через 2 победы»), поэтому она
+   приглушена акцентом, а не выкрашена им целиком: строка длинная и читается
+   как текст, а не как ярлык. */
+.resource-card-desc {
+  color: var(--text-muted);
+  font-size: 11px; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.resource-card-state {
+  flex-shrink: 0;
+  padding: 2px var(--s2);
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  font-size: 10px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.resource-card-state.active {
+  color: var(--resource-accent);
+  background: color-mix(in srgb, var(--resource-accent) 11%, var(--bg-field));
+  border-color: color-mix(in srgb, var(--resource-accent) 34%, var(--border));
+}
+.resource-card-chevron {
+  flex-shrink: 0; color: var(--text-muted);
+  font-size: 22px; line-height: 1;
+  transition: transform var(--t-tab) var(--ease), color var(--t-tab) var(--ease);
+}
+.resource-card[open] .resource-card-chevron { color: var(--resource-accent); transform: rotate(90deg); }
+.resource-card-body { padding: 0 var(--s4) var(--s3); border-top: 1px solid var(--border); }
+.resource-card-body .setting-row:last-child { border-bottom: none; }
+
+/* Заправка Expedition: строка «сколько лить» и список маршрутов. */
+.fuel-resource-controls {
+  display: flex; align-items: stretch; justify-content: flex-end;
+  gap: var(--s3); flex-wrap: wrap;
+}
+.fuel-enable-control { display: flex; align-items: center; gap: var(--s2); min-width: 132px; }
+.fuel-amount-control { display: flex; flex-direction: column; justify-content: center; gap: var(--s1); }
+.fuel-control-title { color: var(--text-dim); font-size: 11px; font-weight: 500; line-height: 1.15; }
+.fuel-control-hint { color: var(--text-muted); font-size: 10px; line-height: 1.15; margin-top: 2px; }
+.fuel-control-divider { width: 1px; min-height: 36px; background: var(--border); }
+.fuel-path-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(180px, 1.15fr) auto;
+  align-items: center; gap: var(--s2);
+  padding: var(--s2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-card);
+}
+.fuel-path-row .task-select { min-width: 0; width: 100%; }
 
 /* ========================================================= КОМПАКТ (F7) === */
 #compact-strip {

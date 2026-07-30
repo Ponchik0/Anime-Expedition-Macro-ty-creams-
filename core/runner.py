@@ -17,6 +17,7 @@ import os
 import subprocess
 import threading
 import time
+import traceback
 from datetime import datetime, timezone
 
 import cv2
@@ -35,6 +36,7 @@ from .runner_bounty import BountyOps
 from .runner_challenge import ChallengeOps
 from .runner_crafting import CraftingOps
 from .runner_expedition import ExpeditionOps
+from .runner_fuel import FuelOps
 
 
 def _find_team_load_button(frame, expected_y):
@@ -75,14 +77,16 @@ def _find_team_load_button(frame, expected_y):
     return cx, cy
 
 
-class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps):
+class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ExpeditionOps, BlockOps):
     """One run's worth of state -- module-level singleton via main.Api, same
     pattern as core.paths._recorder, since only one run can realistically be
     active at a time (one physical game window, one macro)."""
 
     def __init__(self, mouse, keyboard, log, set_status=None, record_result=None,
                  get_challenge_settings=None, mark_challenge_stage_played=None, get_run_stats=None,
-                 get_crafting_settings=None, set_crafting_count=None, get_bounty_settings=None):
+                 get_crafting_settings=None, set_crafting_count=None, get_bounty_settings=None,
+                 set_bounty_remaining=None, get_fuel_settings=None,
+                 mark_fuel_refill_result=None, get_hotkeys=None):
         self._mouse = mouse
         self._keyboard = keyboard
         self._log = log
@@ -148,6 +152,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # in tests/CLI mode) just makes _run_challenges a no-op.
         self._get_challenge_settings = get_challenge_settings
         self._get_bounty_settings = get_bounty_settings
+        # Read when an Auto Upgrade Unit block runs so a key changed in
+        # Settings is used without rebuilding the runner or embedding a
+        # machine-specific key inside every exported macro template.
+        self._get_hotkeys = get_hotkeys or (lambda: {})
+        self._set_bounty_remaining = set_bounty_remaining or (lambda *a, **kw: None)
         self._mark_challenge_stage_played = mark_challenge_stage_played or (lambda *a, **kw: None)
         # Returns a fresh session/all-time win-loss + session_start + version
         # snapshot for the match-result webhook (see _send_result_webhook).
@@ -159,6 +168,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # main.Api). None (tests/CLI) makes every crafting path a no-op.
         self._get_crafting_settings = get_crafting_settings
         self._set_crafting_count = set_crafting_count or (lambda *a, **kw: None)
+        # Auto Fuel uses the same callback boundary as Challenge and Crafting:
+        # main.Api owns settings.json, while the runner only reads normalized
+        # state and reports each station's result.
+        self._get_fuel_settings = get_fuel_settings
+        self._mark_fuel_refill_result = mark_fuel_refill_result
         self._thread = None
         self._stop_event = None
         self._pause_event = threading.Event()
@@ -754,9 +768,52 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             # backing (SetThreadExecutionState) is per-thread.
             wm.prevent_sleep()
             self._run(*args)
+        except Exception as exc:
+            # A daemon-thread exception is otherwise invisible in the
+            # pythonw release build: Start simply becomes available again
+            # and debug.log ends at the last normal action. Keep this final
+            # boundary even though the independently recoverable phases in
+            # _run are guarded below.
+            self._log_unexpected_phase_error("runner session", exc)
+            self._set_status(action="Idle")
         finally:
             wm.allow_sleep()
             vision.close_mss()
+
+    def _log_unexpected_phase_error(self, phase: str, exc: Exception) -> None:
+        self._log(
+            f"[Macro] Unexpected error during {phase}: "
+            f"{type(exc).__name__}: {exc}")
+        self._log(f"[Debug] {traceback.format_exc().strip()}")
+
+    def _run_guarded_phase(self, phase: str, hwnd, stop_event: threading.Event,
+                           operation):
+        """Run one independently recoverable part of an unattended pass.
+
+        Returns ``(completed, result)``. An implementation bug or transient
+        capture exception in Auto Bounty/Challenge/a single queued task must
+        not kill the daemon thread and silently end the entire overnight run.
+        """
+        try:
+            return True, operation()
+        except Exception as exc:
+            self._log_unexpected_phase_error(phase, exc)
+            if not stop_event.is_set():
+                self._set_status(action=f"Recovering after {phase} error...")
+                try:
+                    self._recover_to_lobby(hwnd, stop_event)
+                except Exception as recovery_exc:
+                    self._log_unexpected_phase_error(
+                        f"{phase} lobby recovery", recovery_exc)
+            return False, None
+
+    def _run_crafting_if_due(self, hwnd, stop_event: threading.Event) -> None:
+        if self._crafting_wants_in():
+            self._run_crafting(hwnd, stop_event)
+
+    def _run_fuel_refill_if_due(self, hwnd, stop_event: threading.Event) -> None:
+        if self._fuel_wants_in():
+            self._run_fuel_refill(hwnd, stop_event)
 
     def _run(self, hwnd_getter, get_tasks, stop_event: threading.Event, scroll_power: int = None,
               coords: dict = None, scroll_nudges: int = None, default_walk_paths: dict = None,
@@ -835,16 +892,27 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         if self._checkpoint(stop_event):
             return
         if not self._skip_first_task_setup:
-            bounty_enabled = self._run_bounties(
-                hwnd, stop_event, coords, default_walk_paths, webhook)
+            bounty_ok, bounty_result = self._run_guarded_phase(
+                "Auto Bounty", hwnd, stop_event,
+                lambda: self._run_bounties(
+                    hwnd, stop_event, coords, default_walk_paths, webhook))
+            bounty_enabled = bool(bounty_result) if bounty_ok else bool(
+                self._bounty_settings().get("enabled"))
         else:
             bounty_enabled = False
         if self._checkpoint(stop_event):
             return
         if not self._skip_first_task_setup:
-            self._run_challenges(hwnd, stop_event, coords, default_walk_paths, webhook)
-            if self._crafting_wants_in():
-                self._run_crafting(hwnd, stop_event)
+            self._run_guarded_phase(
+                "Challenge", hwnd, stop_event,
+                lambda: self._run_challenges(
+                    hwnd, stop_event, coords, default_walk_paths, webhook))
+            self._run_guarded_phase(
+                "Auto Crafting", hwnd, stop_event,
+                lambda: self._run_crafting_if_due(hwnd, stop_event))
+            self._run_guarded_phase(
+                "Auto Fuel", hwnd, stop_event,
+                lambda: self._run_fuel_refill_if_due(hwnd, stop_event))
         if self._checkpoint(stop_event):
             return
 
@@ -897,8 +965,19 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 # doesn't kill the whole overnight run -- _run_task recovers to
                 # the lobby and retries internally, only returning False when
                 # stop_event actually fired.
-                if not self._run_task(hwnd, stop_event, task, task_index, len(tasks), coords, scroll_power,
-                                        scroll_nudges, default_walk_paths, webhook):
+                task_ok, task_result = self._run_guarded_phase(
+                    f"task {task_index}/{len(tasks)}", hwnd, stop_event,
+                    lambda: self._run_task(
+                        hwnd, stop_event, task, task_index, len(tasks), coords,
+                        scroll_power, scroll_nudges, default_walk_paths, webhook))
+                if not task_ok:
+                    if self._checkpoint(stop_event):
+                        return
+                    # Recovery already returned to the lobby. Skip only this
+                    # broken task and let the remaining queue (or its next
+                    # pass) continue instead of ending the runner thread.
+                    continue
+                if not task_result:
                     self._set_status(action="Idle")
                     return
 
@@ -926,12 +1005,20 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 # in-task hook is gated by `not is_last_repeat`). Without this,
                 # a reached threshold just sat until the next Start -- the exact
                 # "task finished, came back to lobby, no craft" report.
-                if self._crafting_wants_in():
-                    self._run_crafting(hwnd, stop_event)
-                    if self._current_hwnd and wm.is_window(self._current_hwnd):
-                        hwnd = self._current_hwnd
-                    if self._checkpoint(stop_event):
-                        return
+                self._run_guarded_phase(
+                    "Auto Crafting", hwnd, stop_event,
+                    lambda: self._run_crafting_if_due(hwnd, stop_event))
+                if self._current_hwnd and wm.is_window(self._current_hwnd):
+                    hwnd = self._current_hwnd
+                if self._checkpoint(stop_event):
+                    return
+                self._run_guarded_phase(
+                    "Auto Fuel", hwnd, stop_event,
+                    lambda: self._run_fuel_refill_if_due(hwnd, stop_event))
+                if self._current_hwnd and wm.is_window(self._current_hwnd):
+                    hwnd = self._current_hwnd
+                if self._checkpoint(stop_event):
+                    return
 
             # The queue always loops back to task 1 once it finishes rather
             # than going Idle -- Stop (F2) is the only way to actually end
@@ -1112,20 +1199,26 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 # navigation (which starts from the lobby) runs.
                 challenge_wants_in = (not is_last_repeat) and self._challenge_has_ready_stage()
                 # Same interleave shape for Auto Crafting: if the win counter
-                # has hit its threshold, force a real Leave Stage this repeat so
-                # the crafting navigation (which starts from the lobby) can run.
-                # Checked BEFORE _handle_match_result, which is where THIS win
-                # gets counted -- so a pass fires on the repeat after the count
-                # reaches N, not the same one (a one-repeat lag, negligible on a
-                # farm and worth keeping the clean Leave-Stage-first ordering).
-                crafting_wants_in = (not is_last_repeat) and self._crafting_wants_in()
+                # reaches its threshold INCLUDING this result, force a real
+                # Leave Stage now so crafting navigation can start from the
+                # lobby. _handle_match_result persists this win immediately
+                # afterward; the projection here only decides Repeat vs Leave.
+                crafting_wants_in = (
+                    (not is_last_repeat)
+                    and self._crafting_wants_in(task, result)
+                )
+                # Auto Fuel is checked at the same safe boundary. A due timer
+                # forces Leave Stage now, then the pass runs from the lobby
+                # before this same task is entered again.
+                fuel_wants_in = (not is_last_repeat) and self._fuel_wants_in()
                 # The bounded-Infinite path and the Leave-at-Minute block
                 # (left_live_match) already left the live match, so there is no
                 # Victory/Defeat screen to process here.
                 if not left_live_match and not self._handle_match_result(
                         hwnd, stop_event, task, result, duration, webhook,
                         repeat=(not is_last_repeat) and not challenge_wants_in
-                        and not crafting_wants_in and not restart_needed):
+                        and not crafting_wants_in and not fuel_wants_in
+                        and not restart_needed):
                     if stop_event.is_set():
                         return False
                     task_failed = True
@@ -1195,6 +1288,18 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                     self._run_challenges(hwnd, stop_event, coords, default_walk_paths, webhook)
                     if self._checkpoint(stop_event):
                         return False
+                    # Challenge has priority when both diversions become due
+                    # on the same result. It can also add qualifying wins of
+                    # its own, so honor a now-due crafting pass while already
+                    # in the lobby instead of re-entering the farm for an
+                    # unnecessary extra match first.
+                    if self._crafting_wants_in():
+                        self._log(
+                            "[Macro] Crafting became due during Challenge -- "
+                            "running it before resuming the farm.")
+                        self._run_crafting(hwnd, stop_event)
+                        if self._checkpoint(stop_event):
+                            return False
                     self._log(f'[Macro] Challenge pass finished -- resuming "{map_name}".')
                     # Left the stage entirely for Challenge (repeat=False
                     # above already did Leave Stage + Return to Lobby), so
@@ -1222,6 +1327,38 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                     # Repeat Stage requeue -- there's no stage left to requeue into.
                     if not self._run_task_setup(hwnd, stop_event, task, mode, map_name, coords,
                                                   scroll_power, scroll_nudges, webhook):
+                        if stop_event.is_set():
+                            return False
+                        task_failed = True
+                        break
+                    fresh_entry = True
+                    continue
+
+                if fuel_wants_in:
+                    self._log(f'[Macro] Auto Fuel is due. Pausing "{map_name}" at a safe boundary.')
+                    self._run_fuel_refill(hwnd, stop_event)
+                    if self._checkpoint(stop_event):
+                        return False
+                    if self._current_hwnd and wm.is_window(self._current_hwnd):
+                        hwnd = self._current_hwnd
+                    self._log(f'[Macro] Auto Fuel pass finished. Resuming "{map_name}".')
+                    # Auto Fuel temporarily owns the Dashboard status context.
+                    # Restore the same task and the upcoming repeat before
+                    # re-entering so Current Task/Repeat never stay stale.
+                    self._set_status(
+                        current_task=f"{task_index} / {task_count}",
+                        current_repeat=f"{repeat_index + 1} / {repeat_total}",
+                        map=map_name,
+                        action="Resuming after Auto Fuel...",
+                        mode=mode,
+                        stage=str(task.get("stage") or "-"),
+                        difficulty=task.get("difficulty") or "-",
+                        play_mode=task.get("play_mode") or "solo",
+                        macro=task.get("macro") or "-",
+                    )
+                    if not self._run_task_setup(
+                            hwnd, stop_event, task, mode, map_name, coords,
+                            scroll_power, scroll_nudges, webhook):
                         if stop_event.is_set():
                             return False
                         task_failed = True
@@ -1349,6 +1486,32 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 return False
             if self._checkpoint(stop_event):
                 return False
+        elif mode == "tournament":
+            # Tournament goes through Play like Story/Raid (nav_tournament sits
+            # on the gamemode menu, picked instead of Story), but has no map
+            # carousel and no difficulty -- picking the type card IS the whole
+            # selection. It then rejoins the shared confirm + solo Start tail
+            # below (its confirm button is nav_entertournament). Same retried-
+            # from-the-lobby loop as the map/event paths, since a failed attempt
+            # leaves nothing safe to assume about where we ended up.
+            reached_tournament = False
+            for attempt in range(1, MAP_SELECT_RETRY_ATTEMPTS + 1):
+                if self._checkpoint(stop_event):
+                    return False
+                if attempt > 1:
+                    self._log(f"[Macro] Retrying Tournament entry from the lobby "
+                               f"(attempt {attempt}/{MAP_SELECT_RETRY_ATTEMPTS})...")
+                if self._reach_tournament_selected(hwnd, stop_event, map_name):
+                    reached_tournament = True
+                    break
+                if stop_event.is_set():
+                    return False
+            if not reached_tournament:
+                self._log(f'[Macro] Couldn\'t reach the Tournament screen after '
+                           f'{MAP_SELECT_RETRY_ATTEMPTS} attempts -- stopping.')
+                return False
+            if self._checkpoint(stop_event):
+                return False
         else:
             # Lobby -> Play -> Story/Raid -> map search, retried wholesale from
             # the lobby if the map search fails and backing out succeeds (see
@@ -1412,7 +1575,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # straight to Enter Matchmaking instead, since this doesn't
         # reliably show up the same way for it.
         if task.get("play_mode") != "matchmaking":
-            confirm_image = "exp_select_stage" if mode == "expedition" else "nav_select_stage"
+            if mode == "tournament":
+                confirm_image = "nav_entertournament"
+            elif mode == "expedition":
+                confirm_image = "exp_select_stage"
+            else:
+                confirm_image = "nav_select_stage"
             self._set_status(action="Clicking Select Stage...")
             if not self._click_and_verify_gone(hwnd, stop_event, confirm_image, STAGE_SCREEN_TIMEOUT):
                 self._log(f'[Macro] "{confirm_image}" never showed up -- stopping.')
@@ -1618,7 +1786,20 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         self._set_status(action=f"Infinite wave {current} -- leaving after wave {limit}...")
 
         exit_wave = limit + 1
-        if current != exit_wave:
+        if current < exit_wave:
+            # Remember that the requested final wave was genuinely observed.
+            # This is the evidence that lets a later confirmed reading stand
+            # in for an exit-wave frame OCR happened to miss.
+            if current == limit:
+                state["target_wave_seen"] = True
+            state.pop("confirmations", None)
+            state.pop("confirmation_wave", None)
+            return None
+        if current > exit_wave and not state.get("target_wave_seen"):
+            # Do not let an isolated leading-digit hallucination (for
+            # example wave 5 read as 55) end a run early. Exact exit-wave
+            # reads remain valid on their own; an overshoot is accepted only
+            # after the real target wave was seen earlier in this match.
             state.pop("confirmations", None)
             state.pop("confirmation_wave", None)
             return None
@@ -1667,10 +1848,25 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         while deadline is None or time.time() < deadline:
             if self._checkpoint(stop_event):
                 return None
-            # Такт боя ПЕРЕД проверками, а не после: если ниже что-то надолго
-            # заблокируется, минутная отметка уже стоит и сторож бездействия
-            # отсчитывает от неё, а не от начала матча.
+            # Такт боя ПЕРЕД всеми проверками, а не после: если ниже что-то
+            # надолго заблокируется, минутная отметка уже стоит и сторож
+            # бездействия отсчитывает от неё, а не от начала матча. Стоит он
+            # доли миллисекунды -- сравнение двух чисел.
             self._pulse_battle_status(mode)
+
+            # Leaving an Infinite run at its requested wave is a hard task
+            # boundary, so check it before Battle blocks. Upgrade Unit can
+            # spend several seconds waiting for its info panel; putting the
+            # wave check after that work made the narrow exit-wave window
+            # much easier to miss.
+            if infinite_wave_limit is not None:
+                limit_result = self._check_infinite_wave_limit(
+                    hwnd, stop_event, infinite_wave_limit, infinite_wave_state)
+                if limit_result == "wave_limit":
+                    return "wave_limit"
+                if limit_result == "failed":
+                    return None
+
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)
                 if self._checkpoint(stop_event):
@@ -1712,19 +1908,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 except vision.TemplateNotFound:
                     continue
                 if reconnect_match is not None:
-                    self._handle_disconnect(hwnd, stop_event, webhook, task, "disconnected")
+                    self._handle_disconnect(hwnd, stop_event, webhook, task)
                     return None
 
             if watch_close_popup:
                 self._click_close_popup_if_found(hwnd)
-
-            if infinite_wave_limit is not None:
-                limit_result = self._check_infinite_wave_limit(
-                    hwnd, stop_event, infinite_wave_limit, infinite_wave_state)
-                if limit_result == "wave_limit":
-                    return "wave_limit"
-                if limit_result == "failed":
-                    return None
 
             if mode == "expedition":
                 result = self._check_expedition_wave_result(hwnd, stop_event)
@@ -2254,7 +2442,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # no difficulty at all.
         if mode == "raid" or raw_stage in SPECIAL_STAGES_NO_DIFFICULTY:
             difficulty = "Hard"
-        elif mode == "event":
+        elif mode in ("event", "tournament"):
             difficulty = "-"
         else:
             difficulty = task.get("difficulty") or "-"
@@ -2733,12 +2921,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         self._log(f'[Macro] Waiting to teleport in-game (watching for "nav_unitmanager", up to '
                    f'{timeout:.0f}s)...')
         self._set_status(action='Waiting to teleport in-game ("nav_unitmanager")...')
-        result = self._wait_for_teleport_or_stuck(hwnd, stop_event, timeout)
+        result = self._wait_for_teleport_result(hwnd, stop_event, timeout)
         if result == "ok":
             self._log("[Macro] Teleported in-game.")
             return True
-        if result in ("stuck", "disconnected"):
-            self._handle_disconnect(hwnd, stop_event, webhook, task, result)
+        if result == "disconnected":
+            self._handle_disconnect(hwnd, stop_event, webhook, task)
             return False
         if result == "timeout" and not stop_event.is_set():
             self._log(f'[Macro] "nav_unitmanager" not found within {timeout:.0f}s -- never teleported '
@@ -2747,23 +2935,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                        f'Image Manager). Stopping.')
         return False
 
-    def _wait_for_teleport_or_stuck(self, hwnd, stop_event: threading.Event, timeout: float) -> str:
-        """Polls for nav_unitmanager (teleport-in confirmed), Roblox's own
-        Reconnect/Retry prompt (a definite disconnect, no continuous-
-        visibility wait needed), and teleportstuck (a hung loading screen,
-        which CAN be a momentary false alarm so it only counts once it's
-        been continuously visible for TELEPORT_STUCK_TIMEOUT) side by side --
-        a stuck/disconnected teleport never resolves into either success or
-        a clean "gone" the way other timeouts do, it just sits there
-        forever, so this is the only way to tell "still loading, be
-        patient" apart from "actually broken, needs a rejoin". Returns
-        "ok", "disconnected", "stuck", "stopped", or "timeout". Both
-        reconnect/retry and teleportstuck are optional -- a missing crop
-        just disables that half of the check, same as any other best-effort
-        image search in this file."""
+    def _wait_for_teleport_result(self, hwnd, stop_event: threading.Event, timeout: float) -> str:
+        """Poll for teleport success or Roblox's definite disconnect prompt.
+
+        ``teleportstuck`` is only Roblox's ordinary black loading screen, not
+        a distinct error state. Normal loading gets the caller's full timeout;
+        only the Reconnect/Retry prompt is an immediate failure. Returns
+        "ok", "disconnected", "stopped", or "timeout"."""
         deadline = time.time() + timeout
-        stuck_since = None
-        stuck_template_missing = False
         while time.time() < deadline:
             if stop_event.is_set():
                 return "stopped"
@@ -2783,35 +2962,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
                 if reconnect_match is not None:
                     return "disconnected"
 
-            if not stuck_template_missing:
-                try:
-                    stuck_match = vision.find_image(hwnd, "teleportstuck")
-                except vision.TemplateNotFound:
-                    stuck_match = None
-                    stuck_template_missing = True  # don't keep re-searching for a crop that was never added
-                if stuck_match is not None:
-                    if stuck_since is None:
-                        stuck_since = time.time()
-                    elif time.time() - stuck_since >= TELEPORT_STUCK_TIMEOUT:
-                        return "stuck"
-                else:
-                    stuck_since = None  # only counts while CONTINUOUSLY visible
-
             time.sleep(TELEPORT_POLL_INTERVAL)
         return "timeout"
 
-    def _handle_disconnect(self, hwnd, stop_event: threading.Event, webhook: dict, task: dict,
-                             reason: str) -> None:
-        """A stuck/disconnected teleport is unrecoverable by waiting longer
-        or retrying a click -- only an actual rejoin fixes it. Logs the
-        disconnect to Discord (if configured) and attempts one, updating
-        self._current_hwnd on success so the next task-setup retry (see
-        _run_task's recovery loop, which re-reads self._current_hwnd) picks
-        up wherever the game ended up re-docked. Always returns None --
-        callers treat this attempt as failed either way and let the normal
-        task-recovery loop decide whether to retry."""
-        why = "Roblox's own Reconnect/Retry prompt appeared" if reason == "disconnected" \
-            else f"the teleport was stuck for over {TELEPORT_STUCK_TIMEOUT:.0f}s"
+    def _handle_disconnect(self, hwnd, stop_event: threading.Event, webhook: dict,
+                             task: dict) -> None:
+        """Rejoin after Roblox displays its definite Reconnect/Retry prompt."""
+        why = "Roblox's own Reconnect/Retry prompt appeared"
         self._log(f"[Macro] Disconnected from Roblox ({why}) -- attempting to rejoin.")
         screenshot_path = self._save_debug_screenshot_unconditional(hwnd, "teleport_disconnected")
         self._send_event_webhook(webhook, task, "Disconnected -- Rejoining",
@@ -3058,16 +3215,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             self._log(f'[Macro] Waiting to teleport in-game (watching for "nav_unitmanager", up to '
                        f'{SOLO_TELEPORT_PER_ATTEMPT_TIMEOUT:.0f}s)...')
             self._set_status(action='Waiting to teleport in-game ("nav_unitmanager")...')
-            result = self._wait_for_teleport_or_stuck(hwnd, stop_event, SOLO_TELEPORT_PER_ATTEMPT_TIMEOUT)
+            result = self._wait_for_teleport_result(
+                hwnd, stop_event, SOLO_TELEPORT_PER_ATTEMPT_TIMEOUT)
             if result == "ok":
                 self._log("[Macro] Teleported in-game.")
                 return True
-            if result in ("stuck", "disconnected"):
-                # Broken, not slow -- re-clicking Start or waiting through
-                # more attempts won't fix a hung/disconnected server, so this
-                # bails immediately instead of burning the rest of the retry
-                # budget on something a rejoin (not a click) actually fixes.
-                self._handle_disconnect(hwnd, stop_event, webhook, task, result)
+            if result == "disconnected":
+                # Broken, not slow -- Roblox displayed its definite
+                # Reconnect/Retry prompt, so rejoin instead of retrying Start.
+                self._handle_disconnect(hwnd, stop_event, webhook, task)
                 return False
             if stop_event.is_set():
                 return False
@@ -3703,6 +3859,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
             self._log("[Macro] Couldn't confirm focus before clicking Play -- click may not register.")
         time.sleep(0.1)
         vision.click_match(self._mouse, hwnd, match)
+        # The gamemode screen replaces the lobby immediately after this
+        # click. Leaving the pointer on Play can put it over a party/invite
+        # control in the new layout and open an unrelated overlay. Move to
+        # the existing user-calibratable empty corner before the transition.
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
+        park_x, park_y = self._cxy("unit_info_reset")
+        self._mouse.move_to(left + park_x, top + park_y)
         return True
 
     def _reach_map_selected(self, hwnd, stop_event: threading.Event, map_name: str, mode: str,
@@ -3841,6 +4004,69 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, ExpeditionOps, BlockOps)
         # Let the stage/Enter-Matchmaking screen finish animating in before
         # the shared tail searches for its confirm button (same reason
         # _select_stage settles after its own click).
+        time.sleep(SETTLE_DELAY)
+        return not self._checkpoint(stop_event)
+
+    def _reach_tournament_selected(self, hwnd, stop_event: threading.Event, tournament_type: str) -> bool:
+        """Lobby -> Play -> Tournament -> type card, as one restartable unit --
+        Tournament's equivalent of _reach_map_selected. Tournament is reached
+        through Play just like Story/Raid (its nav_tournament button sits on the
+        same gamemode menu, picked instead of Story), NOT via its own lobby
+        entry the way Event is -- so this clicks Play first, then nav_tournament,
+        then the chosen type's card (e.g. Solo Tournament). There's no map
+        carousel or difficulty picker: picking the type IS the whole selection.
+        On any failure it backs out to the lobby (_spam_back_until_gone) so the
+        next attempt starts clean, same as the map/event paths do. The
+        nav_entertournament confirm + solo Start tail is shared (see
+        _enter_selected_stage)."""
+        type_images = TOURNAMENT_TYPE_IMAGES.get(tournament_type)
+        if type_images is None:
+            self._log(f'[Macro] Unknown Tournament type "{tournament_type}" -- '
+                       f'expected one of {TOURNAMENT_TYPE_ORDER}.')
+            return False
+        if isinstance(type_images, str):
+            type_images = (type_images,)
+
+        # Same "gamemode menu already open" shortcut as _reach_map_selected: if
+        # nav_back is on screen the menu's already up, so checking for the lobby
+        # and clicking Play would just burn LOBBY_CHECK_TIMEOUT waiting for a
+        # Play button that doesn't exist there. Skip straight to nav_tournament.
+        try:
+            already_open = vision.find_image(hwnd, "nav_back") is not None
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Macro] {exc}")
+            return False
+        if already_open:
+            self._log("[Macro] Already on the gamemode menu -- skipping the lobby and Play.")
+        else:
+            if not self._ensure_lobby(hwnd, stop_event):
+                return False
+            if self._checkpoint(stop_event):
+                return False
+            if not self._click_play(hwnd, stop_event):
+                return False
+            if self._checkpoint(stop_event):
+                return False
+
+        # nav_tournament: the Tournament button on the gamemode menu (picked in
+        # place of Story), then its type card. Both clicks are wait-then-click
+        # with a focus-safe verify via _click_found_image, and each screen
+        # animates in, so a short settle follows before searching the next one.
+        self._set_status(action="Clicking Tournament...")
+        if self._click_found_image(hwnd, "nav_tournament", TOURNAMENT_SCREEN_TIMEOUT, stop_event) is None:
+            self._spam_back_until_gone(hwnd, stop_event)
+            return False
+        if self._checkpoint(stop_event):
+            return False
+        time.sleep(SETTLE_DELAY)
+
+        self._set_status(action=f"Selecting {tournament_type}...")
+        if self._click_found_image(hwnd, type_images[0], TOURNAMENT_SCREEN_TIMEOUT, stop_event) is None:
+            self._spam_back_until_gone(hwnd, stop_event)
+            return False
+        # Let the Enter Tournament screen finish animating in before the shared
+        # tail searches for nav_entertournament (same reason the event/map
+        # paths settle after their final click).
         time.sleep(SETTLE_DELAY)
         return not self._checkpoint(stop_event)
 

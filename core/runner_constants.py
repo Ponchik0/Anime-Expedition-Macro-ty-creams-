@@ -205,6 +205,26 @@ EVENT_ACT_IMAGES = {
 EVENT_ACT_SCROLL_FROM_INDEX = 2  # 0-based into EVENT_ACT_ORDER: index 2 == Act "3"
 EVENT_SCREEN_TIMEOUT = 10.0  # how long to wait for each Event screen (nav_event / event_gamemode / the Act card) to appear
 
+# Tournament mode: reached through Play like Story/Raid -- its nav_tournament
+# button sits on the same gamemode menu (picked instead of Story), NOT via its
+# own lobby entry the way Event's nav_event is. After nav_tournament comes a
+# type card, then the nav_entertournament confirm and the shared solo Start/
+# teleport tail (nav_start). There's no map carousel and no difficulty picker --
+# picking the type IS the whole selection. The chosen type string is stored in the task's
+# `map` field (mirrors TASK_DATA.tournament.maps in ui/app.js), so it also
+# shows verbatim in the logs, Status Readout, and match webhook. Each type maps
+# to its own on-screen button image; add a new (type -> image) pair here and
+# the matching entry to TASK_DATA.tournament.maps to offer another type. The
+# image folder names ship under Assets/ui/ exactly as written below.
+TOURNAMENT_TYPE_ORDER = ["Solo Tournament"]
+# Values are a tuple of candidate crops per type (any match wins), same shape
+# as EVENT_ACT_IMAGES, so a card shown in more than one visual state can still
+# be matched.
+TOURNAMENT_TYPE_IMAGES = {
+    "Solo Tournament": ("solo_tournament",),
+}
+TOURNAMENT_SCREEN_TIMEOUT = 10.0  # how long to wait for each Tournament screen (nav_tournament / the type card / nav_entertournament) to appear
+
 # Auto Bounty derives all objective clicks from the live board. These values
 # only bound waits and the board's outer scroll gesture.
 BOUNTY_SCREEN_TIMEOUT = 10.0
@@ -219,6 +239,11 @@ BOUNTY_HORIZONTAL_WHEEL_DELTA = -360
 BOUNTY_HORIZONTAL_SCROLL_STEPS = 8
 BOUNTY_SCROLL_SETTLE = 0.45
 BOUNTY_MAX_OBJECTIVES_PER_START = 10
+BOUNTY_SUMMON_BATCH_SIZE = 50
+BOUNTY_SUMMON_MAX_BATCHES_PER_START = 20
+BOUNTY_SUMMON_NAV_TIMEOUT = 12.0
+BOUNTY_SUMMON_ANIMATION_DELAY = 3.0
+BOUNTY_SUMMON_MENU_SETTLE = 1.5
 
 # Villian Invasion Act 4 ("Crow - Dawn") relic gate. DROP_RELIC_IMAGE is the
 # Crow Relic reward shown on the Victory screen (relics only drop on a win) --
@@ -299,14 +324,6 @@ TELEPORT_IN_TIMEOUT = 30.0
 MATCHMAKING_TELEPORT_TIMEOUT = 300.0
 SOLO_START_RETRY_ATTEMPTS = 3
 SOLO_TELEPORT_PER_ATTEMPT_TIMEOUT = 20.0  # generous per chunk -- a slow teleport shouldn't burn through attempts
-# How long teleportstuck.png (optional -- see Assets/ui/README.txt) must be
-# CONTINUOUSLY visible during a teleport-in wait before the game is treated
-# as broken and needing a rejoin, rather than just a slow loading screen.
-# Roblox's own disconnect prompt (Assets/ui/reconnect/ -- several visual
-# variants incl. the "Retry" wording, all in that one folder) is a DEFINITE
-# signal on its own -- no continuous-visibility wait needed, unlike
-# teleportstuck's spinner which can be a false alarm for a moment.
-TELEPORT_STUCK_TIMEOUT = 10.0
 TELEPORT_POLL_INTERVAL = 0.3
 RECONNECT_IMAGE_NAMES = ("reconnect",)
 
@@ -734,3 +751,24 @@ PLACE_PENDING_MAX_TRIES = 4        # столько подходов на юни
 # Позже этого момента боя догонять уже бессмысленно: волны ушли далеко вперёд,
 # а лишний юнит в тылу ничего не решает. Считается от начала боя.
 PLACE_PENDING_DEADLINE_S = 300.0
+# Auto Fuel is clock-driven rather than win-driven. Each resource keeps its
+# own successful-refill timestamp so one failed station never makes the other
+# repeat early or wait another full cycle.
+FUEL_RESOURCES = ("resource_drill", "gold_mine")
+FUEL_PATH_KEYS = (
+    "hub_to_resource_drill",
+    "hub_to_gold_mine",
+    "resource_drill_to_gold_mine",
+)
+FUEL_INTERVAL_SECONDS = 8 * 60 * 60
+FUEL_RETRY_SECONDS = 15 * 60
+FUEL_AMOUNT_MAX = 100
+FUEL_AREA_TIMEOUT = 10.0
+FUEL_LOAD_TIMEOUT = 60.0
+FUEL_LOAD_SETTLE = 1.5
+FUEL_CLICK_DELAY = 1.2
+FUEL_ACTION_TIMEOUT = 15.0
+FUEL_CONFIRM_TIMEOUT = 20.0
+FUEL_CLOSE_TIMEOUT = 2.0
+
+

@@ -11,7 +11,7 @@ import json
 import queue
 import subprocess
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from core import window as wm
 from core import config
@@ -143,6 +143,10 @@ ROBLOX_RELAUNCH_COOLDOWN = 60.0
 HOTKEY_DEFAULTS = {
     "toggle_game": "f4", "skip_waiting": "", "macro_start": "f1", "macro_stop": "f2", "macro_pause": "f5",
     "debug_screenshot": "f3",
+    # Sent to Roblox by an Auto Upgrade Unit block whose Input is set to
+    # Hotkey. This is deliberately not registered as an app-wide shortcut
+    # in _register_hotkeys: it belongs to the game, not the macro UI.
+    "game_auto_upgrade": "",
     # Toggles the Image Manager from anywhere -- capturing a missing crop
     # right when a search fails shouldn't need clicking back through
     # Settings > General first.
@@ -202,13 +206,16 @@ RUN_HISTORY_LIMIT = 50  # oldest entries drop off past this -- a running log, no
 # keyed by MAP (which macro to run for it, how many times it's been played
 # today) while the 3 slots are just simple on/off toggles for "attempt
 # whatever's in this slot". CHALLENGE_STORY_MAPS matches TASK_DATA.story's
-# maps in ui/app.js. Daily counts use the game's shared 00:00 UTC rollover;
-# the independent stage-availability clock still rotates every :00/:30.
+# maps in ui/app.js. Daily counts and the once-a-day Daily Challenge use the
+# game's shared 00:00 UTC rollover; the independent Regular Challenge
+# stage-availability clock still rotates every :00/:30.
 CHALLENGE_STORY_MAPS = ["School Grounds", "Rose Kingdom", "Fairy King Forest", "King's Tomb", "Flower Forest"]
 CHALLENGE_STAGE_SLOTS = ["1", "2", "3"]
 CHALLENGE_DAILY_CAP = 10  # fixed, not user-editable -- see get_challenge_settings
 CHALLENGE_RESET_SCHEDULE = "utc_midnight_v1"
 BOUNTY_STORY_MAPS = list(CHALLENGE_STORY_MAPS)
+BOUNTY_DAILY_TOTAL = 10
+BOUNTY_RESET_SCHEDULE = CHALLENGE_RESET_SCHEDULE
 
 
 def _current_challenge_reset_period(now: float = None) -> str:
@@ -252,34 +259,52 @@ def _current_challenge_window_start(now: float = None) -> float:
 
 
 def _time_until_challenge_ready(challenge: dict) -> str:
-    """"Ready" if any enabled, not-yet-capped stage slot hasn't been
-    played in the CURRENT :00/:30 window yet; otherwise MM:SS until the
-    next :00/:30 mark (same clock for every slot). "All capped" if every
-    enabled slot has hit today's daily cap, "No stages enabled" if none
-    are toggled on at all. Computed fresh on every get_status() poll, same
-    "don't store text, compute it live" approach as _format_ago."""
+    """"Ready" if Daily Challenge or any enabled Regular slot is ready.
+
+    Regular slots rotate at :00/:30. Daily Challenge becomes ready at the
+    shared 00:00 UTC game reset. The shortest relevant wait is returned
+    without storing a countdown, so a long-running app crosses either
+    boundary without a restart.
+    """
+    daily = challenge.get("daily") or {}
+    daily_enabled = bool(daily.get("enabled"))
+    if daily_enabled and daily.get("ready"):
+        return "Ready"
+
     cap = challenge.get("cap", 0)
     any_enabled = False
     any_uncapped = False
-    for info in challenge.get("stages", {}).values():
-        if not info.get("enabled"):
-            continue
-        any_enabled = True
-        if cap and info.get("count", 0) >= cap:
-            continue
-        any_uncapped = True
-        if info.get("ready"):
-            return "Ready"
-    if not any_enabled:
+    if challenge.get("enabled"):
+        for info in challenge.get("stages", {}).values():
+            if not info.get("enabled"):
+                continue
+            any_enabled = True
+            if cap and info.get("count", 0) >= cap:
+                continue
+            any_uncapped = True
+            if info.get("ready"):
+                return "Ready"
+
+    if not any_enabled and not daily_enabled:
         return "No stages enabled"
-    if not any_uncapped:
+    if not any_uncapped and not daily_enabled:
         return "All capped"
+
     now = time.time()
-    local = time.localtime(now)
-    secs_into_hour = local.tm_min * 60 + local.tm_sec
-    remaining = (1800 - secs_into_hour) if secs_into_hour < 1800 else (3600 - secs_into_hour)
-    mins, secs = divmod(int(remaining), 60)
-    return f"{mins:02d}:{secs:02d}"
+    waits = []
+    if any_uncapped:
+        local = time.localtime(now)
+        secs_into_hour = local.tm_min * 60 + local.tm_sec
+        waits.append((1800 - secs_into_hour) if secs_into_hour < 1800 else (3600 - secs_into_hour))
+    if daily_enabled:
+        utc_now = datetime.fromtimestamp(now, timezone.utc)
+        next_reset = (utc_now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        waits.append(max(1, int(next_reset.timestamp() - now)))
+
+    remaining = min(waits)
+    hours, remainder = divmod(int(remaining), 3600)
+    mins, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{mins:02d}:{secs:02d}" if hours else f"{mins:02d}:{secs:02d}"
 
 
 def _get_build_info() -> str:
@@ -475,7 +500,9 @@ class Api:
         self.runner = MacroRunner(
             self.mouse, self.keyboard, self.push_log, self._set_run_status, self._record_match_result,
             self.get_challenge_settings, self.mark_challenge_stage_played, self._run_stats_snapshot,
-            self.get_crafting_settings, self.set_crafting_count, self.get_bounty_settings)
+            self.get_crafting_settings, self.set_crafting_count, self.get_bounty_settings,
+            self.set_bounty_remaining, self.get_fuel_settings, self.mark_fuel_refill_result,
+            self.get_hotkeys)
 
     def _run_stats_snapshot(self) -> dict:
         # Fed to the runner's match-result webhook so it can report the same
@@ -487,8 +514,9 @@ class Api:
         data = cfg.load()
         try:
             challenge = self.get_challenge_settings()
+            challenge_enabled = challenge.get("enabled") or (challenge.get("daily") or {}).get("enabled")
             time_until_challenge = (_time_until_challenge_ready(challenge)
-                                     if challenge.get("enabled") else "Disabled")
+                                     if challenge_enabled else "Disabled")
         except Exception:
             time_until_challenge = "Disabled"
         # run_history is newest-first (see _record_match_result) -- reversed to
@@ -507,8 +535,39 @@ class Api:
             "runs_per_hour": self._calculate_runs_per_hour(history),  # Runs per hour rate over rolling window
         }
 
+    def reset_run_status(self, action: str = "Idle") -> None:
+        """Resets all task-specific status fields to default '-' placeholders while setting the action text."""
+        self._run_status = {
+            "current_task": "-",
+            "current_repeat": "-",
+            "map": "-",
+            "action": action,
+            "mode": "-",
+            "stage": "-",
+            "difficulty": "-",
+            "play_mode": "-",
+            "macro": "-",
+        }
+
     def _set_run_status(self, **kwargs) -> None:
-        self._run_status.update(kwargs)
+        action = kwargs.get("action")
+        should_reset = kwargs.pop("reset", False)
+        if should_reset or (action and (action == "Idle" or action.startswith("Stopped") or action.startswith("Completed")) and "current_task" not in kwargs):
+            new_status = {
+                "current_task": "-",
+                "current_repeat": "-",
+                "map": "-",
+                "action": action if action else "Idle",
+                "mode": "-",
+                "stage": "-",
+                "difficulty": "-",
+                "play_mode": "-",
+                "macro": "-",
+            }
+            new_status.update(kwargs)
+            self._run_status = new_status
+        else:
+            self._run_status.update(kwargs)
         self._pending_path_events = None  # stopped-but-not-yet-named recording (see stop_path_capture)
 
     def set_window(self, window):
@@ -661,7 +720,11 @@ class Api:
             "wins": wins,
             "losses": losses,
             "win_rate": round(wins / (wins + losses) * 100) if (wins + losses) else None,
-            "time_until_challenge": _time_until_challenge_ready(challenge) if challenge.get("enabled") else "Disabled",
+            "time_until_challenge": (
+                _time_until_challenge_ready(challenge)
+                if challenge.get("enabled") or (challenge.get("daily") or {}).get("enabled")
+                else "Disabled"
+            ),
             "all_time_wins": all_time_wins,
             "all_time_losses": all_time_losses,
             "all_time_win_rate": (
@@ -810,6 +873,10 @@ class Api:
         return {
             "enabled": False,
             "play_mode": "solo",
+            "daily": {
+                "enabled": False,
+                "last_completed_period": "",
+            },
             "cap": CHALLENGE_DAILY_CAP,
             # The daily play limit tracks each STAGE SLOT (Regular Challenge
             # #1/#2/#3), not the map -- whichever map is currently rotated
@@ -844,6 +911,11 @@ class Api:
         merged["cap"] = CHALLENGE_DAILY_CAP  # fixed -- ignore any stale saved value from before this was hardcoded
         if merged.get("play_mode") not in ("solo", "matchmaking"):
             merged["play_mode"] = "solo"
+        saved_daily = saved.get("daily") or {}
+        merged["daily"] = {
+            "enabled": bool(saved_daily.get("enabled", False)),
+            "last_completed_period": str(saved_daily.get("last_completed_period") or ""),
+        }
         window_start = _current_challenge_window_start()
         merged_stages = {}
         for slot in CHALLENGE_STAGE_SLOTS:
@@ -875,6 +947,7 @@ class Api:
         merged["maps"] = merged_maps
 
         reset_period = _current_challenge_reset_period()
+        merged["daily"]["ready"] = merged["daily"]["last_completed_period"] != reset_period
         if saved.get("reset_schedule") != CHALLENGE_RESET_SCHEDULE:
             # Older versions stored the computer's local date. That value
             # cannot be compared safely with a UTC game-day identifier,
@@ -892,13 +965,19 @@ class Api:
         return merged
 
     def mark_challenge_stage_played(self, stage: str, count_play: bool = True) -> dict:
-        # Called by the runner right after actually running a Challenge
-        # stage -- starts that slot's cooldown (not ready again until the
-        # next :00/:30 window) and bumps its daily count in one write.
+        # "daily" rests the once-a-day challenge until the next game day.
+        # A numbered Regular slot starts its :00/:30 cooldown and bumps its
+        # daily count in one write.
         # count_play=False is the LOSS case: the cooldown still applies
         # (retrying the same rotated-in stage right away just loses again
         # -- wait for the next window), but a loss shouldn't eat one of the
         # day's capped plays the way a real completion does.
+        if stage == "daily":
+            challenge = self.get_challenge_settings()
+            challenge["daily"]["last_completed_period"] = _current_challenge_reset_period()
+            challenge["daily"]["ready"] = False
+            cfg.update({"challenge": challenge})
+            return {"ok": True}
         if stage not in CHALLENGE_STAGE_SLOTS:
             return {"ok": False, "reason": "bad_stage"}
         challenge = self.get_challenge_settings()
@@ -919,6 +998,27 @@ class Api:
             return {"ok": False, "reason": "bad_play_mode"}
         challenge = self.get_challenge_settings()
         challenge["play_mode"] = play_mode
+        cfg.update({"challenge": challenge})
+        return {"ok": True}
+
+    def set_daily_challenge_enabled(self, enabled: bool) -> dict:
+        challenge = self.get_challenge_settings()
+        challenge["daily"]["enabled"] = bool(enabled)
+        cfg.update({"challenge": challenge})
+        return {"ok": True}
+
+    def set_daily_challenge_count(self, count) -> dict:
+        """Manually set today's once-per-day progress to 0 or 1."""
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "bad_count"}
+        if count not in (0, 1):
+            return {"ok": False, "reason": "bad_count"}
+        challenge = self.get_challenge_settings()
+        challenge["daily"]["last_completed_period"] = (
+            _current_challenge_reset_period() if count else "")
+        challenge["daily"]["ready"] = count == 0
         cfg.update({"challenge": challenge})
         return {"ok": True}
 
@@ -976,10 +1076,12 @@ class Api:
         for s in challenge["stages"].values():
             s["count"] = 0
             s["last_played_at"] = 0  # also clears cooldown -- every slot becomes available immediately
+        challenge["daily"]["last_completed_period"] = ""
+        challenge["daily"]["ready"] = True
         challenge["last_reset_date"] = _current_challenge_reset_period()
         challenge["reset_schedule"] = CHALLENGE_RESET_SCHEDULE
         cfg.update({"challenge": challenge})
-        self.push_log("[Challenge] Play counts and cooldowns reset manually.")
+        self.push_log("[Challenge] Daily status, play counts, and cooldowns reset manually.")
         return {"ok": True}
 
     # ── Auto Crafting (see core/runner_crafting.py) ──
@@ -988,25 +1090,116 @@ class Api:
         return {
             "enabled": False,
             "play_mode": "solo",
+            "summon_banner": "standard",
+            "remaining": BOUNTY_DAILY_TOTAL,
+            "total": BOUNTY_DAILY_TOTAL,
+            "last_reset_date": _current_challenge_reset_period(),
+            "reset_schedule": BOUNTY_RESET_SCHEDULE,
             "maps": {name: {"macro": ""} for name in BOUNTY_STORY_MAPS},
         }
+
+    @staticmethod
+    def _bounty_macro_setup(settings: dict) -> dict:
+        """Whether every possible Story destination has a usable macro.
+
+        Auto Bounty does not know which map the board will request until
+        after it opens that objective. Starting with only some maps
+        configured therefore guarantees that a later objective can enter a
+        battle with no Pre Start blocks and no units. Treat the five-map
+        assignment as one required setup instead of discovering the hole
+        after teleporting.
+        """
+        maps = settings.get("maps") or {}
+        missing_maps = []
+        invalid_maps = []
+        for map_name in BOUNTY_STORY_MAPS:
+            macro_name = str((maps.get(map_name) or {}).get("macro") or "").strip()
+            if not macro_name:
+                missing_maps.append(map_name)
+                continue
+            if not tpl.template_exists(macro_name):
+                invalid_maps.append({"map": map_name, "macro": macro_name})
+                continue
+            data = tpl.load_template(macro_name)
+            if not isinstance(data.get("blocks"), dict):
+                invalid_maps.append({"map": map_name, "macro": macro_name})
+        return {
+            "setup_ready": not missing_maps and not invalid_maps,
+            "missing_maps": missing_maps,
+            "invalid_maps": invalid_maps,
+        }
+
+    @staticmethod
+    def _save_bounty_settings(settings: dict) -> None:
+        """Persist only settings, not the computed setup-status fields."""
+        cfg.update({"bounty": {
+            "enabled": bool(settings.get("enabled")),
+            "play_mode": settings.get("play_mode") or "solo",
+            "summon_banner": settings.get("summon_banner") or "standard",
+            "maps": settings.get("maps") or {},
+        }})
 
     def get_bounty_settings(self) -> dict:
         saved = cfg.load().get("bounty") or {}
         merged = {**self._default_bounty_settings(), **saved}
         if merged.get("play_mode") not in ("solo", "matchmaking"):
             merged["play_mode"] = "solo"
+        if merged.get("summon_banner") not in ("standard", "villain"):
+            merged["summon_banner"] = "standard"
+        try:
+            total = max(1, min(99, int(merged.get("total") or BOUNTY_DAILY_TOTAL)))
+        except (TypeError, ValueError):
+            total = BOUNTY_DAILY_TOTAL
+        try:
+            remaining = max(0, min(total, int(merged.get("remaining", total))))
+        except (TypeError, ValueError):
+            remaining = total
+        merged["total"] = total
+        merged["remaining"] = remaining
         saved_maps = saved.get("maps") or {}
         merged["maps"] = {
             name: {"macro": (saved_maps.get(name) or {}).get("macro") or ""}
             for name in BOUNTY_STORY_MAPS
         }
+        merged.update(self._bounty_macro_setup(merged))
+        reset_period = _current_challenge_reset_period()
+        if saved.get("reset_schedule") != BOUNTY_RESET_SCHEDULE:
+            # Adopt the shared UTC game-day schedule without changing a
+            # pre-existing count during migration.
+            merged["last_reset_date"] = reset_period
+            merged["reset_schedule"] = BOUNTY_RESET_SCHEDULE
+            cfg.update({"bounty": merged})
+        elif merged.get("last_reset_date") != reset_period:
+            merged["remaining"] = merged["total"]
+            merged["last_reset_date"] = reset_period
+            cfg.update({"bounty": merged})
+            self.push_log("[Bounty] Daily bounty tracker reset.")
         return merged
 
     def set_bounty_enabled(self, enabled: bool) -> dict:
         settings = self.get_bounty_settings()
+        if enabled and not settings["setup_ready"]:
+            settings["enabled"] = False
+            self._save_bounty_settings(settings)
+            missing = ", ".join(settings["missing_maps"])
+            invalid = ", ".join(
+                f'{item["map"]} ("{item["macro"]}")'
+                for item in settings["invalid_maps"])
+            details = "; ".join(part for part in (
+                f"unassigned: {missing}" if missing else "",
+                f"missing or old macros: {invalid}" if invalid else "",
+            ) if part)
+            self.push_log(
+                "[Macro] Auto Bounty was not enabled. Assign a saved Macro Operation "
+                f"to every Story map first ({details}).")
+            return {
+                "ok": False,
+                "reason": "incomplete_bounty_maps",
+                "missing_maps": settings["missing_maps"],
+                "invalid_maps": settings["invalid_maps"],
+            }
         settings["enabled"] = bool(enabled)
-        cfg.update({"bounty": settings})
+        self._save_bounty_settings(settings)
         return {"ok": True}
 
     def set_bounty_play_mode(self, play_mode: str) -> dict:
@@ -1014,7 +1207,15 @@ class Api:
             return {"ok": False, "reason": "bad_play_mode"}
         settings = self.get_bounty_settings()
         settings["play_mode"] = play_mode
-        cfg.update({"bounty": settings})
+        self._save_bounty_settings(settings)
+        return {"ok": True}
+
+    def set_bounty_summon_banner(self, banner: str) -> dict:
+        if banner not in ("standard", "villain"):
+            return {"ok": False, "reason": "bad_banner"}
+        settings = self.get_bounty_settings()
+        settings["summon_banner"] = banner
+        self._save_bounty_settings(settings)
         return {"ok": True}
 
     def set_bounty_map_macro(self, map_name: str, macro: str) -> dict:
@@ -1022,8 +1223,37 @@ class Api:
             return {"ok": False, "reason": "bad_map"}
         settings = self.get_bounty_settings()
         settings["maps"][map_name]["macro"] = macro or ""
+        setup = self._bounty_macro_setup(settings)
+        auto_disabled = bool(settings.get("enabled") and not setup["setup_ready"])
+        if auto_disabled:
+            settings["enabled"] = False
+            self.push_log(
+                f'[Macro] Auto Bounty was disabled because "{map_name}" no longer '
+                "has a usable Macro Operation.")
+        self._save_bounty_settings(settings)
+        return {"ok": True, "auto_disabled": auto_disabled, **setup}
+
+    def set_bounty_remaining(self, remaining, total=None) -> dict:
+        settings = self.get_bounty_settings()
+        if total is not None:
+            try:
+                settings["total"] = max(1, min(99, int(total)))
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "bad_total"}
+        try:
+            settings["remaining"] = max(
+                0, min(settings["total"], int(remaining)))
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "bad_remaining"}
+        settings["last_reset_date"] = _current_challenge_reset_period()
+        settings["reset_schedule"] = BOUNTY_RESET_SCHEDULE
         cfg.update({"bounty": settings})
         return {"ok": True}
+
+    def reset_bounty_remaining(self) -> dict:
+        settings = self.get_bounty_settings()
+        return self.set_bounty_remaining(
+            settings["total"], settings["total"])
 
     def _default_crafting_settings(self) -> dict:
         from core.runner_constants import CRAFT_SPRITES, CRAFT_DEFAULT_EVERY
@@ -1177,6 +1407,200 @@ class Api:
         coords = {k: data.get(k, v) for k, v in MACRO_COORD_DEFAULTS.items()}
         return self.runner.start_crafting_test(lambda: self.game_hwnd, coords)
 
+    # ── Auto Fuel (see core/runner_fuel.py) ──
+
+    @staticmethod
+    def _default_fuel_settings() -> dict:
+        return {
+            "enabled": False,
+            "resources": {
+                "resource_drill": {
+                    "enabled": False,
+                    "amount": "max",
+                    "last_refilled_at": 0.0,
+                    "next_attempt_at": 0.0,
+                },
+                "gold_mine": {
+                    "enabled": False,
+                    "amount": "max",
+                    "last_refilled_at": 0.0,
+                    "next_attempt_at": 0.0,
+                },
+            },
+            "paths": {
+                "hub_to_resource_drill": "Auto Fuel - Hub to Resource Drill",
+                "hub_to_gold_mine": "Auto Fuel - Hub to Gold Mine",
+                "resource_drill_to_gold_mine": "Auto Fuel - Resource Drill to Gold Mine",
+            },
+        }
+
+    def _save_fuel_settings(self, fuel: dict) -> dict:
+        """Persist only the canonical fields, never the derived timer values."""
+        from core.runner_constants import FUEL_PATH_KEYS, FUEL_RESOURCES
+
+        canonical = {
+            "enabled": bool(fuel.get("enabled")),
+            "resources": {},
+            "paths": {},
+        }
+        for key in FUEL_RESOURCES:
+            source = (fuel.get("resources") or {}).get(key) or {}
+            canonical["resources"][key] = {
+                "enabled": bool(source.get("enabled")),
+                "amount": source.get("amount", "max"),
+                "last_refilled_at": float(source.get("last_refilled_at") or 0),
+                "next_attempt_at": float(source.get("next_attempt_at") or 0),
+            }
+        for key in FUEL_PATH_KEYS:
+            canonical["paths"][key] = str((fuel.get("paths") or {}).get(key) or "")
+        cfg.update({"fuel_refill": canonical})
+        return canonical
+
+    def get_fuel_settings(self) -> dict:
+        from core.runner_constants import (
+            FUEL_AMOUNT_MAX,
+            FUEL_INTERVAL_SECONDS,
+            FUEL_PATH_KEYS,
+            FUEL_RESOURCES,
+            FUEL_RETRY_SECONDS,
+        )
+
+        defaults = self._default_fuel_settings()
+        saved = cfg.load().get("fuel_refill") or {}
+        fuel = {
+            "enabled": bool(saved.get("enabled", defaults["enabled"])),
+            "resources": {},
+            "paths": {},
+            "interval_seconds": FUEL_INTERVAL_SECONDS,
+            "retry_seconds": FUEL_RETRY_SECONDS,
+        }
+        saved_resources = saved.get("resources") if isinstance(saved.get("resources"), dict) else {}
+        now = time.time()
+        for key in FUEL_RESOURCES:
+            saved_source = saved_resources.get(key) if isinstance(saved_resources.get(key), dict) else {}
+            source = {
+                **defaults["resources"][key],
+                **saved_source,
+            }
+            amount = source.get("amount", "max")
+            if str(amount).lower() == "max":
+                amount = "max"
+            else:
+                try:
+                    amount = min(FUEL_AMOUNT_MAX, max(1, int(amount)))
+                except (TypeError, ValueError):
+                    amount = "max"
+            try:
+                last_refilled_at = max(0.0, float(source.get("last_refilled_at") or 0))
+            except (TypeError, ValueError):
+                last_refilled_at = 0.0
+            try:
+                next_attempt_at = max(0.0, float(source.get("next_attempt_at") or 0))
+            except (TypeError, ValueError):
+                next_attempt_at = 0.0
+            # Legacy development builds used retry_after only for failures.
+            # Derive the regular 8-hour attempt once when that older shape is read.
+            if "next_attempt_at" not in saved_source:
+                try:
+                    retry_after = max(0.0, float(source.get("retry_after") or 0))
+                except (TypeError, ValueError):
+                    retry_after = 0.0
+                next_attempt_at = max(
+                    (last_refilled_at + FUEL_INTERVAL_SECONDS) if last_refilled_at else 0.0,
+                    retry_after,
+                )
+            resource_enabled = bool(source.get("enabled"))
+            due = bool(fuel["enabled"] and resource_enabled and now >= next_attempt_at)
+            fuel["resources"][key] = {
+                "enabled": resource_enabled,
+                "amount": amount,
+                "last_refilled_at": last_refilled_at,
+                "next_attempt_at": next_attempt_at,
+                "next_due_at": next_attempt_at,
+                "remaining_seconds": max(0, int(next_attempt_at - now + 0.999)),
+                "due": due,
+            }
+
+        saved_paths = saved.get("paths") if isinstance(saved.get("paths"), dict) else {}
+        for key in FUEL_PATH_KEYS:
+            fuel["paths"][key] = str(
+                saved_paths[key] if key in saved_paths else defaults["paths"][key])
+        return fuel
+
+    def set_fuel_enabled(self, enabled: bool) -> dict:
+        fuel = self.get_fuel_settings()
+        fuel["enabled"] = bool(enabled)
+        self._save_fuel_settings(fuel)
+        return {"ok": True}
+
+    def set_fuel_resource_enabled(self, resource: str, enabled: bool) -> dict:
+        from core.runner_constants import FUEL_RESOURCES
+
+        if resource not in FUEL_RESOURCES:
+            return {"ok": False, "reason": "bad_resource"}
+        fuel = self.get_fuel_settings()
+        fuel["resources"][resource]["enabled"] = bool(enabled)
+        self._save_fuel_settings(fuel)
+        return {"ok": True}
+
+    def set_fuel_resource_amount(self, resource: str, amount) -> dict:
+        from core.runner_constants import FUEL_AMOUNT_MAX, FUEL_RESOURCES
+
+        if resource not in FUEL_RESOURCES:
+            return {"ok": False, "reason": "bad_resource"}
+        if str(amount).lower() == "max":
+            amount = "max"
+        else:
+            try:
+                amount = min(FUEL_AMOUNT_MAX, max(1, int(amount)))
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "bad_amount"}
+        fuel = self.get_fuel_settings()
+        fuel["resources"][resource]["amount"] = amount
+        self._save_fuel_settings(fuel)
+        return {"ok": True}
+
+    def set_fuel_path(self, path_key: str, path_name: str) -> dict:
+        from core.runner_constants import FUEL_PATH_KEYS
+
+        if path_key not in FUEL_PATH_KEYS:
+            return {"ok": False, "reason": "bad_path_key"}
+        fuel = self.get_fuel_settings()
+        fuel["paths"][path_key] = str(path_name or "")
+        self._save_fuel_settings(fuel)
+        return {"ok": True}
+
+    def reset_fuel_timer(self) -> dict:
+        fuel = self.get_fuel_settings()
+        for resource in fuel["resources"].values():
+            if resource.get("enabled"):
+                resource["last_refilled_at"] = 0.0
+                resource["next_attempt_at"] = 0.0
+        self._save_fuel_settings(fuel)
+        self.push_log("[Fuel] Enabled resource timers reset. Auto Fuel is ready at the next safe point.")
+        return {"ok": True}
+
+    def mark_fuel_refill_result(self, resource: str, succeeded: bool) -> dict:
+        from core.runner_constants import FUEL_INTERVAL_SECONDS, FUEL_RESOURCES, FUEL_RETRY_SECONDS
+
+        if resource not in FUEL_RESOURCES:
+            return {"ok": False, "reason": "bad_resource"}
+        fuel = self.get_fuel_settings()
+        state = fuel["resources"][resource]
+        now = time.time()
+        if succeeded:
+            state["last_refilled_at"] = now
+            state["next_attempt_at"] = now + FUEL_INTERVAL_SECONDS
+        else:
+            state["next_attempt_at"] = now + FUEL_RETRY_SECONDS
+        self._save_fuel_settings(fuel)
+        return {"ok": True}
+
+    def test_fuel(self) -> dict:
+        # Runs the checked resources immediately, ignoring the master toggle
+        # and persistent timer while preserving the real navigation flow.
+        return self.runner.start_fuel_test(lambda: self.game_hwnd)
+
     def start_macro(self) -> dict:
         # Проверка окружения идёт ПЕРВОЙ в обоих режимах.
         # Сначала я делал для «Повтора» ранний выход до неё — рассуждая, что
@@ -1187,13 +1611,17 @@ class Api:
         preflight = self.run_preflight_check()
         if preflight.get("has_blocker", False):
             self.push_log("[Preflight] Start blocked due to environment/configuration issue.")
+            self.reset_run_status("Idle")
             return {"ok": False, "reason": "preflight_blocker", "preflight": preflight}
 
         # Окружение в порядке — теперь решаем, ЧТО запускать.
         # В режиме «Повтор» кнопка «Старт» крутит запись, а не очередь задач.
+        # Проверка идёт ДО сброса статуса: у повтора свой статус, и затирать
+        # его строкой про очередь задач нельзя.
         if cfg.load().get("run_mode") == "replay":
             return self.replay_play()
 
+        self.reset_run_status("Starting macro execution...")
         data = cfg.load()
         scroll_power = data.get("story_scroll_power", 3)
         scroll_nudges = data.get("story_scroll_nudges", 8)
@@ -1217,7 +1645,11 @@ class Api:
         self.replay_stop()
         if getattr(self, "_recorder", None) is not None and self._recorder.running:
             self.replay_stop_recording()
-        return self.runner.stop()
+        res = self.runner.stop()
+        # Сброс статуса на «Idle» -- из апстрима: без него на Дашборде
+        # оставались поля последней задачи, будто прогон ещё идёт.
+        self.reset_run_status("Idle")
+        return res
 
     def pause_macro(self) -> dict:
         p = getattr(self, "_player", None)
@@ -1750,6 +2182,18 @@ class Api:
         return {"ok": ok}
 
     def export_template_code(self, names=None) -> dict:
+        from core import paths
+
+        def _bundle(*block_sets):
+            # Recorded walks that the macro's custom Walk Path blocks reference,
+            # packed alongside so they work on the importer's machine (auto-mode
+            # walks use shipped defaults everyone already has -- see
+            # share.collect_walk_path_names).
+            needed = set()
+            for blocks in block_sets:
+                needed |= share.collect_walk_path_names(blocks)
+            return paths.collect_paths(needed)
+
         if isinstance(names, str) and names.strip():
             if not tpl.template_exists(names):
                 return {"ok": False, "reason": f'Macro "{names}" is not saved -- save it before exporting.'}
@@ -1761,6 +2205,9 @@ class Api:
                 "name": names,
                 "blocks": blocks,
             }
+            bundled = _bundle(blocks)
+            if bundled:
+                payload["paths"] = bundled
             code = share.encode_template_code(payload)
             return {"ok": True, "code": code, "count": 1}
         elif isinstance(names, list) and len(names) > 0:
@@ -1776,6 +2223,9 @@ class Api:
                     "name": t_name,
                     "blocks": blocks,
                 }
+                bundled = _bundle(blocks)
+                if bundled:
+                    payload["paths"] = bundled
                 code = share.encode_template_code(payload)
                 return {"ok": True, "code": code, "count": 1}
             else:
@@ -1790,6 +2240,9 @@ class Api:
                     "version": 1,
                     "templates": templates,
                 }
+                bundled = _bundle(*templates.values())
+                if bundled:
+                    payload["paths"] = bundled
                 code = share.encode_template_code(payload)
                 return {"ok": True, "code": code, "count": len(templates)}
         else:
@@ -1803,10 +2256,15 @@ class Api:
                 "version": 1,
                 "templates": templates,
             }
+            bundled = _bundle(*templates.values())
+            if bundled:
+                payload["paths"] = bundled
             code = share.encode_template_code(payload)
             return {"ok": True, "code": code, "count": len(templates)}
 
     def import_template_code(self, code_str: str) -> dict:
+        from core import paths
+
         res = share.decode_template_code(code_str)
         if not res.get("ok"):
             return {"ok": False, "reason": res.get("reason", "Failed to decode input.")}
@@ -1815,13 +2273,29 @@ class Api:
         if not templates:
             return {"ok": False, "reason": "No valid templates found in code/URL."}
 
+        # Recreate any recorded walks bundled with the macro FIRST, then remap
+        # the blocks to whatever name each landed under (import_path avoids
+        # clobbering a different recording of the same name), so a shared
+        # macro's custom Walk Path blocks resolve on this machine too.
+        bundled_paths = res.get("paths", {}) or {}
+        rename_map = {}
+        for pname, pdata in bundled_paths.items():
+            events = pdata.get("events", []) if isinstance(pdata, dict) else pdata
+            saved_path = paths.import_path(pname, events)
+            if saved_path != pname:
+                rename_map[pname] = saved_path
+
         imported_names = []
         for tname, blocks in templates.items():
+            share.remap_walk_path_names(blocks, rename_map)
             saved = tpl.save_template(tname, blocks)
             imported_names.append(saved)
 
-        self.push_log(f"Imported {len(imported_names)} template(s) via Share Code: {', '.join(imported_names)}")
-        return {"ok": True, "count": len(imported_names), "templates": imported_names}
+        walk_note = f" (+{len(bundled_paths)} walk path(s))" if bundled_paths else ""
+        self.push_log(f"Imported {len(imported_names)} template(s) via Share Code: "
+                       f"{', '.join(imported_names)}{walk_note}")
+        return {"ok": True, "count": len(imported_names), "templates": imported_names,
+                "walk_paths": len(bundled_paths)}
 
     def preview_template_code(self, code_str: str) -> dict:
         return share.preview_template_code(code_str)
@@ -1963,7 +2437,12 @@ class Api:
             if not win:
                 continue
             try:
-                win.evaluate_js("window.clearLogs && window.clearLogs()")
+                # clearLogs() on the dashboard is the user action that calls
+                # this API. Calling it from Python re-enters clear_logs()
+                # recursively and can stall all later log delivery. Invoke
+                # the shared view-only helper in both windows instead.
+                win.evaluate_js(
+                    "window.clearLogView && window.clearLogView()")
             except Exception:
                 pass
 

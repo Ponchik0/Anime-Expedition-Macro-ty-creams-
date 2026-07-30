@@ -191,8 +191,11 @@ function isBlockingOverlayOpen() {
     const el = document.getElementById(id);
     return el && el.style.display !== 'none' && el.style.display !== '';
   };
+  // subscribe-modal из апстрима здесь нет намеренно: этой модалки в нашей
+  // разметке не существует. fuel-paths-modal (Заправка) -- есть, и она тоже
+  // перекрывает игру, поэтому идёт в тот же список.
   if (['update-modal', 'scale-warning-modal', 'onboarding-modal', 'faq-modal', 'share-code-modal'].some(isOpen)) return true;
-  if (!captureDanceActive && ['im-modal', 'pu-modal', 'path-name-modal'].some(isOpen)) return true;
+  if (!captureDanceActive && ['im-modal', 'pu-modal', 'path-name-modal', 'fuel-paths-modal'].some(isOpen)) return true;
   return false;
 }
 
@@ -528,7 +531,7 @@ function switchScreen(name) {
 
   if (name === 'creation') { refreshTemplateList(); refreshSavedPaths(); }
   if (name === 'task') refreshTaskQueue();
-  if (name === 'resource') { refreshCraftingScreen(); refreshChallengeScreen(); refreshBountyScreen(); }
+  if (name === 'resource') { refreshCraftingScreen(); refreshFuelScreen(); refreshChallengeScreen(); refreshBountyScreen(); }
   if (name === 'settings') { refreshSavedPaths(); loadMacroCoords(); loadRewardTestMaps(); }
   if (name === 'settings') czLoad();
   if (name === 'dashboard') refreshRecLive();
@@ -575,8 +578,11 @@ function toggleCompactStrip() {
 }
 
 // ---------------------------------------------------------------------------
-// Status polling
+// Status Polling & UI Synchronization
 // ---------------------------------------------------------------------------
+// Fetches live status dict from the backend every 1.5 seconds and updates all
+// Status Readout DOM elements. When the macro enters Idle/Stopped state, the
+// backend returns reset '-' placeholders for task/map/repeat fields.
 async function refreshStatus() {
   if (!window.pywebview) return;
   try {
@@ -586,6 +592,7 @@ async function refreshStatus() {
     } else {
       showWaiting();
     }
+    // Synchronize live readout fields (Action, Task, Repeat, Map, Mode, etc.)
     document.getElementById('stat-current-task').textContent = status.current_task ?? '-';
     document.getElementById('stat-current-repeat').textContent = status.current_repeat ?? '-';
     document.getElementById('stat-map').textContent = status.map ?? '-';
@@ -832,7 +839,7 @@ let rebindingAction = null;
 // Esc during capture instead.
 const HOTKEY_DEFAULTS = {
   toggle_game: 'f4', skip_waiting: '', macro_start: 'f1', macro_stop: 'f2', macro_pause: 'f5', debug_screenshot: 'f3',
-  image_manager: 'f6', toggle_compact: 'f7',
+  image_manager: 'f6', toggle_compact: 'f7', game_auto_upgrade: '',
 };
 
 // Reflects one hotkey's state into its button text and shows/hides its
@@ -916,6 +923,7 @@ async function resetHotkeys() {
     updateKeybindDisplay('debug_screenshot', hk.debug_screenshot || '');
     updateKeybindDisplay('image_manager', hk.image_manager || '');
     updateKeybindDisplay('toggle_compact', hk.toggle_compact || '');
+    updateKeybindDisplay('game_auto_upgrade', hk.game_auto_upgrade || '');
   } catch (e) {}
 }
 
@@ -1141,6 +1149,7 @@ async function loadSettingsUI() {
     updateKeybindDisplay('debug_screenshot', hk.debug_screenshot || '');
     updateKeybindDisplay('image_manager', hk.image_manager || '');
     updateKeybindDisplay('toggle_compact', hk.toggle_compact || '');
+    updateKeybindDisplay('game_auto_upgrade', hk.game_auto_upgrade || '');
     // (There was an updateDashboardHotkeys(hk) call here. No such function has
     // ever existed in this file, so every load of Settings threw a
     // ReferenceError that this bare catch swallowed. Nothing broke visibly
@@ -2120,6 +2129,18 @@ const TASK_DATA = {
     stages: ['1', '2', '3', '4'],
     isEvent: true,
   },
+  tournament: {
+    label: 'Tournament',
+    // Tournament has its own lobby entry (nav_tournament -> a type card ->
+    // nav_entertournament -> Start), no map carousel and no difficulty picker.
+    // The "maps" list here IS the type picker -- each entry maps to its own
+    // on-screen button image (see runner_constants' TOURNAMENT_TYPE_IMAGES,
+    // hand-synced with this list). The chosen type is stored in the task's
+    // `map` field, so it reads straight through to logs/status/webhook. Solo/
+    // Matchmaking isn't offered: "Solo Tournament" already is the mode.
+    maps: ['Solo Tournament'],
+    isTournament: true,
+  },
 };
 
 let taskCards = [];
@@ -2559,6 +2580,11 @@ function setTaskProp(id, key, value) {
     if (d.stages) t.stage = d.stages[0];
     if (d.difficulties) t.difficulty = d.difficulties[0];
     if (d.extractAfter) t.extract_after = '1';
+    // Tournament has no Solo/Matchmaking toggle -- "Solo Tournament" already
+    // is the mode, and the runner's solo Start tail only runs when this isn't
+    // 'matchmaking'. Force it so switching from a matchmaking task can't leave
+    // Tournament silently waiting on an Enter Matchmaking button.
+    if (d.isTournament) t.play_mode = 'solo';
   }
   if (key === 'stage' && value === 'Infinite' && !Number.isInteger(Number(t.infinite_wave_limit))) {
     t.infinite_wave_limit = DEFAULT_INFINITE_WAVE_LIMIT;
@@ -2573,7 +2599,7 @@ function taskOpts(list, current, fmt) {
 }
 
 // One accent per mode so the queue scans by color before you even read it.
-const TASK_MODE_COLORS = { story: 'var(--brand)', raid: 'var(--rose)', expedition: 'var(--teal)', event: 'var(--amber)' };
+const TASK_MODE_COLORS = { story: 'var(--brand)', raid: 'var(--rose)', expedition: 'var(--teal)', event: 'var(--amber)', tournament: 'var(--lilac)' };
 
 // The two text lines a queue row shows for a task -- where it goes, then how
 // it runs. All editing happens in the Builder, rows are read-only summaries.
@@ -2582,7 +2608,7 @@ function taskSummary(t) {
   let title = d.label;
   if (t.mode === 'story' || t.mode === 'raid') {
     title += ` · ${t.map} · ${/^\d+$/.test(t.stage) ? 'Stage ' + t.stage : t.stage}`;
-  } else if (t.mode === 'expedition') {
+  } else if (t.mode === 'expedition' || t.mode === 'tournament') {
     title += ` · ${t.map}`;
   } else if (t.mode === 'event') {
     title += ` · Act ${t.stage}`;
@@ -2595,7 +2621,7 @@ function taskSummary(t) {
     diff,
     t.mode === 'story' && t.stage === 'Infinite'
       ? `Stop after wave ${t.infinite_wave_limit || DEFAULT_INFINITE_WAVE_LIMIT}` : '',
-    t.play_mode === 'matchmaking' ? 'Matchmaking' : 'Solo',
+    t.mode === 'tournament' ? '' : (t.play_mode === 'matchmaking' ? 'Matchmaking' : 'Solo'),
     t.macro ? `▸ ${t.macro}` : '',
     (t.mode === 'event' && t.stage !== '4' && t.act4_on_drop)
       ? `⮡ Act 4 on drop${t.act4_mode === 'until_locked' ? ' (until locked)' : ''}` : '',
@@ -2694,6 +2720,8 @@ function renderTaskBuilder() {
     fields.push(field('Expedition', sel('map', d.maps, null, 'Select Expedition map')));
   } else if (t.mode === 'event') {
     fields.push(field('Act', sel('stage', d.stages, s => 'Act ' + s, 'Select Event Act 1-4'), 'Select Event Act 1-4'));
+  } else if (t.mode === 'tournament') {
+    fields.push(field('Type', sel('map', d.maps, null, 'Select the Tournament type to enter'), 'Select the Tournament type to enter'));
   }
 
   const specialStage = t.mode === 'story' && (t.stage === 'Infinite' || t.stage === 'Mastery');
@@ -2715,12 +2743,17 @@ function renderTaskBuilder() {
       oninput="setTaskProp('${t.id}', 'extract_after', String(Math.max(0, parseInt(this.value, 10) || 0)))">`, 'Number of extraction prompts to decline before extracting'));
   }
 
-  const playSeg = `
-    <div class="seg-toggle" data-tooltip="Select Solo or Matchmaking / Party mode">
-      <button type="button" class="seg-btn ${t.play_mode === 'solo' ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'play_mode', 'solo'); renderTaskBuilder()">Solo</button>
-      <button type="button" class="seg-btn ${t.play_mode === 'matchmaking' ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'play_mode', 'matchmaking'); renderTaskBuilder()">Matchmaking</button>
-    </div>`;
-  fields.push(field('Play Mode', playSeg, 'Select Solo or Matchmaking / Party mode'));
+  // Tournament has no Solo/Matchmaking choice -- "Solo Tournament" is already
+  // the mode, and the runner forces the solo Start tail for it (see
+  // setTaskProp's mode switch), so the toggle would be a no-op here.
+  if (t.mode !== 'tournament') {
+    const playSeg = `
+      <div class="seg-toggle" data-tooltip="Select Solo or Matchmaking / Party mode">
+        <button type="button" class="seg-btn ${t.play_mode === 'solo' ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'play_mode', 'solo'); renderTaskBuilder()">Solo</button>
+        <button type="button" class="seg-btn ${t.play_mode === 'matchmaking' ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'play_mode', 'matchmaking'); renderTaskBuilder()">Matchmaking</button>
+      </div>`;
+    fields.push(field('Play Mode', playSeg, 'Select Solo or Matchmaking / Party mode'));
+  }
 
   // Team Loadout rides with the chosen template (see the Macro Manager tab), so the
   // macro picker is the only loadout-related control left on a task.
@@ -2796,12 +2829,15 @@ async function refreshTaskQueue() {
     // Infinite/Mastery lived in the difficulty dropdown before they moved
     // into the Stage picker.
     const rawTasks = await pywebview.api.get_tasks();
-    // "Challenge" used to be a Task Queue mode -- it never actually ran
-    // (no runner support ever existed for it) and is now the dedicated
-    // Challenge tab instead, so any leftover task saved under that mode
-    // is dropped rather than migrated into a guessed-wrong Story task.
-    const droppedChallenge = rawTasks.filter(t => t.mode === 'challenge').length;
-    taskCards = rawTasks.filter(t => t.mode !== 'challenge').map(saved => {
+    // Drop any task whose mode the queue no longer recognizes rather than
+    // trying to render it. "Challenge" used to be a Task Queue mode (it never
+    // ran and is now its own tab); "bounty" can leak in from Auto Bounty,
+    // which is its own Resource-tab screen, not a queue mode. Either way an
+    // unknown mode makes taskSummary() read TASK_DATA[mode].label off
+    // undefined and throw, which aborts renderTaskList() mid-map and leaves
+    // the whole list blank while the header still shows a count.
+    const dropped = rawTasks.filter(t => !TASK_DATA[t.mode]).length;
+    taskCards = rawTasks.filter(t => TASK_DATA[t.mode]).map(saved => {
       const t = { ...defaultTask(), ...saved };
       if (t.team == null) t.team = '';
       t.stage = String(t.stage);
@@ -2811,8 +2847,8 @@ async function refreshTaskQueue() {
       }
       return t;
     });
-    if (droppedChallenge) {
-      addLog(`[Task] Removed ${droppedChallenge} old "Challenge" task(s) -- use the Challenge tab instead.`);
+    if (dropped) {
+      addLog(`[Task] Removed ${dropped} task(s) with an unrecognized mode (e.g. old Challenge/Bounty entries).`);
       saveTaskQueue();
     }
   } catch (e) {
@@ -2926,6 +2962,37 @@ async function refreshChallengeScreen() {
 
 function renderChallengeScreen() {
   const s = challengeState;
+  const daily = (s && s.daily) || { enabled: false, ready: true };
+  const dailyEnabledBtn = document.getElementById('toggle-daily-challenge-enabled');
+  if (dailyEnabledBtn) dailyEnabledBtn.classList.toggle('on', !!daily.enabled);
+  const dailyStatus = document.getElementById('daily-challenge-status');
+  if (dailyStatus) {
+    dailyStatus.textContent = daily.ready ? 'Ready' : 'Completed today';
+    dailyStatus.className = daily.ready ? 'challenge-ready-chip' : 'challenge-cap-chip';
+  }
+  const dailyCount = document.getElementById('daily-challenge-count');
+  if (dailyCount) dailyCount.value = daily.ready ? 0 : 1;
+
+  const summary = document.getElementById('resource-challenge-summary');
+  if (summary) {
+    const enabled = !!(daily.enabled || (s && s.enabled));
+    summary.textContent = enabled ? 'Enabled' : 'Disabled';
+    summary.classList.toggle('active', enabled);
+  }
+  const details = document.getElementById('resource-challenge-details');
+  if (details) {
+    const dailyText = daily.enabled
+      ? `Daily: ${daily.ready ? 'Ready' : 'Complete'}`
+      : 'Daily: Off';
+    const regularText = s && s.enabled
+      ? `Regular: ${CHALLENGE_STAGE_SLOTS.map(slot => {
+          const info = (s.stages && s.stages[slot]) || {};
+          return info.enabled ? `#${slot} ${info.count || 0}/${s.cap}` : `#${slot} Off`;
+        }).join(', ')}`
+      : 'Regular: Off';
+    details.textContent = `${dailyText} | ${regularText}`;
+    details.title = details.textContent;
+  }
   const enabledBtn = document.getElementById('toggle-challenge-enabled');
   if (enabledBtn) enabledBtn.classList.toggle('on', !!(s && s.enabled));
   const playMode = (s && s.play_mode) || 'solo';
@@ -3004,10 +3071,25 @@ async function toggleChallengeEnabled(btn) {
   btn.classList.toggle('on', isOn);
   bounceToggle(btn);
   try { await pywebview.api.set_challenge_enabled(isOn); } catch (e) {}
+  await refreshChallengeScreen();
 }
 
 async function setChallengePlayMode(playMode) {
   try { await pywebview.api.set_challenge_play_mode(playMode); } catch (e) {}
+  await refreshChallengeScreen();
+}
+
+async function toggleDailyChallengeEnabled(btn) {
+  const isOn = !btn.classList.contains('on');
+  btn.classList.toggle('on', isOn);
+  bounceToggle(btn);
+  try { await pywebview.api.set_daily_challenge_enabled(isOn); } catch (e) {}
+  await refreshChallengeScreen();
+}
+
+async function setDailyChallengeCount(value) {
+  const count = Math.max(0, Math.min(1, parseInt(value, 10) || 0));
+  try { await pywebview.api.set_daily_challenge_count(count); } catch (e) {}
   await refreshChallengeScreen();
 }
 
@@ -3016,6 +3098,7 @@ async function toggleChallengeStage(stage, btn) {
   btn.classList.toggle('on', isOn);
   bounceToggle(btn);
   try { await pywebview.api.set_challenge_stage_enabled(stage, isOn); } catch (e) {}
+  await refreshChallengeScreen();
 }
 
 async function setChallengeMapMacro(map, value) {
@@ -3035,7 +3118,7 @@ async function setChallengeStageCooldown(stage, onCooldown) {
 
 async function resetChallengeCounts() {
   try { await pywebview.api.reset_challenge_counts(); } catch (e) {}
-  addLog('[Challenge] Play counts reset.');
+  addLog('[Challenge] Daily status, play counts, and cooldowns reset.');
   await refreshChallengeScreen();
 }
 
@@ -3056,16 +3139,47 @@ async function refreshBountyScreen() {
 
 function renderBountyScreen() {
   const s = bountyState;
-  document.getElementById('toggle-bounty-enabled')?.classList.toggle('on', !!(s && s.enabled));
+  const summary = document.getElementById('resource-bounty-summary');
+  if (summary) {
+    const remaining = s ? `${s.remaining}/${s.total} left` : '';
+    summary.textContent = s
+      ? `${s.enabled ? 'Enabled' : 'Disabled'} | ${remaining}`
+      : 'Disabled';
+    summary.classList.toggle('active', !!(s && s.enabled));
+  }
+  document.getElementById('toggle-bounty-enabled')?.classList.toggle(
+    'on', !!(s && s.enabled && s.setup_ready));
   const playMode = (s && s.play_mode) || 'solo';
   document.getElementById('bounty-mode-solo')?.classList.toggle('active', playMode === 'solo');
   document.getElementById('bounty-mode-matchmaking')?.classList.toggle('active', playMode === 'matchmaking');
+  const summonBanner = (s && s.summon_banner) || 'standard';
+  document.getElementById('bounty-banner-standard')?.classList.toggle('active', summonBanner === 'standard');
+  document.getElementById('bounty-banner-villain')?.classList.toggle('active', summonBanner === 'villain');
+  const remaining = document.getElementById('bounty-remaining');
+  if (remaining && s) {
+    remaining.textContent = `${s.remaining} / ${s.total}`;
+  }
 
   const list = document.getElementById('bounty-map-list');
   if (!list) return;
   if (!s) {
     list.innerHTML = '<div class="rh-empty">Couldn\'t load Auto Bounty settings.</div>';
     return;
+  }
+  const warning = document.getElementById('bounty-setup-warning');
+  if (warning) {
+    const missing = s.missing_maps || [];
+    const invalid = s.invalid_maps || [];
+    const problems = [];
+    if (missing.length) problems.push(`Assign: ${missing.map(escapeHtml).join(', ')}`);
+    if (invalid.length) {
+      problems.push(`Repair: ${invalid.map(item =>
+        `${escapeHtml(item.map)} (${escapeHtml(item.macro)})`).join(', ')}`);
+    }
+    warning.innerHTML = s.setup_ready
+      ? ''
+      : `<strong>Setup required:</strong> Auto Bounty needs a saved Macro Operation for every Story map. ${problems.join('. ')}.`;
+    warning.style.display = s.setup_ready ? 'none' : '';
   }
   const macroOpts = current => `<option value="">No Macro</option>` +
     taskTemplates.map(name =>
@@ -3089,9 +3203,14 @@ function renderBountyScreen() {
 
 async function toggleBountyEnabled(btn) {
   const isOn = !btn.classList.contains('on');
-  btn.classList.toggle('on', isOn);
   bounceToggle(btn);
-  try { await pywebview.api.set_bounty_enabled(isOn); } catch (e) {}
+  try {
+    const result = await pywebview.api.set_bounty_enabled(isOn);
+    if (!result.ok && result.reason === 'incomplete_bounty_maps') {
+      addLog('[Macro] Auto Bounty needs a saved Macro Operation for every Story map before it can be enabled.');
+    }
+  } catch (e) {}
+  await refreshBountyScreen();
 }
 
 async function setBountyPlayMode(playMode) {
@@ -3099,11 +3218,187 @@ async function setBountyPlayMode(playMode) {
   await refreshBountyScreen();
 }
 
+async function setBountySummonBanner(banner) {
+  try { await pywebview.api.set_bounty_summon_banner(banner); } catch (e) {}
+  await refreshBountyScreen();
+}
+
 async function setBountyMapMacro(map, macro) {
-  try { await pywebview.api.set_bounty_map_macro(map, macro); } catch (e) {}
+  try {
+    const result = await pywebview.api.set_bounty_map_macro(map, macro);
+    if (result.auto_disabled) {
+      addLog(`[Macro] Auto Bounty disabled: ${map} no longer has a usable Macro Operation.`);
+    }
+  } catch (e) {}
+  await refreshBountyScreen();
+}
+
+async function resetBountyRemaining() {
+  try { await pywebview.api.reset_bounty_remaining(); } catch (e) {}
+  await refreshBountyScreen();
 }
 
 // ---------------------------------------------------------------------------
+// Auto Fuel screen (see core/runner_fuel.py). The runner only checks it at
+// safe queue boundaries, so these controls never trigger a live run directly.
+const FUEL_RESOURCE_LABELS = {
+  resource_drill: 'Resource Drill',
+  gold_mine: 'Gold Mine',
+};
+const FUEL_PATH_LABELS = {
+  hub_to_resource_drill: 'Hub to Resource Drill',
+  hub_to_gold_mine: 'Hub to Gold Mine',
+  resource_drill_to_gold_mine: 'Resource Drill to Gold Mine',
+};
+let fuelState = null;
+
+function formatFuelCountdown(seconds) {
+  const total = Math.max(0, Math.ceil(Number(seconds) || 0));
+  if (total === 0) return 'Ready now';
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function renderFuelTimers() {
+  if (!fuelState) return;
+  const now = Date.now() / 1000;
+  const cardDetails = [];
+  for (const key of Object.keys(FUEL_RESOURCE_LABELS)) {
+    const state = fuelState.resources[key];
+    const enabled = fuelState.enabled && state.enabled;
+    const remaining = Math.max(0, Number(state.next_due_at || 0) - now);
+    const timer = document.getElementById(`fuel-${key.replaceAll('_', '-')}-timer`);
+    const status = document.getElementById(`fuel-${key.replaceAll('_', '-')}-status`);
+    if (timer) timer.textContent = enabled ? formatFuelCountdown(remaining) : 'Disabled';
+    if (status) status.textContent = !enabled ? 'Disabled' : (remaining <= 0 ? 'Ready' : 'Waiting');
+    cardDetails.push(
+      `${FUEL_RESOURCE_LABELS[key]}: ${!enabled ? 'Off' : (remaining <= 0 ? 'Ready' : formatFuelCountdown(remaining))}`
+    );
+  }
+  const summary = document.getElementById('fuel-summary-status');
+  if (summary) {
+    const enabledResources = Object.values(fuelState.resources).filter(x => x.enabled);
+    const anyReady = fuelState.enabled && enabledResources.some(x => Number(x.next_due_at || 0) <= now);
+    summary.textContent = !fuelState.enabled ? 'Disabled' : (!enabledResources.length ? 'No resources' : (anyReady ? 'Ready' : 'Waiting'));
+  }
+  const cardSummary = document.getElementById('resource-fuel-summary');
+  if (cardSummary) {
+    cardSummary.textContent = fuelState.enabled ? 'Enabled' : 'Disabled';
+    cardSummary.classList.toggle('active', !!fuelState.enabled);
+  }
+  const details = document.getElementById('resource-fuel-details');
+  if (details) {
+    details.textContent = cardDetails.join(' | ');
+    details.title = details.textContent;
+  }
+}
+
+async function refreshFuelScreen() {
+  try {
+    fuelState = await pywebview.api.get_fuel_settings();
+  } catch (e) {
+    return;
+  }
+  const enabledToggle = document.getElementById('toggle-fuel-enabled');
+  if (enabledToggle) enabledToggle.classList.toggle('on', !!fuelState.enabled);
+  for (const key of Object.keys(FUEL_RESOURCE_LABELS)) {
+    const state = fuelState.resources[key];
+    const id = key.replaceAll('_', '-');
+    const checkbox = document.getElementById(`fuel-${id}-enabled`);
+    const maxButton = document.getElementById(`fuel-${id}-max`);
+    const numberButton = document.getElementById(`fuel-${id}-number`);
+    const amountInput = document.getElementById(`fuel-${id}-amount`);
+    const isMax = String(state.amount).toLowerCase() === 'max';
+    if (checkbox) checkbox.classList.toggle('on', !!state.enabled);
+    if (maxButton) maxButton.classList.toggle('active', isMax);
+    if (numberButton) numberButton.classList.toggle('active', !isMax);
+    if (amountInput) {
+      amountInput.value = isMax ? 1 : state.amount;
+      amountInput.style.visibility = isMax ? 'hidden' : 'visible';
+    }
+  }
+  renderFuelTimers();
+  renderFuelPaths();
+}
+
+async function toggleFuelEnabled(btn) {
+  const enabled = !btn.classList.contains('on');
+  btn.classList.toggle('on', enabled);
+  bounceToggle(btn);
+  try { await pywebview.api.set_fuel_enabled(enabled); } catch (e) {}
+  await refreshFuelScreen();
+}
+
+async function toggleFuelResourceEnabled(resource, button) {
+  const enabled = !button.classList.contains('on');
+  button.classList.toggle('on', enabled);
+  bounceToggle(button);
+  try { await pywebview.api.set_fuel_resource_enabled(resource, enabled); } catch (e) {}
+  await refreshFuelScreen();
+}
+
+async function setFuelAmountMode(resource, mode) {
+  const state = fuelState && fuelState.resources[resource];
+  const amount = mode === 'max' ? 'max' : (
+    state && String(state.amount).toLowerCase() !== 'max' ? state.amount : 1
+  );
+  await setFuelResourceAmount(resource, amount);
+}
+
+async function setFuelResourceAmount(resource, amount) {
+  const normalized = String(amount).toLowerCase() === 'max'
+    ? 'max'
+    : Math.max(1, Math.min(100, parseInt(amount, 10) || 1));
+  try { await pywebview.api.set_fuel_resource_amount(resource, normalized); } catch (e) {}
+  await refreshFuelScreen();
+}
+
+async function resetFuelTimer() {
+  try { await pywebview.api.reset_fuel_timer(); } catch (e) {}
+  await refreshFuelScreen();
+}
+
+async function setFuelPath(pathKey, pathName) {
+  try { await pywebview.api.set_fuel_path(pathKey, pathName); } catch (e) {}
+  await refreshFuelScreen();
+}
+
+async function openFuelPaths() {
+  await refreshSavedPaths();
+  await refreshFuelScreen();
+  const modal = document.getElementById('fuel-paths-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeFuelPaths() {
+  const modal = document.getElementById('fuel-paths-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderFuelPaths() {
+  const list = document.getElementById('fuel-path-list');
+  if (!list || !fuelState) return;
+  list.innerHTML = Object.entries(FUEL_PATH_LABELS).map(([key, label]) => {
+    const current = fuelState.paths[key] || '';
+    const options = ['<option value="">Not assigned</option>'].concat(
+      savedPaths.map(name => `<option value="${escapeHtml(name)}" ${name === current ? 'selected' : ''}>${escapeHtml(name)}</option>`)
+    ).join('');
+    const recording = typeof recordingFuelPathKey !== 'undefined' && recordingFuelPathKey === key;
+    return `<div class="fuel-path-row">
+      <div>
+        <div class="setting-label">${escapeHtml(label)}</div>
+        <div class="setting-desc">${current ? 'Path assigned' : 'Recording required'}</div>
+      </div>
+      <select class="task-select" onchange="setFuelPath('${key}', this.value)">${options}</select>
+      <button class="task-toolbar-btn ${recording ? 'danger' : ''}" onclick="toggleRecordFuelPath('${key}')">${recording ? 'Stop' : 'Record'}</button>
+    </div>`;
+  }).join('');
+}
+
+setInterval(renderFuelTimers, 1000);
+
 // Auto Crafting screen (see core/runner_crafting.py). Interleaved like
 // Challenge: after every N qualifying wins it runs one crafting pass. The
 // label map mirrors CRAFT_SPRITE_LABELS in core/runner_constants.py -- same
@@ -3126,6 +3421,23 @@ async function refreshCraftingScreen() {
 
 function renderCraftingScreen() {
   const s = craftingState;
+  const summary = document.getElementById('resource-crafting-summary');
+  if (summary) {
+    summary.textContent = s && s.enabled ? 'Enabled' : 'Disabled';
+    summary.classList.toggle('active', !!(s && s.enabled));
+  }
+  const details = document.getElementById('resource-crafting-details');
+  if (details) {
+    const selected = ((s && s.items) || []).filter(item => item.enabled);
+    const labels = selected.map(item => {
+      const label = CRAFT_SPRITE_LABELS[item.key] || item.key;
+      return `${label} (${String(item.amount).toLowerCase() === 'max' ? 'Max' : item.amount})`;
+    });
+    const spriteText = labels.length ? labels.join(', ') : 'No sprites selected';
+    const progressText = s ? `${s.count}/${s.every} wins` : 'progress unavailable';
+    details.textContent = `${spriteText} | ${progressText}`;
+    details.title = details.textContent;
+  }
   const enabledBtn = document.getElementById('toggle-crafting-enabled');
   if (enabledBtn) enabledBtn.classList.toggle('on', !!(s && s.enabled));
   const everyInput = document.getElementById('crafting-every');
@@ -3255,6 +3567,7 @@ async function toggleCraftingEnabled(btn) {
   btn.classList.toggle('on', isOn);
   bounceToggle(btn);
   try { await pywebview.api.set_crafting_enabled(isOn); } catch (e) {}
+  await refreshCraftingScreen();
 }
 
 async function setCraftingEvery(value) {
@@ -3268,6 +3581,7 @@ async function toggleCraftingItem(key, btn) {
   btn.classList.toggle('on', isOn);
   bounceToggle(btn);
   try { await pywebview.api.set_crafting_item_enabled(key, isOn); } catch (e) {}
+  await refreshCraftingScreen();
 }
 
 async function setCraftingItemMax(key) {
@@ -3329,6 +3643,17 @@ function closeChallengeMaps() {
   if (m) m.style.display = 'none';
 }
 
+function openBountyMaps() {
+  const m = document.getElementById('bounty-maps-modal');
+  if (m) m.style.display = 'flex';
+  refreshBountyScreen();  // (re)populate Auto Bounty's independent map assignments
+}
+
+function closeBountyMaps() {
+  const m = document.getElementById('bounty-maps-modal');
+  if (m) m.style.display = 'none';
+}
+
 async function testCrafting() {
   let res = null;
   try { res = await pywebview.api.test_crafting(); } catch (e) {}
@@ -3339,6 +3664,21 @@ async function testCrafting() {
     addLog('[Craft] Can\'t test -- the macro is already running. Stop it first (F8).');
   } else {
     addLog('[Craft] Couldn\'t start the crafting test (is Roblox docked?).');
+  }
+}
+
+async function testFuel() {
+  let result = null;
+  try { result = await pywebview.api.test_fuel(); } catch (e) {}
+  if (result && result.ok) {
+    addLog('[Fuel] Running a test Auto Fuel pass now -- watch the log.');
+    switchScreen('dashboard');
+  } else if (result && result.reason === 'already_running') {
+    addLog('[Fuel] Can\'t test -- the macro is already running. Stop it first (F8).');
+  } else if (result && result.reason === 'no_resources') {
+    addLog('[Fuel] Can\'t test -- enable Resource Drill or Gold Mine first.');
+  } else {
+    addLog('[Fuel] Couldn\'t start the Auto Fuel test (is Roblox docked?).');
   }
 }
 
@@ -3426,6 +3766,7 @@ const PHASE_ALLOWED = {
 let creationPhases = { prestart: [], battle: [], loop_a: [], loop_b: [] };
 let phaseCollapsed = { prestart: false, battle: false, loop_a: false, loop_b: false };
 let recordingBlockId = null;
+let recordingFuelPathKey = null;
 let savedPaths = [];
 
 // renderPhases() rebuilds the ENTIRE block list via innerHTML on nearly every
@@ -3521,7 +3862,11 @@ function addBlock(type, key, atIndex) {
   if (type === 'walk_path') { block.mode = 'auto'; block.pathName = ''; }
   if (type === 'send_key') { block.key = ''; }
   if (type === 'upgrade_unit') { block.params.index = ''; block.params.times = 1; }
-  if (type === 'auto_upgrade_unit') { block.params.index = ''; block.params.priority = 1; }
+  if (type === 'auto_upgrade_unit') {
+    block.params.index = '';
+    block.params.priority = 1;
+    block.params.input = 'click';
+  }
   if (type === 'sell_unit') { block.params.index = ''; }
   if (type === 'target_priority') { block.params.index = ''; block.params.priority = 'Boss'; }
   if (type === 'detect') {
@@ -3798,66 +4143,78 @@ async function saveMatchmakingRegionDebug(btn) {
   setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1600);
 }
 
-// Click once to start (Python polls WASD via start_path_recording), click
-// again to stop -- naming happens *after* recording, at save time, so the
-// player isn't stuck typing a name before they've even walked the path.
-// Where the freshly saved path name should land once the player names it in
-// the modal: whichever block's Record button started this (a Walk Path
-// block sets mode/pathName on itself, a plain Walk block sets its own path
-// param -- see savePathName). Survives the gap between Stop and Save, which
-// recordingBlockId (nulled on Stop) doesn't.
+// A recording target keeps both its owner and return screen. Macro Manager
+// blocks and Auto Fuel routes share the same recorder and naming flow.
 let pendingRecordingTarget = null;
 
 function stopActiveRecording() {
   if (recordingBlockId) toggleRecordPath(recordingBlockId);
+  else if (recordingFuelPathKey) toggleRecordFuelPath(recordingFuelPathKey);
 }
 
-async function toggleRecordPath(blockId) {
-  if (recordingBlockId === blockId) {
-    pendingRecordingTarget = blockId;
-    recordingBlockId = null;
-    document.getElementById('rec-popout').style.display = 'none';
-    // Kill the WASD poll FIRST (stop_path_capture), then ask for a name: the
-    // poll reads physical keys regardless of focus, so typing a name that
-    // contains w/a/s/d would otherwise tack phantom movement onto the path.
-    let stopRes = null;
-    try { stopRes = await pywebview.api.stop_path_capture(); } catch (e) {}
-    renderPhases();
-    // Back to Macro Manager BEFORE showing the naming dialog: the docked Roblox
-    // window paints over all DOM on the Dashboard, so a dialog there sits
-    // invisibly behind the game. Macro Manager hides Roblox entirely.
-    switchScreen('creation');
-    if (!stopRes || !stopRes.count) {
-      addLog('[Macro Manager] Nothing recorded -- no movement detected.');
-      try { await pywebview.api.discard_pending_path(); } catch (e) {}
-      return;
-    }
-    const input = document.getElementById('path-name-input');
-    input.value = '';
-    document.getElementById('path-name-modal').style.display = 'flex';
-    setTimeout(() => input.focus(), 50);
-    return;
-  }
-  if (recordingBlockId) return;  // already recording
-  // The game-slot layout (where the docked Roblox window actually sits) only
-  // exists on the Dashboard screen -- Macro Manager hides Roblox entirely (see
-  // switchScreen()), so recording has to switch there first or there'd be
-  // nothing visible to walk in. start_path_recording() then hands Roblox
-  // real OS focus so the player's WASD actually reaches the game instead of
-  // this panel.
+async function startRecordingTarget(target) {
+  if (recordingBlockId || recordingFuelPathKey) return;
+  closeFuelPaths();
   switchScreen('dashboard');
   await new Promise(resolve => setTimeout(resolve, 200));
   try {
     const result = await pywebview.api.start_path_recording();
     if (result.ok) {
-      recordingBlockId = blockId;
+      if (target.kind === 'fuel') recordingFuelPathKey = target.pathKey;
+      else recordingBlockId = target.blockId;
       document.getElementById('rec-popout').style.display = 'flex';
-      addLog('[Macro Manager] Recording path -- walk with WASD (I/O also recorded, timer starts on your first key), click Stop Recording when done.');
+      addLog(`[${target.kind === 'fuel' ? 'Fuel' : 'Macro Manager'}] Recording path -- walk with WASD (I/O also recorded, timer starts on your first key), then click Stop Recording.`);
     } else {
-      addLog(`[Macro Manager] Couldn't start recording: ${result.reason || 'error'}`);
+      addLog(`[Path Recorder] Couldn't start recording: ${result.reason || 'error'}`);
     }
   } catch (e) {}
   renderPhases();
+  renderFuelPaths();
+}
+
+async function stopRecordingTarget(target) {
+  pendingRecordingTarget = target;
+  recordingBlockId = null;
+  recordingFuelPathKey = null;
+  document.getElementById('rec-popout').style.display = 'none';
+  // Stop the physical-key poll before opening the name field, otherwise
+  // typing WASD into the field would append fake movement to the route.
+  let stopResult = null;
+  try { stopResult = await pywebview.api.stop_path_capture(); } catch (e) {}
+  renderPhases();
+  switchScreen(target.returnScreen);
+  if (!stopResult || !stopResult.count) {
+    addLog('[Path Recorder] Nothing recorded -- no movement detected.');
+    try { await pywebview.api.discard_pending_path(); } catch (e) {}
+    pendingRecordingTarget = null;
+    return;
+  }
+  const input = document.getElementById('path-name-input');
+  input.value = target.suggestedName || '';
+  document.getElementById('path-name-modal').style.display = 'flex';
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+
+async function toggleRecordPath(blockId) {
+  if (recordingBlockId === blockId) {
+    await stopRecordingTarget({ kind: 'block', blockId, returnScreen: 'creation' });
+    return;
+  }
+  await startRecordingTarget({ kind: 'block', blockId, returnScreen: 'creation' });
+}
+
+async function toggleRecordFuelPath(pathKey) {
+  if (!FUEL_PATH_LABELS[pathKey]) return;
+  if (recordingFuelPathKey === pathKey) {
+    await stopRecordingTarget({
+      kind: 'fuel',
+      pathKey,
+      returnScreen: 'resource',
+      suggestedName: `Auto Fuel - ${FUEL_PATH_LABELS[pathKey]}`,
+    });
+    return;
+  }
+  await startRecordingTarget({ kind: 'fuel', pathKey, returnScreen: 'resource' });
 }
 
 // "Save Recorded Path" modal (#path-name-modal): Save persists the
@@ -3872,15 +4229,22 @@ async function savePathName() {
     const result = await pywebview.api.save_pending_path(name);
     if (result.ok) {
       await refreshSavedPaths();
-      const loc = pendingRecordingTarget ? findBlockLocation(pendingRecordingTarget) : null;
-      if (loc) {
-        const block = loc.container[loc.idx];
-        if (block.type === 'walk_path') { block.mode = 'custom'; block.pathName = result.name; }
-        else block.params.path = result.name;
+      if (pendingRecordingTarget && pendingRecordingTarget.kind === 'fuel') {
+        await pywebview.api.set_fuel_path(pendingRecordingTarget.pathKey, result.name);
+        await refreshFuelScreen();
+        addLog(`[Fuel] Saved and assigned path "${result.name}".`);
+      } else {
+        const blockId = pendingRecordingTarget && pendingRecordingTarget.blockId;
+        const loc = blockId ? findBlockLocation(blockId) : null;
+        if (loc) {
+          const block = loc.container[loc.idx];
+          if (block.type === 'walk_path') { block.mode = 'custom'; block.pathName = result.name; }
+          else block.params.path = result.name;
+        }
+        addLog(`[Macro Manager] Saved path "${result.name}".`);
       }
-      addLog(`[Macro Manager] Saved path "${result.name}".`);
     } else {
-      addLog(`[Macro Manager] Couldn't save path: ${result.reason || 'error'}`);
+      addLog(`[Path Recorder] Couldn't save path: ${result.reason || 'error'}`);
     }
   } catch (e) {}
   pendingRecordingTarget = null;
@@ -3892,7 +4256,7 @@ async function discardPathRecording() {
   restoreGameIfDashboard();
   try { await pywebview.api.discard_pending_path(); } catch (e) {}
   pendingRecordingTarget = null;
-  addLog('[Macro Manager] Recording discarded.');
+  addLog('[Path Recorder] Recording discarded.');
   renderPhases();
 }
 
@@ -4177,10 +4541,15 @@ const AUTO_UPGRADE_PRIORITIES = ['None', '1', '2', '3', '4', '5', '6'];
 
 function renderAutoUpgradeControls(b) {
   const current = String(b.params.priority ?? 1);
+  const input = String(b.params.input || 'click').toLowerCase();
   const options = AUTO_UPGRADE_PRIORITIES.map(p =>
     `<option value="${p}" ${p === current ? 'selected' : ''}>${p}</option>`).join('');
   return blkField('Unit', renderUnitIndexSelect(b, 'index'))
-    + blkField('Priority', `<select class="block-input" style="width:auto;" onchange="updateBlockParam('${b.id}', 'priority', this.value)">${options}</select>`);
+    + blkField('Priority', `<select class="block-input" style="width:auto;" onchange="updateBlockParam('${b.id}', 'priority', this.value)">${options}</select>`)
+    + blkField('Input', `<select class="block-input" style="width:auto;" onchange="updateBlockParam('${b.id}', 'input', this.value)">
+        <option value="click" ${input === 'click' ? 'selected' : ''}>Click</option>
+        <option value="hotkey" ${input === 'hotkey' ? 'selected' : ''}>Hotkey</option>
+      </select>`);
 }
 
 // Target Priority: which placed unit (#index) + target priority mode (First, Last, Strongest, Boss, Weakest, Shielded, Fastest, None).
@@ -5162,7 +5531,7 @@ const IMAGE_DESCRIPTIONS = {
   "select upgrade card": "The level-up 'Select an upgrade!' reward-card popup.",
   story: "The Story card on the Play menu.",
   team: "The Team Loadout panel (opened with H).",
-  teleportstuck: "The stuck / spinning loading screen -- flags a hung teleport.",
+  teleportstuck: "Legacy normal-loading reference; no longer used as a disconnect signal.",
   toggle_false: "A Settings toggle in its OFF state.",
   toggle_true: "A Settings toggle in its ON state.",
   unit_exist: "Confirms a unit was actually placed on the field.",
@@ -6477,7 +6846,10 @@ async function updateImportPreview() {
         badgeEl.style.background = isSingle ? 'color-mix(in srgb, var(--teal) 20%, transparent)' : 'color-mix(in srgb, var(--lilac) 20%, transparent)';
         badgeEl.style.color = isSingle ? 'var(--teal)' : 'var(--lilac)';
       }
-      if (countEl) countEl.textContent = `${res.total_templates} template(s)`;
+      if (countEl) {
+        const walkNote = res.walk_paths ? ` + ${res.walk_paths} walk path(s)` : '';
+        countEl.textContent = `${res.total_templates} template(s)${walkNote}`;
+      }
 
       if (itemsEl) {
         itemsEl.innerHTML = res.items.map(item =>
