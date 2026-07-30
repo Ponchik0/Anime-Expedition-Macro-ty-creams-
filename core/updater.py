@@ -270,8 +270,8 @@ def stage_source_update(zip_url: str, app_dir: str, log, on_progress=None) -> st
     _refuse_if_disabled()
     if _uncommitted_changes(app_dir):
         raise RuntimeError(
-            "This install has uncommitted changes, so updating would overwrite them. "
-            "Commit or stash them first, then update.")
+            "В папке макроса есть незакоммиченные изменения — обновление их затрёт. "
+            "Сначала сохрани их (git commit) или убери (git stash), потом обновляй.")
 
     tmp_root = tempfile.mkdtemp(prefix="aecm_update_")
     zip_path = os.path.join(tmp_root, "update.zip")

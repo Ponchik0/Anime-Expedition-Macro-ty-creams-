@@ -337,7 +337,7 @@ def test_stage_source_update_refuses_before_downloading_anything(tmp_path, monke
     app = _repo(tmp_path / "app")
     (app / "main.py").write_text("original\nmy own edit\n")
 
-    with pytest.raises(RuntimeError, match="uncommitted changes"):
+    with pytest.raises(RuntimeError, match="незакоммиченные"):
         updater.stage_source_update("https://example.invalid/x.zip", str(app), print)
 
     # Refused before the network call, and the edit is still there.

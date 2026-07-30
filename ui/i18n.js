@@ -305,6 +305,16 @@
     'Background, accent colour and how densely everything is packed. Contrast of every combination is verified -- nothing here can make the interface unreadable.':
       'Фон, цвет акцента и плотность интерфейса. Контраст каждого сочетания проверен численно — сделать интерфейс нечитаемым отсюда нельзя.',
     'Accent': 'Акцент',
+    'Update Available': 'Доступно обновление',
+    'Update & Restart': 'Обновить и перезапустить',
+    'Starting download...': 'Начинаю загрузку...',
+    'Preparing update...': 'Готовлю обновление...',
+    'Restarting...': 'Перезапускаюсь...',
+    'Later': 'Позже',
+    'Checking...': 'Проверяю...',
+    'Installing...': 'Устанавливаю...',
+    'Installed': 'Установлено',
+    'Failed': 'Не удалось',
     'Density': 'Плотность',
     'Corners': 'Скругления',
     'Text contrast': 'Контраст текста',
@@ -512,6 +522,28 @@
     'Check for Updates': 'Проверить обновления',
   };
 
+  // ------------------------------------------------------- ДИНАМИЧЕСКИЕ СТРОКИ
+  // Точного совпадения у них быть не может: внутрь подставлены числа. Список
+  // намеренно короткий и узкий -- только то, что приходит из Python готовой
+  // строкой (main.Api._apply_update_background) и показывается в интерфейсе,
+  // поэтому словарём его не покрыть. Шаблон обязан быть привязан к началу и
+  // концу строки, иначе под него начнёт попадать что попало.
+  const RU_PATTERNS = [
+    [/^Downloading update\.\.\. ([\d.]+) \/ ([\d.]+) MB$/, 'Загружаю обновление... $1 / $2 МБ'],
+    [/^Downloading update\.\.\. ([\d.]+) MB$/, 'Загружаю обновление... $1 МБ'],
+  ];
+
+  // Единая точка перевода: сначала точное совпадение, потом шаблоны.
+  // null -- перевода нет, строка остаётся английской (см. шапку файла).
+  function translate(key) {
+    const exact = RU[key];
+    if (exact) return exact;
+    for (const [re, out] of RU_PATTERNS) {
+      if (re.test(key)) return key.replace(re, out);
+    }
+    return null;
+  }
+
   // Журнал отсекаем ПО ID, а не по классу .rp-log-list: тот же класс носит
   // список истории забегов, который переводить как раз нужно.
   // Подписи рельса уже заданы по-русски в разметке.
@@ -543,7 +575,7 @@
       const src = origText.get(node);
       const key = norm(src);
       if (lang === 'ru') {
-        const hit = RU[key];
+        const hit = translate(key);
         // Сохраняем окружающие пробелы: во многих местах текст лежит рядом
         // с иконкой, и склеивание без пробела выглядит как опечатка.
         if (hit && node.nodeValue !== hit) {
@@ -568,7 +600,7 @@
         if (!(a in saved)) saved[a] = el.getAttribute(a);
         const src = saved[a];
         if (lang === 'ru') {
-          const hit = RU[norm(src)];
+          const hit = translate(norm(src));
           if (hit) el.setAttribute(a, hit);
         } else {
           el.setAttribute(a, src);
