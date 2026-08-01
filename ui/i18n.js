@@ -68,9 +68,33 @@
     '0 total runs': 'забегов нет',
     'Run History': 'История забегов',
     'No runs yet': 'Забегов ещё не было',
+    // 'Clear' уже ниже, в блоке журнала: ключи здесь глобальные, и второй
+    // такой же просто затирал бы первый.
+    'Sure?': 'Точно?',
+    'Replay': 'Повтор',
+    // Метка «чем забег был» в строке истории. Story/Raid/Expedition/Challenge —
+    // имена режимов из самой игры, их не переводим ('Challenge' уже есть ниже,
+    // в блоке своего экрана, и намеренно оставлен как есть).
+    'Daily Challenge': 'Дневной челлендж',
+    'What this run actually was': 'Чем этот забег был на самом деле',
+    'Save stats and run history to PDF': 'Сохранить статистику и историю в PDF',
+    'Erase run history and the win/loss counters': 'Стереть историю забегов и счётчики побед/поражений',
+    'Played back from a recording, not the automatic run':
+      'Забег отыгран повтором записи, а не автоматом',
 
     // --- Дашборд: управление ---
     'Controls': 'Управление',
+    // --- Блок «что сделает Старт» над кнопками ---
+    'Scenario': 'Сценарий',
+    'Recording': 'Запись',
+    'Task queue is empty': 'Очередь задач пуста',
+    'No recording picked yet': 'Запись не выбрана',
+    'no scenario set': 'сценарий не задан',
+    'endless loops': 'кругов без конца',
+    'Runs alongside the selected mode': 'Работает вместе с выбранным режимом',
+    'Crafting': 'Крафт',
+    'Bounty': 'Баунти',
+    'Fuel': 'Топливо',
     'Start': 'Старт',
     'Pause': 'Пауза',
     'Stop': 'Стоп',
@@ -211,9 +235,9 @@
     'Press a key...': 'Нажми клавишу…',
     'Reset to default key (press Esc while capturing to unbind)':
       'Вернуть исходную клавишу (Esc во время ожидания — снять привязку)',
-    'Recordings Panel': 'Панель записей',
-    'Opens the Record screen (your recordings, replay settings) and back to the Dashboard on a second press.':
-      'Открывает экран «Запись»: список записей и настройки повтора. Второе нажатие возвращает на панель.',
+    'Recordings Panel': 'Список записей',
+    'Slides your recordings out over the right column of the Dashboard -- the game stays where it is. Start a recording from there and the list steps aside on its own.':
+      'Выдвигает список записей поверх правой колонки Панели — игра остаётся на месте. Начал оттуда запись — список уходит сам.',
 
     // --- Настройки: вебхук ---
     'Webhook URL': 'Ссылка вебхука',

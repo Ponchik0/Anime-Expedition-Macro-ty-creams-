@@ -7,9 +7,16 @@
 дождаться кадра, снять. На сборке из шести юнитов — шесть одинаковых снимков
 одного и того же экрана.
 
-Ключ — режим, а не карта: точка задаётся в экранных координатах и зависит от
+Ключ — режим плюс необязательная карта (у Raid и Event — акт). Сначала ключом
+был один только режим: точка задаётся в экранных координатах и зависит от
 ракурса камеры, а камеру макрос выставляет одинаково для всего режима (см.
-runner._run_prestart).
+runner._run_prestart). Про камеру это верно, а вывод — нет: камера-то одна, но
+ПОЛЕ под ней у каждой карты своё, и на каждую вторую карту приходилось
+переснимать поверх единственного слота, теряя предыдущий.
+
+Общий слот на режим остался ключом БЕЗ карты — поэтому все ранее сохранённые
+снимки продолжают работать, и он же запасной: нет кадра для этой карты —
+подставится общий.
 """
 import os
 
@@ -116,6 +123,63 @@ def test_modes_do_not_share_a_snapshot(catalog):
     assert open(maps.mode_snapshot_path("expedition"), "rb").read() == b"expedition frame"
 
 
+# ── Слот на карту/акт ─────────────────────────────────────────────────────
+# Сначала слот был ОДИН на режим, и рассуждение было такое: точка задаётся в
+# экранных координатах и зависит от ракурса камеры, а камеру макрос выставляет
+# одинаково для всего режима. Про камеру верно, а вывод — нет: камера-то одна,
+# но ПОЛЕ под ней у каждой карты своё, и на каждую вторую карту приходилось
+# переснимать поверх единственного слота, теряя предыдущий.
+
+def test_each_map_keeps_its_own_snapshot(catalog):
+    maps.save_mode_snapshot("story", b"rose", "Rose Kingdom")
+    maps.save_mode_snapshot("story", b"school", "School Grounds")
+
+    assert open(maps.mode_snapshot_path("story", "Rose Kingdom"), "rb").read() == b"rose"
+    assert open(maps.mode_snapshot_path("story", "School Grounds"), "rb").read() == b"school"
+
+
+def test_a_map_without_its_own_snapshot_falls_back_to_the_mode(catalog):
+    """Запасной вариант — главное здесь. Требовать снимок под КАЖДУЮ карту
+    значило бы вернуть ровно ту возню, ради устранения которой снимок по
+    умолчанию и заводился."""
+    maps.save_mode_snapshot("story", b"general")
+
+    assert maps.resolve_mode_snapshot("story", "Rose Kingdom") == maps.mode_snapshot_path("story")
+    assert maps.has_mode_snapshot("story", "Rose Kingdom") is False   # своего нет
+    assert maps.mode_snapshot_data_uri("story", "Rose Kingdom")       # но общий подставится
+
+    maps.save_mode_snapshot("story", b"own", "Rose Kingdom")
+    assert maps.resolve_mode_snapshot("story", "Rose Kingdom") == \
+        maps.mode_snapshot_path("story", "Rose Kingdom")
+
+
+def test_the_mode_wide_slot_keeps_its_old_filename(catalog):
+    """Снимки, сохранённые до появления карт, обязаны продолжать работать:
+    общий слот — это по-прежнему ключ БЕЗ варианта и то же имя файла."""
+    assert os.path.basename(maps.mode_snapshot_path("raid")) == f"{maps.MODE_SNAPSHOT_NAME}.png"
+
+
+@pytest.mark.parametrize("nasty", [
+    "../../evil", "..\\..\\evil", "a/b", "a\\b", "con:", "....",
+])
+def test_a_map_name_can_never_escape_the_folder(catalog, nasty):
+    """Имя карты приходит из интерфейса и попадает в путь на диске. Опасное
+    выбрасывается ЦЕЛИКОМ, а не заменяется подчёркиваниями: из подчёркиваний
+    собралось бы другое существующее имя."""
+    path = maps.mode_snapshot_path("story", nasty)
+    assert os.path.dirname(os.path.abspath(path)) == os.path.abspath(str(catalog / "Story"))
+    assert ".." not in os.path.basename(path)
+
+
+def test_a_real_map_name_with_an_apostrophe_survives(catalog):
+    """King's Tomb — настоящее имя карты. Вычистить апостроф значило бы свалить
+    две разные карты в один слот."""
+    assert maps.snapshot_variant("King's Tomb") == "King's Tomb"
+    maps.save_mode_snapshot("story", b"tomb", "King's Tomb")
+    assert maps.has_mode_snapshot("story", "King's Tomb")
+    assert not maps.has_mode_snapshot("story", "Kings Tomb")
+
+
 # ── Удаление ──────────────────────────────────────────────────────────────
 
 def test_deleting_reports_whether_there_was_anything(catalog):
@@ -124,6 +188,21 @@ def test_deleting_reports_whether_there_was_anything(catalog):
     maps.save_mode_snapshot("raid", PNG)
     assert maps.delete_mode_snapshot("raid") is True
     assert maps.has_mode_snapshot("raid") is False
+
+
+def test_deleting_a_map_snapshot_leaves_the_mode_one_alone(catalog):
+    """Кнопка «убрать» на карте не должна стирать общий кадр режима — он
+    чужой, и на нём держатся все остальные карты."""
+    maps.save_mode_snapshot("story", b"general")
+    maps.save_mode_snapshot("story", b"own", "Rose Kingdom")
+
+    assert maps.delete_mode_snapshot("story", "Rose Kingdom") is True
+    assert maps.has_mode_snapshot("story") is True
+    assert maps.resolve_mode_snapshot("story", "Rose Kingdom") == maps.mode_snapshot_path("story")
+
+    # На карте без своего снимка удалять уже нечего — и общий не трогаем.
+    assert maps.delete_mode_snapshot("story", "Rose Kingdom") is False
+    assert maps.has_mode_snapshot("story") is True
 
 
 # ── Связь с обычным каталогом карт ────────────────────────────────────────

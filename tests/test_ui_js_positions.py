@@ -30,8 +30,12 @@ pytestmark = pytest.mark.skipif(shutil.which("node") is None,
 # Общие заглушки: список режимов, разбор сценариев задачи и «память» о
 # прошлом выборе (в приложении это localStorage).
 _STAND = """
-global.TASK_DATA = { story: {label:'Story'}, raid: {label:'Raid'},
-                     expedition: {label:'Expedition'}, event: {label:'Event'} };
+global.TASK_DATA = {
+  story: {label:'Story', maps:['School Grounds', 'Rose Kingdom'], stages:['1','2']},
+  raid: {label:'Raid', maps:['Spirit City'], stages:['1','2','3']},
+  expedition: {label:'Expedition', maps:['School Grounds', 'Flower Forest']},
+  event: {label:'Event', stages:['1','2','3','4']},
+};
 global.taskMacroNames = t => [t.macro, t.act4_macro].filter(Boolean);
 let stored = null;
 global.getRememberedPlaceUnitMode = () => stored || '';
@@ -90,9 +94,10 @@ def test_a_stale_remembered_mode_is_ignored(tmp_path):
 
 def test_mode_select_lists_every_task_mode_and_marks_the_current_one(tmp_path):
     body = _STAND + r"""
-    global.puState = { mode: 'expedition' };
+    global.puState = { mode: 'expedition', variant: '' };
     const el = { innerHTML: '' };
     global.document = { getElementById: id => (id === 'pu-mode' ? el : null) };
+    global.renderPlaceUnitVariantSelect = () => {};   // свой селектор, своя проверка ниже
     eval(extract('renderPlaceUnitModeSelect'));
     renderPlaceUnitModeSelect();
     console.log(JSON.stringify({
@@ -108,9 +113,11 @@ def test_mode_select_lists_every_task_mode_and_marks_the_current_one(tmp_path):
 
 def test_switching_mode_remembers_it_and_refreshes_the_note(tmp_path):
     body = _STAND + """
-    global.puState = { mode: 'story' };
+    global.puState = { mode: 'story', variant: '' };
     let refreshed = 0;
-    global.refreshDefaultSnapshotNote = async () => { refreshed++; };
+    global.reloadDefaultSnapshot = async () => { refreshed++; };
+    global.renderPlaceUnitVariantSelect = () => {};
+    global.getRememberedPlaceUnitVariant = () => '';
     eval(extract('onPlaceUnitModeChange'));
     onPlaceUnitModeChange('raid').then(() => {
       console.log(JSON.stringify({ mode: puState.mode, stored, refreshed }));
@@ -120,6 +127,48 @@ def test_switching_mode_remembers_it_and_refreshes_the_note(tmp_path):
     assert out["mode"] == "raid"
     assert out["stored"] == "raid", "выбор режима не запомнился до следующего открытия"
     assert out["refreshed"] == 1
+
+
+# ── Карта/акт внутри режима ───────────────────────────────────────────────
+
+def test_the_variant_list_follows_the_mode(tmp_path):
+    """Story и Expedition ходят по картам, Raid и Event -- по актам. Список
+    берётся из TASK_DATA, а не заводится свой: два списка неминуемо
+    разъехались бы."""
+    body = _STAND + r"""
+    eval(extract('placeUnitVariants'));
+    console.log(JSON.stringify({
+      story: placeUnitVariants('story'),
+      event: placeUnitVariants('event'),
+      expedition: placeUnitVariants('expedition'),
+      nonsense: placeUnitVariants('чепуха'),
+    }));
+    """
+    out = run_js(body, tmp_path)
+    assert out["story"] == ["School Grounds", "Rose Kingdom"]
+    assert out["expedition"] == ["School Grounds", "Flower Forest"]
+    # У Event карт нет вовсе — только акты, они и становятся списком.
+    assert out["event"] == ["Act 1", "Act 2", "Act 3", "Act 4"]
+    assert out["nonsense"] == []
+
+
+def test_a_variant_from_another_mode_is_dropped(tmp_path):
+    """Переключил режим -- выбранная карта могла остаться от прошлого, а в
+    новом её нет. Иначе снимок сохранялся бы под карту, которой в этом режиме
+    не существует."""
+    body = _STAND + r"""
+    global.puState = { mode: 'event', variant: 'Flower Forest' };   // карта из Expedition
+    const el = { innerHTML: '', style: {} };
+    global.document = { getElementById: id => (id === 'pu-variant' ? el : null) };
+    global.escapeHtml = s => s;
+    eval(extract('placeUnitVariants'));
+    eval(extract('renderPlaceUnitVariantSelect'));
+    renderPlaceUnitVariantSelect();
+    console.log(JSON.stringify({ variant: puState.variant, html: el.innerHTML }));
+    """
+    out = run_js(body, tmp_path)
+    assert out["variant"] == "", "чужая карта должна была сброситься"
+    assert "Whole mode" in out["html"]
 
 
 # ── Подстановка снимка ────────────────────────────────────────────────────

@@ -47,6 +47,22 @@ MEMORY_REFRESH_MAX_HOURS = 12.0
 # uses, see _attempt_rejoin) before retrying the task fresh.
 MAX_CONSECUTIVE_LOSSES_SAME_MAP = 3
 
+# ── Застревание в Expedition ──────────────────────────────────────────────
+# Кнопка старта в Expedition ЗАКОННО появляется посреди забега, и макрос её
+# дожимает (см. _check_expedition_wave_result). Но если она появляется снова
+# и снова, а забег при этом не сдвигается ни на один чекпойнт — значит мы не
+# ведём забег, а долбимся в экран, который не понимаем.
+#
+# Ровно так это и выглядело в живом логе: бесконечное чередование «Wave
+# Continue found (x=575)», «Follow-up Continue found at (493, 413)» и «Found
+# nav_start_game again mid-run» — все три с ОДНИМИ И ТЕМИ ЖЕ координатами, то
+# есть экран не менялся вообще. Матч не заканчивался никогда, Pre Start
+# больше не отрабатывал, и каждый следующий заход шёл без юнитов.
+#
+# 12 — с большим запасом: между двумя настоящими чекпойнтами эта кнопка
+# столько раз не появляется, а до срабатывания проходит около минуты.
+EXP_STUCK_START_GAME_CLICKS = 12
+
 # The Story card's position on the gamemode-select screen (after Play) is
 # fixed -- unlike Play itself, nothing here needs to be found by image
 # search, just clicked. Raid's card sits somewhere else on the same panel;

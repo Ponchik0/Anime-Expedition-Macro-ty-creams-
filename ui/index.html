@@ -438,6 +438,24 @@
             <span class="rp-head-title">Controls</span>
             <span class="rp-head-rule"></span>
           </header>
+          <!-- ЧТО СДЕЛАЕТ «СТАРТ» — прямо над самой кнопкой.
+               Кнопка одна, а стоять за ней может очень разное: очередь задач,
+               где у КАЖДОЙ задачи свой сценарий, либо повтор выбранной записи,
+               и поверх всего этого — надстройки (Challenge, ресурсные),
+               которые вклиниваются в прогон между задачами. Узнать это можно
+               было, только обойдя три-четыре экрана, и «нажал экспедицию, а
+               включилась запись» получалось само собой. -->
+          <div class="sp-box">
+            <div class="seg-toggle sp-seg">
+              <button type="button" id="sp-auto" class="seg-btn" onclick="setStartMode('auto')">Scenario</button>
+              <button type="button" id="sp-replay" class="seg-btn" onclick="setStartMode('replay')">Recording</button>
+            </div>
+            <div class="sp-what">
+              <div id="sp-line1" class="sp-line1">&mdash;</div>
+              <div id="sp-line2" class="sp-line2"></div>
+            </div>
+            <div id="sp-extras" class="sp-extras"></div>
+          </div>
           <div id="task-grid" class="rp-controls">
             <button id="btn-macro-start" class="rp-btn rp-btn-start ui-btn-glow" onclick="startMacro()">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -471,12 +489,20 @@
             <span class="rp-head-title">Run History</span>
             <span class="rp-head-rule"></span>
             <span id="run-history-count" class="text-[10px] font-semibold flex-shrink-0" style="color: var(--text-muted);"></span>
+            <!-- Выгрузка и очистка живут ЗДЕСЬ, в шапке своего же списка, а не
+                 в Настройках: обе про то, что человек прямо сейчас видит перед
+                 собой, и искать их через другой экран незачем. -->
+            <button class="log-toolbar-btn" style="font-size:11px;" onclick="exportRunReport(this)"
+                    title="Save stats and run history to PDF">PDF</button>
+            <button class="log-toolbar-btn" style="font-size:11px;" onclick="clearRunHistory(this)"
+                    title="Erase run history and the win/loss counters">Clear</button>
           </header>
           <div id="run-history-list" class="rp-log-list overflow-y-auto" style="padding: 4px 0 6px;">
             <div class="rh-empty">No runs yet</div>
           </div>
         </section>
       </div>
+
     </div>
   </div>
 
@@ -616,7 +642,18 @@
           <!-- ── Auto Crafting ── -->
           <details id="resource-card-crafting" class="resource-card">
             <summary class="resource-card-head">
-              <span class="resource-card-icon">C</span>
+              <!-- Иконки карточек — inline-SVG, как и везде в интерфейсе.
+                   Вырезки из Assets/ui сюда не годятся: это скриншоты для
+                   поиска по шаблону, произвольного размера и с фоном. SVG же
+                   красится currentColor, то есть сам берёт акцент карточки и
+                   работает в обеих темах. -->
+              <span class="resource-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.4 3.6a2 2 0 0 1 2.8 0l3.2 3.2a2 2 0 0 1 0 2.8l-1.4 1.4-6-6z"/>
+                  <path d="M12.5 8.5 4.2 16.8a2 2 0 1 0 2.8 2.8l8.3-8.3"/>
+                </svg>
+              </span>
               <span class="resource-card-copy">
                 <span class="resource-card-title">Auto Crafting</span>
                 <span id="resource-crafting-details" class="resource-card-desc">No sprites selected.</span>
@@ -666,7 +703,12 @@
           <!-- Auto Fuel -->
           <details id="resource-card-fuel" class="resource-card">
             <summary class="resource-card-head">
-              <span class="resource-card-icon">F</span>
+              <span class="resource-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3.5s5.5 6 5.5 9.5a5.5 5.5 0 0 1-11 0C6.5 9.5 12 3.5 12 3.5z"/>
+                </svg>
+              </span>
               <span class="resource-card-copy">
                 <span class="resource-card-title">Auto Fuel</span>
                 <span id="resource-fuel-details" class="resource-card-desc">Resource Drill: Off | Gold Mine: Off</span>
@@ -763,7 +805,13 @@
           <!-- Auto Shop -->
           <details id="resource-card-auto-shop" class="resource-card">
             <summary class="resource-card-head">
-              <span class="resource-card-icon">S</span>
+              <span class="resource-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 8h12l-1 12H7z"/>
+                  <path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>
+                </svg>
+              </span>
               <span class="resource-card-copy">
                 <span class="resource-card-title">Auto Shop</span>
                 <span id="resource-auto-shop-details" class="resource-card-desc">Gold Shop: 0 enabled</span>
@@ -799,7 +847,15 @@
           <!-- ── Auto Challenge ── -->
           <details id="resource-card-challenge" class="resource-card">
             <summary class="resource-card-head">
-              <span class="resource-card-icon">CH</span>
+              <span class="resource-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 4h8v5a4 4 0 0 1-8 0z"/>
+                  <path d="M8 5.5H5.5A2.5 2.5 0 0 0 8 10"/>
+                  <path d="M16 5.5h2.5A2.5 2.5 0 0 1 16 10"/>
+                  <path d="M12 13v4"/><path d="M9 20h6"/>
+                </svg>
+              </span>
               <span class="resource-card-copy">
                 <span class="resource-card-title">Auto Challenge</span>
                 <span id="resource-challenge-details" class="resource-card-desc">Daily: Off | Regular: Off</span>
@@ -869,7 +925,14 @@
           <!-- Auto Bounty -->
           <details id="resource-card-bounty" class="resource-card">
             <summary class="resource-card-head">
-              <span class="resource-card-icon">B</span>
+              <span class="resource-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="8"/>
+                  <circle cx="12" cy="12" r="3.5"/>
+                  <path d="M12 12h.01"/>
+                </svg>
+              </span>
               <span class="resource-card-copy">
                 <span class="resource-card-title">Auto Bounty</span>
                 <span class="resource-card-desc">Complete supported Bounty Board objectives before other automation.</span>
@@ -990,6 +1053,21 @@
           Повторов
           <input id="rec-loops" type="number" min="0" value="0" style="width:80px;" oninput="saveReplayOption('replay_loops', this.value)">
           <span style="color: var(--text-muted);">0 — без конца</span>
+        </label>
+        <label style="font-size:12px; color: var(--text-muted); display:flex; align-items:center; gap:8px;">
+          Пауза перед стартом
+          <input id="rec-delay" type="number" min="0" max="60" step="0.5" value="2" style="width:80px;"
+                 oninput="saveReplayOption('replay_start_delay', this.value)">
+          <span style="color: var(--text-muted);">с — чтобы игра успела вернуться на экран; 0 — без паузы</span>
+        </label>
+        <!-- Предохранитель серии поражений. Запись перестаёт работать тихо:
+             игра обновилась, кнопка съехала — и повтор всю ночь сливает матч
+             за матчем ровно так же бодро, как раньше выигрывал. -->
+        <label style="font-size:12px; color: var(--text-muted); display:flex; align-items:center; gap:8px;">
+          Стоп после
+          <input id="rec-loss-streak" type="number" min="0" max="99" value="5" style="width:80px;"
+                 oninput="saveReplayOption('replay_loss_streak_stop', this.value)">
+          <span style="color: var(--text-muted);">поражений подряд — 0 выключает</span>
         </label>
         <label style="font-size:12px; color: var(--text-muted); display:flex; align-items:center; gap:8px;">
           <span id="rec-focus" class="toggle-switch on" onclick="toggleReplayFocus(this)"></span>
@@ -1306,11 +1384,11 @@
                 <button id="keybind-toggle_record" class="keybind-btn" onclick="startRebind('toggle_record', this)">F8</button>
               </div>
             </div>
-            <!-- Пара к клавише записи: посмотреть список, не ища вкладку мышью. -->
+            <!-- Пара к клавише записи: посмотреть список, не уходя с игры. -->
             <div class="setting-row">
               <div>
                 <div class="setting-label">Recordings Panel</div>
-                <div class="setting-desc">Opens the Record screen (your recordings, replay settings) and back to the Dashboard on a second press.</div>
+                <div class="setting-desc">Slides your recordings out over the right column of the Dashboard -- the game stays where it is. Start a recording from there and the list steps aside on its own.</div>
               </div>
               <div class="keybind-group">
                 <button id="keybind-clear-open_replay" class="keybind-clear-btn" onclick="clearHotkey('open_replay')" title="Reset to default key (press Esc while capturing to unbind)">&times;</button>
@@ -2354,6 +2432,79 @@
     </div>
   </div>
 
+  <!-- ============ ОКНО «ЗАПИСИ» (F9) ============
+       Список записей по центру окна: выбрал строку — окно закрылось и запись
+       пошла. Раньше та же клавиша уводила на отдельный экран целиком.
+
+       Почему окно ОБЯЗАНО прятать игру, пока оно открыто. Roblox встроен в
+       наше окно как дочернее окно (SetParent, core/dock.py) и рисуется
+       системой поверх всего HTML, какой бы z-index ни стоял, — окно посреди
+       экрана иначе просто исчезло бы за игрой. Поэтому open/close зовут
+       hide_game()/restoreGameIfDashboard(), ровно как #pu-modal и Менеджер
+       картинок, а сам id стоит в списке isBlockingOverlayOpen (ui/app.js).
+
+       Кнопка «Начать запись» закрывает окно и возвращает игру ПРЕЖДЕ, чем
+       включить рекордер (recOverlayToggleRecording): запись идёт только пока
+       Roblox видно и он в фокусе, иначе она честно встанет в ожидание. -->
+  <div id="rec-overlay" class="rec-ov" style="display:none;" aria-hidden="true"
+       onmousedown="if (event.target === this) closeRecordingsOverlay()">
+    <div class="rec-ov-card" role="dialog" aria-label="Записи">
+      <header class="rec-ov-head">
+        <span class="rec-ov-title">Записи</span>
+        <span class="rec-ov-rule"></span>
+        <span id="rec-ov-key" class="rp-btn-hotkey"></span>
+        <button type="button" class="rec-ov-x" onclick="closeRecordingsOverlay()"
+                title="Закрыть (Esc)">&times;</button>
+      </header>
+
+      <div class="rec-ov-body">
+        <!-- Главное действие окна: одна крупная кнопка. Имя спрашиваем ЗДЕСЬ,
+             до старта, — остановят запись клавишей F8 из игры, и в тот момент
+             спросить будет уже негде (см. _pending_rec_name в main.py). -->
+        <button type="button" id="rec-ov-cta" class="rec-ov-cta" onclick="recOverlayToggleRecording()">
+          <span class="rec-ov-cta-ico"></span>
+          <span class="rec-ov-cta-text">
+            <b id="rec-ov-cta-title">Начать запись</b>
+            <small id="rec-ov-cta-sub">Окно закроется, останется игра</small>
+          </span>
+          <span id="rec-ov-cta-key" class="rp-btn-hotkey"></span>
+        </button>
+        <input id="rec-ov-name" class="rec-ov-name" type="text" maxlength="80"
+               placeholder="Название записи (необязательно)"
+               onkeydown="if (event.key === 'Enter') recOverlayToggleRecording()">
+
+        <div class="rec-ov-sec">
+          <span>Мои записи</span>
+          <span class="rec-ov-rule"></span>
+          <span id="rec-ov-count" class="rec-ov-count"></span>
+        </div>
+        <div id="rec-ov-list" class="rec-ov-list"></div>
+      </div>
+
+      <footer class="rec-ov-foot">
+        <button type="button" id="rec-ov-mode" class="rec-ov-chip" onclick="recOverlayToggleMode()"
+                title="Что делает кнопка «Старт»"></button>
+        <label class="rec-ov-foot-lbl">Кругов
+          <input id="rec-ov-loops" class="rec-ov-num" type="number" min="0" value="0"
+                 title="0 — крутить без конца" oninput="recOverlayLoops(this.value)">
+        </label>
+        <!-- Пауза перед первым действием. Она тут не для красоты: окно
+             закрывается, экран уезжает на Панель и Roblox возвращают из
+             спрятанного состояния — всё это занимает время, и без паузы первые
+             нажатия круга уходят в никуда (см. START_DELAY_MS в
+             core/replay.py). Сколько именно нужно, зависит от машины, поэтому
+             число настраиваемое, а не зашитое. -->
+        <label class="rec-ov-foot-lbl">Пауза
+          <input id="rec-ov-delay" class="rec-ov-num" type="number" min="0" max="60" step="0.5"
+                 value="2" title="Сколько секунд ждать перед первым действием. 0 — начинать сразу."
+                 oninput="saveReplayOption('replay_start_delay', this.value)">с
+        </label>
+        <span class="rec-ov-rule"></span>
+        <button type="button" class="rec-ov-more" onclick="recOverlayOpenScreen()">Весь экран &rarr;</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- ============ Place Unit map picker modal ============
        Opened by openPlaceUnitModal() (Macro Manager > Place Unit block > Set).
        Category tabs -> map thumbnail grid -> zoomable/pannable canvas; the
@@ -2380,6 +2531,15 @@
             <label class="text-[10px]" style="color: var(--text-muted);" for="pu-mode">Mode</label>
             <select id="pu-mode" class="task-select" style="width: auto;"
                     onchange="onPlaceUnitModeChange(this.value)"></select>
+            <!-- Карта (Story/Expedition) или акт (Raid/Event). Камера у режима
+                 одна, а ПОЛЕ под ней у каждой карты своё — снимок Rose Kingdom
+                 для School Grounds бесполезен так же, как чужой кадр. Раньше
+                 слот был один на режим, и на каждую вторую карту приходилось
+                 переснимать поверх, теряя предыдущий. Пункт «Весь режим» —
+                 общий слот, он же запасной, если под карту своего снимка нет. -->
+            <label class="text-[10px]" style="color: var(--text-muted);" for="pu-variant">Map</label>
+            <select id="pu-variant" class="task-select" style="width: auto;"
+                    onchange="onPlaceUnitVariantChange(this.value)"></select>
           </span>
           <button class="task-toolbar-btn" onclick="usePlaceUnitRobloxScreen()">Use Roblox Screen</button>
           <button id="pu-save-default" class="task-toolbar-btn" onclick="saveDefaultModeSnapshot()"

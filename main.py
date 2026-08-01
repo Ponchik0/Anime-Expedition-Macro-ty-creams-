@@ -162,9 +162,9 @@ HOTKEY_DEFAULTS = {
     # — и рекордер такие клики намеренно не пишет (иначе нажатие на саму
     # кнопку «Запись» попало бы в файл). F8 свободна.
     "toggle_record": "f8",
-    # Экран «Запись» целиком: список записей, повторы, галки. Пара к F8 —
-    # записал в игре и тут же посмотрел, что получилось, не ища вкладку
-    # мышью. Повторное нажатие возвращает на Панель, то есть к игре.
+    # Список записей — окном по центру приложения. Пара к F8: этой клавишей
+    # открыл список и начал запись, а дальше окно само уходит с экрана.
+    # Повторное нажатие закрывает его.
     "open_replay": "f9",
 }
 
@@ -205,7 +205,7 @@ HOTKEY_LABELS = {
     "macro_start": "Старт макроса", "macro_stop": "Стоп макроса",
     "macro_pause": "Пауза макроса", "debug_screenshot": "Снимок для отладки",
     "image_manager": "Менеджер картинок", "toggle_compact": "Компактная полоса",
-    "toggle_record": "Запись", "open_replay": "Панель записей",
+    "toggle_record": "Запись", "open_replay": "Список записей",
     "game_auto_upgrade": "Авто-апгрейд (в игре)",
 }
 
@@ -246,6 +246,20 @@ REWARD_REGION_DEFAULTS = {"x": 212, "y": 429, "width": 504, "height": 106}
 STATS_REGION_DEFAULTS = {"x": 210, "y": 337, "width": 509, "height": 57}
 
 RUN_HISTORY_LIMIT = 50  # oldest entries drop off past this -- a running log, not a permanent archive
+
+# Чем забег был, по-русски — для PDF-отчёта. Интерфейс переводит подписи
+# словарём ui/i18n.js, но отчёт открывают ОТДЕЛЬНО от приложения, и там
+# перевести уже некому: в файл подпись обязана попасть готовой.
+RUN_KIND_RU = {
+    "Story": "Story",
+    "Raid": "Raid",
+    "Expedition": "Expedition",
+    "Event": "Event",
+    "Tournament": "Tournament",
+    "Challenge": "Челлендж",
+    "Daily Challenge": "Дневной челлендж",
+    "Replay": "Повтор",
+}
 
 # Challenge tab (Settings-adjacent, but its own screen -- see get_challenge_
 # settings): Regular Challenge has 3 fixed stage slots that each rotate
@@ -766,9 +780,16 @@ class Api:
         history = data.get("run_history", [])
         wins, losses = self._session_wins, self._session_losses
         challenge = self.get_challenge_settings()
+        # Что сделает «Старт» — в общий опрос состояния. Значок над кнопкой на
+        # Панели рисуется по нему, а отдельный запрос ради одной строки дважды
+        # в секунду был бы чистой тратой: cfg.load() здесь уже сделан.
+        run_mode = data.get("run_mode", "auto")
         return {
             "docked": self.docker.docked,
+            "run_mode": run_mode if run_mode in ("auto", "replay") else "auto",
+            "start_preview": self._start_preview(data),
             **self._run_status,
+            **self._replay_status(),
             "last_run": _format_ago(history[0]["at"]) if history else "-",
             "runs_per_hour": self._calculate_runs_per_hour(history),
             "wins": wins,
@@ -789,9 +810,110 @@ class Api:
                 {
                     "result": h.get("result"), "map": h.get("map"),
                     "duration": h.get("duration"), "ago": _format_ago(h.get("at")),
+                    # Забеги, записанные до появления поля, — автоматические:
+                    # режима повтора тогда просто не было.
+                    "source": h.get("source", "auto"),
+                    "kind": h.get("kind", ""),
                 }
                 for h in history
             ],
+        }
+
+    @staticmethod
+    def _start_preview(data: dict) -> dict:
+        """Что произойдёт, если прямо сейчас нажать «Старт».
+
+        ЗАЧЕМ. Кнопка одна, а стоять за ней может очень разное: очередь задач
+        со своим сценарием у каждой задачи, повтор выбранной записи, и поверх
+        всего этого — надстройки вроде Challenge и ресурсных, которые
+        вклиниваются в прогон между задачами. Раньше узнать это можно было,
+        только обойдя три-четыре экрана, и «нажал экспедицию, а включилась
+        запись» получалось само собой.
+
+        Всё считается из УЖЕ загруженного data: get_status зовут дважды в
+        секунду, а cfg.load() каждый раз читает файл с диска — дёргать ради
+        одной строчки ещё пять геттеров значило бы читать его шесть раз на
+        такт. По той же причине сюда нельзя звать get_auto_shop_settings: он
+        не только читает, но и дописывает настройки.
+        """
+        mode = data.get("run_mode", "auto")
+        mode = mode if mode in ("auto", "replay") else "auto"
+
+        # Надстройки, которые работают ПОВЕРХ выбранного режима. Показываем
+        # только включённые: список из пяти всегда-видимых значков, четыре из
+        # которых серые, читается хуже, чем два ярких.
+        challenge = data.get("challenge") or {}
+        extras = []
+        if challenge.get("enabled") or (challenge.get("daily") or {}).get("enabled"):
+            extras.append("Challenge")
+        for key, label in (("crafting", "Crafting"), ("bounty", "Bounty"),
+                            ("auto_shop", "Auto Shop"), ("fuel_refill", "Fuel")):
+            if (data.get(key) or {}).get("enabled"):
+                extras.append(label)
+
+        if mode == "replay":
+            name = data.get("replay_file", "")
+            if not name:
+                return {"mode": mode, "what": "", "detail": "", "extras": extras,
+                        "warn": "No recording picked yet"}
+            loops = int(data.get("replay_loops", 0) or 0)
+            return {"mode": mode, "what": f"«{name}»",
+                    "detail": ("endless loops" if loops == 0 else f"{loops} loops"),
+                    "extras": extras, "warn": ""}
+
+        tasks = data.get("tasks") or []
+        if not tasks:
+            return {"mode": mode, "what": "", "detail": "", "extras": extras,
+                    "warn": "Task queue is empty"}
+        # Первая задача очереди — та, с которой прогон и начнётся: очередь
+        # идёт сверху вниз (см. цикл по tasks в core/runner.py).
+        first = tasks[0]
+        stage = first.get("stage")
+        where = " · ".join(str(p) for p in (first.get("map"), stage, first.get("difficulty"))
+                            if p and str(p) != "-")
+        return {
+            "mode": mode,
+            "what": where or (first.get("mode") or "task 1"),
+            "detail": first.get("macro") or "no scenario set",
+            "extras": extras,
+            "warn": "",
+            "queue": len(tasks),
+        }
+
+    def _replay_status(self) -> dict:
+        """Живая строка состояния, пока крутится запись — поверх _run_status.
+
+        Считается здесь, на опросе панели, а не отдельным потоком-надзирателем:
+        всё, что ей нужно, уже лежит в полях Player, а лишний поток ради
+        перекладывания трёх чисел раз в секунду — это то, что потом падает
+        молча. Пустой словарь, когда повтор не идёт: тогда табло показывает
+        автомат ровно как раньше."""
+        p = getattr(self, "_player", None)
+        if p is None or not p.running:
+            # Повтор мог кончиться САМ, отыграв заданное число кругов. Кнопка
+            # «Стоп» табло сбрасывает, а тихое окончание — нет, и на Панели
+            # оставалось висеть «Играю запись» от прогона, которого уже нет.
+            if self._run_status.get("mode") == "Повтор":
+                self.reset_run_status("Idle")
+            return {}
+        loops = int(cfg.load().get("replay_loops", 0) or 0)
+        if p.countdown_ms > 0:
+            # Обратный отсчёт вслух: между «нажал Играть» и первым кликом
+            # теперь две секунды, и без надписи это выглядело бы как «нажал, а
+            # оно не пошло».
+            action = f"Повтор через {p.countdown_ms / 1000.0:.1f} с..."
+        elif p.state == "paused":
+            action = "Повтор на паузе"
+        else:
+            action = f"Играю запись — действие {p.index}/{p.total}"
+        w = getattr(self, "_result_watcher", None)
+        return {
+            "action": action,
+            "mode": "Повтор",
+            "macro": p.name or "-",
+            "current_task": p.name or "-",
+            "current_repeat": f"{p.loop_num}/{loops}" if loops else f"{p.loop_num}/∞",
+            "map": f"матчей засчитано: {w.matches}" if w and w.matches else "-",
         }
 
     def get_time_info(self) -> dict:
@@ -801,11 +923,18 @@ class Api:
         elapsed = time.time() - self.session_start
         cfg.update({"all_time_seconds": self._all_time_base + elapsed})
 
-    def _record_match_result(self, result: str, map_name: str, duration: str) -> None:
+    def _record_match_result(self, result: str, map_name: str, duration: str,
+                              source: str = "auto", kind: str = "") -> None:
         # Called from core.runner (a background thread) right after a
         # Victory/Defeat screen is read -- session counts update in memory
         # immediately; all_time counts and run_history persist to disk so
         # they survive a restart, same split as session_start/all_time_seconds.
+        #
+        # `source` -- каким режимом отыгран забег: "auto" (очередь задач) или
+        # "replay" (повтор записи). Пишется в строку истории, чтобы в списке
+        # было видно, где автомат, а где своя запись: разбирая просадку
+        # винрейта, это первое, что нужно знать, а по карте не отличишь.
+        # Записи, сделанные до появления поля, читаются как "auto".
         is_win = result == "win"
         if is_win:
             self._session_wins += 1
@@ -815,8 +944,65 @@ class Api:
         data = cfg.load()
         key = "all_time_wins" if is_win else "all_time_losses"
         history = data.get("run_history", [])
-        history.insert(0, {"result": result, "map": map_name or "-", "duration": duration or "-", "at": time.time()})
+        # `kind` — чем забег БЫЛ: Story / Raid / Expedition / Challenge /
+        # Повтор. Отдельно от `source`, потому что это разные вопросы: source
+        # отвечает «кто играл» (автомат или повтор записи), kind — «во что».
+        # Без kind половина строк выглядела одинаково: Challenge ходит под
+        # mode="story" и в истории был неотличим от обычной Story-задачи.
+        history.insert(0, {"result": result, "map": map_name or "-", "duration": duration or "-",
+                           "at": time.time(), "source": source, "kind": kind or ""})
         cfg.update({key: data.get(key, 0) + 1, "run_history": history[:RUN_HISTORY_LIMIT]})
+
+    def clear_run_history(self) -> dict:
+        """Стирает историю забегов и ВСЮ статистику побед/поражений.
+
+        Одной кнопкой, а не двумя: история и счётчики — это одно и то же,
+        посчитанное по-разному, и обнулить журнал, оставив «312 побед за всё
+        время», значит получить табло, которое не сходится ни с чем на экране.
+        Сессионные счётчики живут в памяти, всевременные и журнал — в
+        settings.json, поэтому чистить надо в обоих местах.
+        """
+        self._session_wins = 0
+        self._session_losses = 0
+        cfg.update({"run_history": [], "all_time_wins": 0, "all_time_losses": 0})
+        self.push_log("[Статистика] История забегов и счётчики очищены.")
+        return {"ok": True}
+
+    def export_run_report_pdf(self) -> dict:
+        """История забегов и статистика одним PDF — куда скажет проводник."""
+        import webview  # лениво, как и в остальных диалогах: --test идёт без pywebview
+        from core import report_pdf
+        if not self._window:
+            return {"ok": False, "reason": "no_window"}
+        dialog_type = getattr(getattr(webview, "FileDialog", None), "SAVE",
+                              getattr(webview, "SAVE_DIALOG", 2))
+        result = self._window.create_file_dialog(
+            dialog_type, directory=os.path.expanduser("~"),
+            save_filename=report_pdf.default_filename(),
+            file_types=("PDF files (*.pdf)",))
+        if not result:
+            return {"ok": False, "reason": "cancelled"}
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        # Время забега в отчёте — абсолютное («01.08.2026 14:32»), а не «5 минут
+        # назад», как в интерфейсе: отчёт живёт дольше момента, когда его
+        # собрали, и «5 минут назад» в файле, открытом завтра, — просто ложь.
+        history = [
+            {"result": h.get("result"), "map": h.get("map"), "duration": h.get("duration"),
+             "source": h.get("source", "auto"),
+             # В отчёте подписи русские — он и открывается отдельно от
+             # интерфейса, где словарь i18n перевести их уже не сможет.
+             "kind": RUN_KIND_RU.get(h.get("kind", ""), h.get("kind", "")),
+             "when": (datetime.fromtimestamp(h["at"]).strftime("%d.%m.%Y %H:%M")
+                      if isinstance(h.get("at"), (int, float)) else "-")}
+            for h in cfg.load().get("run_history", [])
+        ]
+        try:
+            report_pdf.build(path, stats=self._run_stats_snapshot(), history=history)
+        except Exception as exc:
+            self.push_log(f"[Статистика] Отчёт не собрался: {exc}")
+            return {"ok": False, "reason": str(exc)}
+        self.push_log(f"[Статистика] Отчёт сохранён: {path}")
+        return {"ok": True, "path": path}
 
     def get_settings(self) -> dict:
         data = cfg.load()
@@ -2005,7 +2191,26 @@ class Api:
             "recording": data.get("replay_file", ""),
             "loops": int(data.get("replay_loops", 0) or 0),
             "require_focus": bool(data.get("replay_require_focus", True)),
+            "start_delay": self._replay_start_delay_sec(),
+            "loss_streak_stop": self._replay_loss_limit(),
         }
+
+    @staticmethod
+    def _replay_start_delay_sec() -> float:
+        """Пауза перед первым действием повтора, в секундах.
+
+        В одном месте, потому что спрашивают её из трёх: интерфейс при
+        открытии, запуск повтора и сохранение настройки. Значение по умолчанию
+        живёт константой в core/replay.py — здесь только перевод в секунды и
+        защита от мусора в файле настроек."""
+        from core import replay
+        try:
+            value = float(cfg.load().get("replay_start_delay", replay.START_DELAY_MS / 1000.0))
+        except (TypeError, ValueError):
+            value = replay.START_DELAY_MS / 1000.0
+        # Верхняя граница — минута: больше это уже не «дать игре появиться», а
+        # забытая настройка, из-за которой макрос «не работает».
+        return round(max(0.0, min(value, 60.0)), 1)
 
     def set_run_mode(self, mode: str) -> dict:
         if mode not in ("auto", "replay"):
@@ -2015,11 +2220,24 @@ class Api:
         return {"ok": True}
 
     def set_replay_option(self, key: str, value) -> dict:
-        if key not in ("replay_file", "replay_loops", "replay_require_focus"):
+        if key not in ("replay_file", "replay_loops", "replay_require_focus",
+                        "replay_start_delay", "replay_loss_streak_stop"):
             return {"ok": False, "reason": "bad_key"}
+        if key == "replay_loss_streak_stop":
+            try:
+                value = max(0, int(value or 0))     # 0 — предохранитель выключен
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "bad_value"}
         if key == "replay_loops":
             try:
                 value = max(0, int(value))
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "bad_value"}
+        if key == "replay_start_delay":
+            # Пустое поле — это «убрал настройку», а не «сломал». Ноль тоже
+            # законен: он выключает паузу и возвращает прежнее поведение.
+            try:
+                value = round(max(0.0, min(float(value or 0), 60.0)), 1)
             except (TypeError, ValueError):
                 return {"ok": False, "reason": "bad_value"}
         if key == "replay_require_focus":
@@ -2053,7 +2271,7 @@ class Api:
             return self.replay_stop_recording("")
         return self.replay_start_recording()
 
-    def replay_start_recording(self) -> dict:
+    def replay_start_recording(self, name: str = "") -> dict:
         # Запись и автомат несовместимы: автомат сам двигает мышь, и это
         # попало бы в файл как действия игрока.
         if self.runner.is_running():
@@ -2064,6 +2282,12 @@ class Api:
         rec = self._replay_recorder()
         if not rec.start():
             return {"ok": False, "reason": "cant_start"}
+        # Имя, названное НА СТАРТЕ. Нужно из-за того, как записью пользуются:
+        # окно «Записи» уходит с экрана вместе с полем ввода, а
+        # останавливают запись клавишей F8, сидя в игре, — спросить имя в тот
+        # момент уже не у кого. Экран «Запись» по-прежнему передаёт имя при
+        # остановке, и оно главнее.
+        self._pending_rec_name = (name or "").strip()
         self.push_log("[Повтор] Запись начата — играй как обычно.")
         return {"ok": True}
 
@@ -2073,14 +2297,20 @@ class Api:
         if not rec.running:
             return {"ok": False, "reason": "not_recording"}
         events = rec.stop()
+        name = (name or "").strip() or getattr(self, "_pending_rec_name", "")
+        self._pending_rec_name = ""
         acts = sum(1 for e in events if e.get("kind") != "move")
         if acts == 0:
             self.push_log("[Повтор] Записывать нечего: ни одного клика или нажатия.")
             return {"ok": False, "reason": "empty"}
-        saved = replay.save(name, events, rec.base_w, rec.base_h)
+        saved = replay.save(name, events, rec.base_w, rec.base_h, rec.duration_ms)
         cfg.update({"replay_file": saved})
-        st = replay.stats({"events": events})
-        self.push_log(f"[Повтор] Записано «{saved}»: {st['actions']} действий, {st['seconds']} с.")
+        st = replay.stats({"events": events, "duration": rec.duration_ms})
+        # Хвост ожидания называем вслух: это самая непривычная часть записи —
+        # человек ничего не нажимал, а в файл эти минуты всё равно попали, и
+        # повтор будет их выжидать (см. граблю №5 в core/replay.py).
+        tail = f", из них ждём {st['tail']} с" if st["tail"] >= 1.0 else ""
+        self.push_log(f"[Повтор] Записано «{saved}»: {st['actions']} действий, {st['seconds']} с{tail}.")
         return {"ok": True, "name": saved, **st}
 
     def replay_recording_status(self) -> dict:
@@ -2091,12 +2321,17 @@ class Api:
         # видел только счётчик — «пишется 47 действий» не говорит НИЧЕГО о
         # том, попало ли в запись то, что он делал. Список последних
         # событий отвечает на это сразу.
-        recent, elapsed = [], 0.0
+        recent, elapsed, tail = [], 0.0, 0.0
         if rec and rec.running:
             try:
                 with rec._lock:
                     evs = list(rec._events)
-                elapsed = round((evs[-1]["t"] / 1000.0) if evs else 0.0, 1)
+                # Часы записи, а не время последнего события: сидеть и ждать
+                # конца матча — это тоже запись, и счётчик обязан идти. Иначе
+                # он замирал на последней расстановке, и выглядело это как
+                # «ожидание не пишется» (см. граблю №5 в core/replay.py).
+                elapsed = round(rec.elapsed_ms / 1000.0, 1)
+                tail = round(max(0.0, elapsed - (evs[-1]["t"] / 1000.0 if evs else 0.0)), 1)
                 for e in reversed(evs):
                     if e["kind"] == "move":
                         continue          # точек пути тысячи, показывать их незачем
@@ -2117,11 +2352,19 @@ class Api:
             "recorded": rec.count if rec else 0,
             "recent": recent,
             "elapsed": elapsed,
+            # Сколько времени идёт «просто ждём» — с последнего действия.
+            "tail": tail,
             "state": p.state if p else "idle",
             "loop": p.loop_num if p else 0,
             "index": p.index if p else 0,
             "total": p.total if p else 0,
             "name": p.name if p else "",
+            # Секунды до первого действия. Больше нуля — идёт пауза перед
+            # стартом, и панель показывает отсчёт вместо «играю».
+            "countdown": round((p.countdown_ms / 1000.0) if p else 0.0, 1),
+            # Сколько исходов матчей поймано за этот прогон — по нему видно,
+            # что наблюдатель за «Victory»/«Defeat» действительно работает.
+            "matches": getattr(getattr(self, "_result_watcher", None), "matches", 0),
         }
 
     def replay_list(self) -> list:
@@ -2177,19 +2420,153 @@ class Api:
             return {"ok": False, "reason": "no_recording"}
         if self.runner.is_running():
             self.runner.stop()
+        delay = self._replay_start_delay_sec()
         p = self._replay_player()
         ok = p.start(rec["events"], name,
                      loops=int(data.get("replay_loops", 0) or 0),
                      base_w=rec.get("base_w", 0), base_h=rec.get("base_h", 0),
-                     require_focus=bool(data.get("replay_require_focus", True)))
+                     require_focus=bool(data.get("replay_require_focus", True)),
+                     # Длина круга вместе с ожиданием в конце — иначе повтор
+                     # пойдёт на второй заход, не дождавшись конца матча.
+                     duration_ms=float(rec.get("duration") or 0.0),
+                     # Пауза, чтобы игра успела вернуться на экран прежде, чем
+                     # пойдут нажатия (см. START_DELAY_MS в core/replay.py).
+                     start_delay_ms=delay * 1000.0)
         if ok:
             loops = int(data.get("replay_loops", 0) or 0)
             self.push_log(f"[Повтор] Играю «{name}», кругов: "
                            + ("без конца" if loops == 0 else str(loops)))
+            if delay > 0:
+                self.push_log(f"[Повтор] Пауза {delay:g} с — "
+                               f"жду, пока игра вернётся на экран.")
+            # Состояние на Панели — то же табло, что у автомата. Повтор раньше
+            # не заполнял его вовсе, и на Дашборде во время повтора висело
+            # «Idle» с прочерками, будто ничего не идёт.
+            self._set_run_status(action=("Повтор: пауза перед стартом..." if delay > 0
+                                          else "Повтор: запускаю..."), mode="Повтор",
+                                 macro=name, current_task=name,
+                                 current_repeat=("∞" if loops == 0 else f"1/{loops}"))
+            # Серия поражений считается ЗА ПРОГОН: нажал «Старт» заново — счёт
+            # с нуля. Иначе вчерашние поражения тушили бы сегодняшний запуск.
+            self._replay_loss_streak = 0
+            # Длину круга наблюдателю отдаём затем, чтобы он понимал, какая
+            # тишина для ЭТОЙ записи подозрительная (см. _silent_too_long).
+            self._replay_watcher().start(
+                name, cycle_seconds=float(rec.get("duration") or 0.0) / 1000.0)
         return {"ok": ok}
+
+    def _replay_watcher(self):
+        from core import replay_result
+        if getattr(self, "_result_watcher", None) is None:
+            self._result_watcher = replay_result.ResultWatcher(
+                lambda: self.game_hwnd, self._on_replay_result, self.push_log,
+                # Повтор может кончиться сам, отыграв заданное число кругов, —
+                # наблюдателю тогда пора уходить вместе с ним.
+                while_running=lambda: bool(getattr(self, "_player", None)
+                                            and self._player.running),
+                on_silence=self._on_replay_silence)
+        return self._result_watcher
+
+    def _on_replay_silence(self) -> None:
+        """Долго крутится, а исходов нет — сказать в Discord, а не только в
+        журнал. Макрос для того и оставляют на ночь, чтобы не смотреть на него;
+        поломка, о которой известно только журналу, — это поломка, о которой
+        узнают утром."""
+        from core import replay_result
+        p = getattr(self, "_player", None)
+        replay_result.send_notice(
+            self.get_webhook_settings(),
+            "Повтор идёт, а исходов нет \U000026A0\U0000FE0F",
+            f"Запись **{(p.name if p else '') or '-'}** крутится, но ни одной победы "
+            f"или поражения распознать не вышло.\nОбычно это значит, что эталоны "
+            f"`victory`/`defeat` перестали совпадать — проверь Настройки → Общие → "
+            f"Менеджер картинок.\nПовтор при этом НЕ остановлен.",
+            log=self.push_log)
+
+    def _replay_loss_limit(self) -> int:
+        """После скольких поражений подряд повтор останавливается сам.
+
+        0 — предохранитель выключен. По умолчанию мягче, чем у автомата
+        (MAX_CONSECUTIVE_LOSSES_SAME_MAP = 3): автомат при срабатывании всего
+        лишь перезапускает Roblox и продолжает, а здесь прогон встаёт совсем,
+        и цена ошибки выше."""
+        try:
+            return max(0, int(cfg.load().get("replay_loss_streak_stop", 5)))
+        except (TypeError, ValueError):
+            return 5
+
+    def _on_replay_result(self, result: str, duration: str, screenshot: str = None) -> None:
+        """Повтор доиграл до экрана «Victory»/«Defeat» — засчитываем матч.
+
+        Вызывается из потока наблюдателя (core/replay_result.py). Порядок тот
+        же, что у автомата: сперва счётчики, потом уведомление, — иначе в
+        уведомлении не было бы матча, о котором оно и пришло."""
+        from core import replay_result
+        p = getattr(self, "_player", None)
+        name = (p.name if p else "") or cfg.load().get("replay_file", "")
+        # В историю пишем имя записи на месте карты: у повтора карты нет, а
+        # различать забеги по чему-то надо, и запись — это ровно то, чем они
+        # различаются.
+        self._record_match_result(result, f"Запись «{name}»", duration,
+                                   source="replay", kind="Replay")
+        try:
+            replay_result.send_webhook(
+                self.get_webhook_settings(), result, name, duration,
+                loop_num=(p.loop_num if p else 1), screenshot_path=screenshot,
+                stats=self._run_stats_snapshot(), log=self.push_log)
+        finally:
+            if screenshot:
+                try:
+                    os.remove(screenshot)
+                except OSError:
+                    pass
+        self._check_replay_loss_streak(result, name)
+
+    def _check_replay_loss_streak(self, result: str, name: str) -> None:
+        """Предохранитель серии поражений.
+
+        ЗАЧЕМ. Запись перестаёт работать тихо: игра обновилась, кнопка съехала
+        на десять пикселей, юниты стали дороже. Повтор об игре не знает ничего
+        и потому будет крутить сломанную запись ровно так же бодро, как
+        рабочую, — всю ночь, сливая матч за матчем. Автомат от этого защищён
+        (MAX_CONSECUTIVE_LOSSES_SAME_MAP), у повтора защиты не было вовсе.
+
+        Победа сбрасывает счёт: считается только НЕПРЕРЫВНАЯ серия, иначе
+        предохранитель срабатывал бы на обычном невезении.
+        """
+        limit = self._replay_loss_limit()
+        if result == "win":
+            self._replay_loss_streak = 0
+            return
+        self._replay_loss_streak = getattr(self, "_replay_loss_streak", 0) + 1
+        if not limit or self._replay_loss_streak < limit:
+            return
+
+        from core import replay_result
+        self.push_log(f"[Повтор] {self._replay_loss_streak} поражений подряд — "
+                       f"останавливаю прогон. Похоже, запись перестала подходить.")
+        # Останавливаем ПЛЕЕР, а не replay_stop(): мы сейчас в потоке
+        # наблюдателя, а replay_stop делает join этого самого потока — то есть
+        # поток ждал бы сам себя. Наблюдатель уйдёт сам на следующем такте,
+        # увидев через while_running, что плеер встал.
+        p = getattr(self, "_player", None)
+        if p is not None:
+            p.stop()
+        self.reset_run_status("Idle")
+        replay_result.send_notice(
+            self.get_webhook_settings(),
+            "Повтор остановлен: серия поражений \U0001F6D1",
+            f"Запись **{name or '-'}** проиграла **{self._replay_loss_streak}** "
+            f"матчей подряд, и прогон остановлен.\nОбычно так выглядит запись, "
+            f"которая перестала подходить: игра обновилась или интерфейс съехал.\n"
+            f"Порог меняется на экране «Запись».",
+            log=self.push_log)
 
     def replay_stop(self) -> dict:
         p = getattr(self, "_player", None)
+        w = getattr(self, "_result_watcher", None)
+        if w:
+            w.stop()
         if p:
             p.stop()
             self.push_log("[Повтор] Остановлено.")
@@ -4229,22 +4606,31 @@ class Api:
     # MODE_CATEGORIES), поэтому виден и как обычная карта, и удаляется
     # простым стиранием файла.
 
-    def get_mode_map_snapshot(self, mode: str) -> dict:
+    # `variant` -- карта (Story/Expedition) или акт (Raid/Event). Пустая
+    # строка -- общий снимок режима: он же запасной, если под карту своего нет.
+
+    def get_mode_map_snapshot(self, mode: str, variant: str = "") -> dict:
         from core import maps
         if not maps.category_for_mode(mode):
             return {"ok": False, "reason": "bad_mode"}
-        uri = maps.mode_snapshot_data_uri(mode)
+        uri = maps.mode_snapshot_data_uri(mode, variant)
         if not uri:
             return {"ok": False, "reason": "not_found"}
+        # exact=False -- подставился ОБЩИЙ снимок режима, своего у этой карты
+        # нет. Интерфейс говорит это вслух: иначе человек правит точки по
+        # чужому полю и узнаёт об этом только по промахам в игре.
         return {"ok": True, "data_uri": uri, "category": maps.category_for_mode(mode),
-                "name": maps.MODE_SNAPSHOT_NAME}
+                "name": maps.MODE_SNAPSHOT_NAME,
+                "exact": maps.has_mode_snapshot(mode, variant) if variant else True}
 
-    def has_mode_map_snapshot(self, mode: str) -> dict:
+    def has_mode_map_snapshot(self, mode: str, variant: str = "") -> dict:
         from core import maps
-        return {"ok": True, "has": maps.has_mode_snapshot(mode)}
+        return {"ok": True,
+                "has": bool(maps.resolve_mode_snapshot(mode, variant)),
+                "exact": maps.has_mode_snapshot(mode, variant)}
 
-    def save_mode_map_snapshot(self, mode: str) -> dict:
-        """Сохраняет ПОСЛЕДНИЙ снятый кадр как снимок по умолчанию для режима.
+    def save_mode_map_snapshot(self, mode: str, variant: str = "") -> dict:
+        """Сохраняет ПОСЛЕДНИЙ снятый кадр как снимок по умолчанию.
 
         Работает по кэшу get_roblox_snapshot, а не снимает заново: сохранять
         надо именно тот кадр, который человек видит на холсте."""
@@ -4255,20 +4641,25 @@ class Api:
         if not png:
             return {"ok": False, "reason": "no_capture"}
         try:
-            maps.save_mode_snapshot(mode, png)
+            maps.save_mode_snapshot(mode, png, variant)
         except (OSError, ValueError) as exc:
             return {"ok": False, "reason": str(exc)}
-        self.push_log(f"[Positions] Снимок из игры сохранён как снимок по умолчанию "
-                      f"для режима {mode} — дальше он подставляется сам.")
-        return {"ok": True, "category": maps.category_for_mode(mode), "name": maps.MODE_SNAPSHOT_NAME}
+        where = maps.snapshot_variant(variant)
+        self.push_log(f"[Positions] Снимок из игры сохранён для "
+                      f"{mode}{' · ' + where if where else ' (весь режим)'} — "
+                      f"дальше он подставляется сам.")
+        return {"ok": True, "category": maps.category_for_mode(mode),
+                "name": maps.MODE_SNAPSHOT_NAME}
 
-    def delete_mode_map_snapshot(self, mode: str) -> dict:
+    def delete_mode_map_snapshot(self, mode: str, variant: str = "") -> dict:
         from core import maps
         if not maps.category_for_mode(mode):
             return {"ok": False, "reason": "bad_mode"}
-        removed = maps.delete_mode_snapshot(mode)
+        removed = maps.delete_mode_snapshot(mode, variant)
         if removed:
-            self.push_log(f"[Positions] Снимок по умолчанию для режима {mode} удалён.")
+            where = maps.snapshot_variant(variant)
+            self.push_log(f"[Positions] Снимок для "
+                          f"{mode}{' · ' + where if where else ' (весь режим)'} удалён.")
         return {"ok": True, "removed": removed}
 
     def get_reward_region(self) -> dict:
@@ -4989,9 +5380,9 @@ def _launch_ui():
             # интерфейс значит зависеть от того, чем он сейчас занят.
             # Зовём напрямую, как и стоп.
             "toggle_record": lambda: api.hotkey_toggle_record(),
-            # Экран записей — через интерфейс: там переключение вкладок со
-            # своей вознёй (спрятать окно игры, восстановить его на Панели).
-            "open_replay": lambda: api.push_ui("toggleReplayScreen"),
+            # Список записей — через интерфейс: окно по дороге возвращает
+            # экран на Панель и прячет/возвращает окно игры.
+            "open_replay": lambda: api.push_ui("toggleRecordingsOverlay"),
         }
         failed = []
         for action, fn in actions.items():

@@ -282,6 +282,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # -- both reset alongside the battle block state in _play_one_match.
         self._expedition_extract_count = 0
         self._expedition_extract_accept_at = 1
+        # Сколько раз подряд посреди забега Expedition пере-нажималась кнопка
+        # старта, не сдвинув забег ни на один чекпойнт (см.
+        # EXP_STUCK_START_GAME_CLICKS). Обнуляется на каждом чекпойнте.
+        self._exp_start_game_reclicks = 0
         # Consecutive-loss fail-safe (see MAX_CONSECUTIVE_LOSSES_SAME_MAP):
         # how many losses in a row on _consecutive_loss_map so far -- reset
         # to 0 on any win, or restarted at 1 for a new map, so only a real
@@ -1871,6 +1875,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._expedition_extract_accept_at = _parse_extract_after(
             task.get("extract_after")) + 1
         self._exp_last_sighting_at = 0.0  # fresh match, fresh sighting-debounce clock (see EXP_COLOR_SIGHTING_DEBOUNCE)
+        self._exp_start_game_reclicks = 0  # свежий матч -- свежий счётчик застревания
         # Spirit City Act 3's boss/cutscene "Click anywhere to close" popup
         # (see _click_close_popup_if_found) only ever shows up there.
         watch_close_popup = (task.get("mode") == "raid" and task.get("map") == "Spirit City"
@@ -2077,6 +2082,30 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 result = self._check_expedition_wave_result(hwnd, stop_event)
                 if result is not None:
                     return result
+                # СТРАХОВКА КОНЦА МАТЧА РАБОТАЕТ И В EXPEDITION.
+                #
+                # Раньше эта ветка делала `continue` и проскакивала мимо
+                # проверки ниже — то есть у Expedition не было ВООБЩЕ НИ
+                # ОДНОГО способа понять, что забег кончился, кроме совпадения
+                # эталона «defeat». Не совпал (а он нарезан на настройках
+                # автора движка и совпадает не у всех) — и забег вставал
+                # намертво: в логе бесконечно чередовались «Wave Continue
+                # found (x=575)», «Follow-up Continue found at (493, 413)» и
+                # «Found nav_start_game again mid-run», всё с ОДНИМИ И ТЕМИ ЖЕ
+                # координатами, то есть экран не менялся вовсе. Матч при этом
+                # не заканчивался никогда, Pre Start больше не отрабатывал, и
+                # каждый следующий заход шёл без юнитов — гарантированный
+                # слив, ровно то, на что жаловались.
+                #
+                # Половину страховки берём с собой, вторую — нет: кнопка
+                # старта в Expedition законно висит посреди забега (см.
+                # allow_start_game_fallback).
+                polls += 1
+                if polls % MATCH_END_CHECK_EVERY == 0:
+                    ended = self._match_ended_without_a_banner(
+                        hwnd, allow_start_game_fallback=False)
+                    if ended is not None:
+                        return ended
                 self._interruptible_sleep(MATCH_RESULT_POLL_INTERVAL, stop_event)
                 continue
 
@@ -2112,7 +2141,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._save_debug_screenshot_unconditional(hwnd, "match_result_timeout")
         return None
 
-    def _match_ended_without_a_banner(self, hwnd):
+    def _match_ended_without_a_banner(self, hwnd, allow_start_game_fallback: bool = True):
         """Матч кончился, хотя баннер «Victory»/«Defeat» не совпал? Возвращает
         "win"/"loss"/RESULT_UNKNOWN/RESULT_ROUND_ENDED если кончился, иначе None.
 
@@ -2140,6 +2169,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except vision.TemplateNotFound:
             end_button = None  # шаблона кнопки нет -- этой страховки просто не будет
         if end_button is None:
+            if not allow_start_game_fallback:
+                # EXPEDITION. Там кнопка старта ЗАКОННО появляется посреди
+                # забега (её и дожимает _check_expedition_wave_result), так
+                # что «на экране снова Start Game» означает конец раунда где
+                # угодно, только не здесь: эта проверка обрывала бы живые
+                # забеги на каждом чекпойнте. Экран результата в Expedition
+                # настоящий, с «Repeat Stage», — его и хватает.
+                return None
             # ВТОРАЯ ФОРМА КОНЦА МАТЧА, ИМЕННО ТАК В RAID: экрана результата
             # нет вовсе, раунд просто кончился и снова висит «Start Game» --
             # этап готов к следующему забегу прямо на месте.
@@ -2273,6 +2310,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
 
 
+
+    @staticmethod
+    def _run_kind(task: dict) -> str:
+        """Чем этот забег был — для истории забегов и отчёта.
+
+        ПОЧЕМУ НЕ ПРОСТО task["mode"]. Challenge ходит под mode="story"
+        намеренно: у него ровно тот же конвейер Pre Start / Start Game /
+        Victory-Defeat, что у обычной Story-задачи (см. runner_challenge.py).
+        Отличает его только метка is_challenge — и в истории эти строки обязаны
+        отличаться, иначе половина забегов выглядит как Story, хотя игралось
+        совсем другое.
+        """
+        task = task or {}
+        if task.get("is_challenge"):
+            return "Daily Challenge" if task.get("is_daily_challenge") else "Challenge"
+        mode = str(task.get("mode") or "").strip()
+        return mode.capitalize() if mode else ""
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
@@ -2507,7 +2561,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # записать наугад значит испортить и винрейт, и предохранитель серии
         # поражений (он закрывает Roblox через taskkill).
         if record:
-            self._record_result(result, map_name, duration)
+            self._record_result(result, map_name, duration, kind=self._run_kind(task))
         try:
             self._send_result_webhook(webhook, result, task, duration, result_screenshot, placement)
         finally:

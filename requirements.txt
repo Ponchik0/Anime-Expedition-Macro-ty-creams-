@@ -8,6 +8,10 @@ mss            # screen capture (Settings > Webhook > Debug Screenshot, core/rew
 requests       # multipart webhook uploads (core/webhook.py send_file)
 opencv-python  # reward-icon image preprocessing (core/rewards.py)
 numpy          # array handling for opencv/mss (core/rewards.py)
+Pillow         # PDF-отчёт по забегам (core/report_pdf.py). Именно Pillow, а не
+               # OpenCV: у cv2 шрифты Hershey без кириллицы, а тут и подписи
+               # русские, и имена записей задаёт человек. Он же и сохраняет
+               # страницы в PDF, так что отдельной библиотеки на PDF не нужно.
 pytesseract    # OCR FALLBACK -- Windows uses the built-in Windows.Media.Ocr (see winsdk
                # below); Tesseract is only used when that isn't available (older Windows,
                # macOS). Its engine binary can't be pip-installed:

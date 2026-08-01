@@ -227,7 +227,7 @@ def test_a_finished_round_is_kept_out_of_the_stats(monkeypatch):
     предохранитель серии поражений."""
     recorded = []
     runner = _runner(monkeypatch, [])
-    runner._record_result = lambda *a: recorded.append(a)
+    runner._record_result = lambda *a, **kw: recorded.append((a, kw))
 
     runner._finish_match_result_background(
         RESULT_ROUND_ENDED, "Spirit City", "5m", {"mode": "raid"}, None, None, None, record=False)
@@ -239,9 +239,12 @@ def test_a_finished_round_is_kept_out_of_the_stats(monkeypatch):
 def test_a_known_outcome_is_still_recorded(monkeypatch, result):
     recorded = []
     runner = _runner(monkeypatch, [])
-    runner._record_result = lambda *a: recorded.append(a)
+    runner._record_result = lambda *a, **kw: recorded.append((a, kw))
 
     runner._finish_match_result_background(
         result, "Spirit City", "5m", {"mode": "raid"}, None, None, None)
 
     assert len(recorded) == 1
+    # Чем забег БЫЛ идёт в историю вместе с исходом: без этого Challenge, у
+    # которого mode="story", был в списке неотличим от обычной Story-задачи.
+    assert recorded[0][1]["kind"] == "Raid"

@@ -74,9 +74,25 @@ class ExpeditionOps:
         # next poll a moment later.
         start_name, start_match = self._find_start_game_button(hwnd)
         if start_match is not None:
+            # ПРЕДОХРАНИТЕЛЬ ОТ ПЕТЛИ. Появление этой кнопки посреди забега --
+            # нормально, но только пока забег ДВИГАЕТСЯ. Если она всплывает
+            # раз за разом, а до чекпойнта дело так и не доходит, значит мы
+            # долбимся в экран, который не понимаем. Возврат None -- это для
+            # вызывающего обычная неудача: он выйдет в лобби и зайдёт заново,
+            # то есть Pre Start отработает и юниты снова встанут. Именно это
+            # поведение и было раньше, до того как забег начал зависать здесь
+            # навсегда и уходить в слив без юнитов.
+            self._exp_start_game_reclicks += 1
+            if self._exp_start_game_reclicks > EXP_STUCK_START_GAME_CLICKS:
+                self._log(f'[Macro] "{start_name}" пере-нажималась '
+                           f'{self._exp_start_game_reclicks} раз подряд, а забег не сдвинулся '
+                           f'ни на один чекпойнт — застряли. Выхожу в лобби и захожу заново.')
+                self._save_debug_screenshot_unconditional(hwnd, "expedition_stuck_start_game")
+                return None
             debug_path = self._debug_save(hwnd, start_name, start_match)
             suffix = f" Debug: {debug_path}" if debug_path else ""
-            self._log(f'[Macro] Found "{start_name}" again mid-run -- clicking it.{suffix}')
+            self._log(f'[Macro] Found "{start_name}" again mid-run -- clicking it '
+                       f'({self._exp_start_game_reclicks}/{EXP_STUCK_START_GAME_CLICKS}).{suffix}')
             # Same Z-deselect as the first Start Game click: mid-run this
             # popup can appear right after a Battle place/upgrade block, and
             # a still-selected unit eats the click just as readily here.
@@ -148,6 +164,7 @@ class ExpeditionOps:
             extract_match = None
         if extract_match is not None:
             self._expedition_extract_count += 1
+            self._exp_start_game_reclicks = 0   # чекпойнт — забег движется (см. цветной путь)
             debug_path = self._debug_save(hwnd, "exp_extract", extract_match)
             suffix = f" Debug: {debug_path}" if debug_path else ""
             self._log(f'[Macro] Found "exp_extract" (occurrence {self._expedition_extract_count}/'
@@ -344,6 +361,12 @@ class ExpeditionOps:
             now = time.time()
             if now - self._exp_last_sighting_at > EXP_COLOR_SIGHTING_DEBOUNCE:
                 self._expedition_extract_count += 1
+                # Дошли до настоящего чекпойнта — забег ДВИЖЕТСЯ, счётчик
+                # застревания сбрасываем. Именно чекпойнт, а не «нажали
+                # Continue»: в застрявшем логе и Continue, и follow-up
+                # находились каждый цикл, просто экран не менялся, так что
+                # признаком прогресса они быть не могут.
+                self._exp_start_game_reclicks = 0
                 self._log(f'[Macro] Checkpoint offers Extract (sighting {self._expedition_extract_count}/'
                            f'{self._expedition_extract_accept_at} -- Continue found at x={cont["cx"]}).')
             self._exp_last_sighting_at = now

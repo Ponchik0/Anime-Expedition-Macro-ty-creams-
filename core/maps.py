@@ -3,9 +3,9 @@ Place Unit picker in Creation -- lets a player click a spot on a reference
 map image (or a live Roblox snapshot, see main.get_roblox_snapshot) to read
 off an X/Y position instead of guessing coordinates blind.
 
-Здесь же живёт СНИМОК ПО УМОЛЧАНИЮ ДЛЯ РЕЖИМА (см. MODE_CATEGORIES ниже):
-кадр из игры, снятый один раз, который подставляется в выбор точки сам,
-пока ты работаешь со сценарием этого режима.
+Здесь же живёт СНИМОК ПО УМОЛЧАНИЮ (см. MODE_CATEGORIES ниже): кадр из игры,
+снятый один раз, который подставляется в выбор точки сам. Слот на каждую карту
+(у Raid и Event -- на акт) плюс общий слот на режим, который служит запасным.
 """
 import base64
 import os
@@ -26,11 +26,20 @@ _IMAGE_EXTS = (".png", ".jpg", ".jpeg")
 #
 # Теперь снимок сохраняется под режим и дальше подставляется сам.
 #
-# ПОЧЕМУ КЛЮЧ -- РЕЖИМ, А НЕ КАРТА. Точка установки задаётся в экранных
-# координатах и зависит от того, куда смотрит камера, а камеру макрос
-# выставляет одинаково для всего режима (см. runner._run_prestart: у
-# Expedition своя последовательность, у остальных общая). То есть один кадр на
-# режим -- ровно та единица, которая переиспользуется.
+# КЛЮЧ -- РЕЖИМ ПЛЮС НЕОБЯЗАТЕЛЬНАЯ КАРТА/АКТ.
+#
+# Сначала ключом был ОДИН ТОЛЬКО режим, и рассуждение было такое: точка
+# установки задаётся в экранных координатах и зависит от того, куда смотрит
+# камера, а камеру макрос выставляет одинаково для всего режима (см.
+# runner._run_prestart). Про камеру это верно, а вывод -- нет: камера-то одна,
+# но ПОЛЕ под ней у каждой карты своё. Снимок Rose Kingdom для School Grounds
+# бесполезен ровно так же, как чужой кадр, и на каждую вторую карту приходилось
+# переснимать поверх единственного слота, теряя предыдущий.
+#
+# Теперь слот на каждую карту (или акт -- у Raid и Event это они), плюс общий
+# слот на режим. Общий остаётся ключом БЕЗ варианта, поэтому все ранее
+# сохранённые снимки продолжают работать как были, и он же -- запасной: нет
+# кадра для этой карты, подставится общий для режима.
 #
 # Папка-категория совпадает с той, что уже используется каталогом
 # (Assets/map_bundled/{Story,Raid,Expedition,Event}), поэтому сохранённый
@@ -85,28 +94,65 @@ def category_for_mode(mode: str) -> str:
     return MODE_CATEGORIES.get(str(mode or "").strip().lower(), "")
 
 
-def mode_snapshot_path(mode: str) -> str:
-    """Путь к снимку по умолчанию для режима, или "" если режим не тот.
+def snapshot_variant(variant: str) -> str:
+    """Безопасное имя карты/акта для файла, или "" -- «общий снимок режима».
+
+    Имя приходит из интерфейса и попадает в путь на диске, поэтому пропускаем
+    только буквы, цифры, пробел, дефис и апостроф (последний нужен: карта так
+    и называется -- King's Tomb). Всё прочее выбрасываем целиком, а не
+    заменяем: «..» и разделители пути обязаны исчезнуть, а не превратиться в
+    подчёркивания, из которых потом соберётся другое имя. Тот же принцип, что
+    у белого списка режимов в category_for_mode."""
+    cleaned = "".join(
+        ch for ch in str(variant or "").strip()
+        if ch.isalnum() or ch in " -'"
+    ).strip()
+    return cleaned[:60]
+
+
+def mode_snapshot_path(mode: str, variant: str = "") -> str:
+    """Путь к снимку для режима (и карты/акта), или "" если режим не тот.
     Существование файла НЕ проверяется -- это путь, куда писать и откуда
     читать; проверка отдельно, в has_mode_snapshot."""
     category = category_for_mode(mode)
     if not category:
         return ""
-    return os.path.join(MAPS_DIR, category, f"{MODE_SNAPSHOT_NAME}.png")
+    safe = snapshot_variant(variant)
+    # Без варианта -- ровно прежнее имя файла: снимки, сохранённые до
+    # появления карт, обязаны продолжать работать.
+    name = f"{MODE_SNAPSHOT_NAME} - {safe}" if safe else MODE_SNAPSHOT_NAME
+    return os.path.join(MAPS_DIR, category, f"{name}.png")
 
 
-def has_mode_snapshot(mode: str) -> bool:
-    path = mode_snapshot_path(mode)
+def has_mode_snapshot(mode: str, variant: str = "") -> bool:
+    """Есть ли снимок ИМЕННО для этой карты (или общий, если variant пуст).
+    Без запасного варианта -- на этот вопрос отвечает resolve_mode_snapshot."""
+    path = mode_snapshot_path(mode, variant)
     return bool(path) and os.path.isfile(path)
 
 
-def save_mode_snapshot(mode: str, png_bytes: bytes) -> str:
-    """Кладёт кадр PNG как снимок по умолчанию для режима. Возвращает путь.
+def resolve_mode_snapshot(mode: str, variant: str = "") -> str:
+    """Какой файл реально подставится: снимок этой карты, иначе общий для
+    режима, иначе "".
 
-    Перезаписывает молча и намеренно: «снимок по умолчанию» -- ровно один на
-    режим, и повторное нажатие означает «этот кадр теперь актуальный»
-    (пересобрал состав, сменил ракурс). Копии тут были бы мусором."""
-    path = mode_snapshot_path(mode)
+    Запасной вариант -- главное здесь. Карт много, и требовать снимок под
+    каждую значило бы вернуть ровно ту возню, ради устранения которой снимок
+    по умолчанию и заводился: на новой карте подставится общий кадр режима, и
+    только если он не подходит, имеет смысл снять свой."""
+    if variant and has_mode_snapshot(mode, variant):
+        return mode_snapshot_path(mode, variant)
+    if has_mode_snapshot(mode):
+        return mode_snapshot_path(mode)
+    return ""
+
+
+def save_mode_snapshot(mode: str, png_bytes: bytes, variant: str = "") -> str:
+    """Кладёт кадр PNG как снимок по умолчанию. Возвращает путь.
+
+    Перезаписывает молча и намеренно: снимок -- ровно один на слот, и
+    повторное нажатие означает «этот кадр теперь актуальный» (пересобрал
+    состав, сменил ракурс). Копии тут были бы мусором."""
+    path = mode_snapshot_path(mode, variant)
     if not path:
         raise ValueError(f"unknown mode: {mode!r}")
     if not png_bytes:
@@ -117,20 +163,24 @@ def save_mode_snapshot(mode: str, png_bytes: bytes) -> str:
     return path
 
 
-def mode_snapshot_data_uri(mode: str) -> str:
-    """Снимок по умолчанию как data-URI, или "" если его нет. Тем же способом,
-    что и остальные карты: интерфейс читает картинки только так -- ни
-    http-сервера, ни доступа к file:// у него нет."""
-    if not has_mode_snapshot(mode):
+def mode_snapshot_data_uri(mode: str, variant: str = "") -> str:
+    """Снимок как data-URI, или "" если его нет. Тем же способом, что и
+    остальные карты: интерфейс читает картинки только так -- ни http-сервера,
+    ни доступа к file:// у него нет."""
+    path = resolve_mode_snapshot(mode, variant)
+    if not path:
         return ""
-    with open(mode_snapshot_path(mode), "rb") as f:
+    with open(path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
     return f"data:image/png;base64,{b64}"
 
 
-def delete_mode_snapshot(mode: str) -> bool:
-    """Удаляет снимок по умолчанию. Возвращает, было ли что удалять."""
-    if not has_mode_snapshot(mode):
+def delete_mode_snapshot(mode: str, variant: str = "") -> bool:
+    """Удаляет снимок ИМЕННО этого слота. Возвращает, было ли что удалять.
+
+    Именно этого, а не «того, что подставился»: иначе кнопка «убрать» на
+    карте без своего снимка стирала бы общий кадр режима, то есть чужой."""
+    if not has_mode_snapshot(mode, variant):
         return False
-    os.remove(mode_snapshot_path(mode))
+    os.remove(mode_snapshot_path(mode, variant))
     return True

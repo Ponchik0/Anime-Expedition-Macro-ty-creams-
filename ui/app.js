@@ -14,6 +14,9 @@ window.addEventListener('keydown', (e) => {
     if (faqModal && faqModal.style.display !== 'none') {
       closeFaqModal();
     }
+    // Окно «Записи» (F9): закрывается и своей клавишей, но Esc — то, что
+    // жмут не думая, а под ним ждёт спрятанная игра.
+    if (recOverlayOpen) closeRecordingsOverlay();
   }
 });
 
@@ -135,6 +138,16 @@ let hasAutoShownDashboard = false;
 // Compact strip (F7) state -- declared up here (not beside toggleCompactStrip)
 // because switchScreen above reads it.
 let compactMode = false;
+// Окно «Записи» (F9) — по той же причине здесь, а не рядом со своим кодом:
+// его читают switchScreen, isBlockingOverlayOpen и обработчик Esc в начале
+// файла.
+let recOverlayOpen = false;
+// Запись начали ИЗ этого окна. Тогда по её окончании (останавливают клавишей
+// F8, сидя в игре) список показывается сам: человек только что записал матч
+// и хочет увидеть, что тот сохранился.
+let recOverlayStartedRecording = false;
+let recOverlayMode = 'auto';
+let recOverlaySelected = '';
 
 // Called from Python (main.py) the moment docking actually succeeds,
 // don't wait on the 1.5s status poll for a state this important to flip.
@@ -196,6 +209,10 @@ function isBlockingOverlayOpen() {
   // перекрывает игру, поэтому идёт в тот же список.
   if (['update-modal', 'scale-warning-modal', 'onboarding-modal', 'faq-modal', 'share-code-modal'].some(isOpen)) return true;
   if (!captureDanceActive && ['im-modal', 'pu-modal', 'path-name-modal', 'fuel-paths-modal'].some(isOpen)) return true;
+  // Окно «Записи» (F9). Проверяется не по style.display (его открывают
+  // сбросом в '', а не в 'flex' — isOpen выше такое не считает открытым), а
+  // по своей же переменной состояния.
+  if (recOverlayOpen) return true;
   return false;
 }
 
@@ -477,6 +494,10 @@ function switchScreen(name) {
     document.body.classList.remove('compact-mode');
     try { pywebview.api.exit_compact(); } catch (e) {}
   }
+  // Уходим с Панели — окно «Записи» закрываем: оно про игру, а игры на
+  // других экранах нет. Без restore, потому что ниже по функции экран всё
+  // равно прячет игру.
+  if (name !== 'dashboard' && recOverlayOpen) closeRecordingsOverlay(false);
   const changed = currentScreen !== name;
   currentScreen = name;
   if (name !== 'dashboard') lastNonDashboardScreen = name;
@@ -558,10 +579,9 @@ function toggleGameScreenHotkey() {
   switchScreen(currentScreen === 'dashboard' ? lastNonDashboardScreen : 'dashboard');
 }
 
-// Bound to the "Recordings Panel" hotkey (default F9) from Python.
-// Переключатель, а не «просто открыть»: записывают, находясь В ИГРЕ, и после
-// взгляда на список надо вернуться туда же. Второе нажатие возвращает на
-// Панель — то есть к игре, а не оставляет висеть поверх неё список.
+// Экран «Запись» целиком — по кнопке в рельсе и из окна «Записи». Клавиша F9
+// открывает не его, а это окно (toggleRecordingsOverlay ниже): на отдельном
+// экране нет ни игры, ни быстрого возврата к ней.
 function toggleReplayScreen() {
   switchScreen(currentScreen === 'replay' ? 'dashboard' : 'replay');
 }
@@ -579,6 +599,9 @@ function toggleCompactStrip() {
     // The strip only makes sense over the game, which lives on the Dashboard
     // -- make sure we're there (also un-hides the game if we were elsewhere).
     switchScreen('dashboard');
+    // Полоса — это «оставить одну игру»: окно «Записи» поверх неё закрываем
+    // (и возвращаем игру, которую оно прятало).
+    if (recOverlayOpen) closeRecordingsOverlay();
     compactMode = true;
     document.body.classList.add('compact-mode');
     // Trim the window to just the game + strip (drops the empty side column
@@ -623,6 +646,7 @@ async function refreshStatus() {
     document.getElementById('stat-difficulty').textContent = status.difficulty ?? '-';
     document.getElementById('stat-play-mode').textContent = status.play_mode ?? '-';
     document.getElementById('stat-macro').textContent = status.macro ?? '-';
+    paintStartPreview(status.run_mode, status.start_preview);
 
     const wins = status.wins ?? 0;
     const losses = status.losses ?? 0;
@@ -767,9 +791,139 @@ function renderRunHistory(runs) {
     const meta = document.createElement('span');
     meta.className = 'rh-meta';
     meta.textContent = [run.duration, run.ago].filter(Boolean).join(' · ');
-    row.append(chip, map, meta);
+    row.append(chip, map);
+    // Чем забег БЫЛ: Story / Raid / Expedition / Challenge / Replay. Особенно
+    // нужен Challenge — он ходит под mode="story" и без метки был неотличим от
+    // обычной Story-задачи, то есть половина строк выглядела одинаково.
+    // Забеги, записанные до появления поля, метки не получают: врать о них
+    // нечем. По-английски, как и вся остальная Панель: русский сюда приходит
+    // словарём i18n (он же переводит и то, что дорисовано на лету).
+    if (run.kind) {
+      const src = document.createElement('span');
+      src.className = run.source === 'replay' ? 'rh-src' : 'rh-src auto';
+      src.textContent = run.kind;
+      src.title = run.source === 'replay'
+        ? 'Played back from a recording, not the automatic run'
+        : 'What this run actually was';
+      row.append(src);
+    }
+    row.append(meta);
     list.appendChild(row);
   }
+}
+
+// ── Что сделает «Старт»: блок над кнопками на Панели ──────────────────────
+// Режим переключался только на экране «Запись» и в окне записей — в двух
+// местах, куда во время игры не заходят. А «Старт» жмут с Панели, и выбранная
+// когда-то запись молча запускалась вместо сценария. Блок отвечает на вопрос
+// «что будет, если я сейчас нажму» не отходя от самой кнопки: режим, что
+// именно пойдёт (задача с её сценарием либо имя записи) и какие надстройки
+// включены поверх.
+let lastStartPreviewJson = null;
+
+function paintStartPreview(mode, preview) {
+  const box = document.getElementById('sp-line1');
+  if (!box) return;
+  // Перерисовываем только на смену: опрос идёт раз в полторы секунды, а
+  // трогать узлы зря — значит каждый раз будить наблюдателя перевода
+  // (i18n.js) и гасить выделение текста под рукой.
+  const json = JSON.stringify([mode, preview]);
+  if (json === lastStartPreviewJson) return;
+  lastStartPreviewJson = json;
+
+  const replay = mode === 'replay';
+  document.getElementById('sp-auto').classList.toggle('active', !replay);
+  document.getElementById('sp-replay').classList.toggle('active', replay);
+
+  const p = preview || {};
+  const line2 = document.getElementById('sp-line2');
+  if (p.warn) {
+    box.textContent = p.warn;
+    box.classList.add('warn');
+    line2.textContent = '';
+  } else {
+    box.textContent = p.what || '—';
+    box.classList.remove('warn');
+    line2.textContent = p.queue > 1
+      ? `${p.detail} · 1 of ${p.queue}`
+      : (p.detail || '');
+  }
+
+  const extras = document.getElementById('sp-extras');
+  extras.innerHTML = '';
+  for (const name of p.extras || []) {
+    const chip = document.createElement('span');
+    chip.className = 'sp-extra';
+    chip.textContent = name;
+    chip.title = 'Runs alongside the selected mode';
+    extras.appendChild(chip);
+  }
+}
+
+async function setStartMode(mode) {
+  try {
+    await pywebview.api.set_run_mode(mode);
+  } catch (e) {
+    return;
+  }
+  lastStartPreviewJson = null;          // перерисовать немедленно, не ожидая опроса
+  refreshStatus();
+  // Экран «Запись» держит свою копию этого переключателя — если он сейчас
+  // открыт, он обязан показать то же самое, а не разъехаться с Панелью.
+  if (currentScreen === 'replay') loadReplayScreen();
+}
+
+// Очистка истории и счётчиков — в два щелчка, а не через confirm().
+// Нативный confirm() на Панели рисуется ЗА пристыкованным окном Roblox (та же
+// причина, по которой существует свой модальник для имени пути и двухшаговое
+// удаление в Менеджере картинок): человек увидел бы зависшее приложение и ни
+// одной кнопки. Первый щелчок взводит кнопку, второй в течение трёх секунд
+// стирает; не успел — кнопка сама разоружается.
+let rhClearArmed = null;
+
+function rhDisarmClear(btn) {
+  if (!rhClearArmed) return;
+  clearTimeout(rhClearArmed.timer);
+  rhClearArmed.el.classList.remove('armed');
+  rhClearArmed.el.textContent = rhClearArmed.label;
+  rhClearArmed = null;
+}
+
+async function clearRunHistory(btn) {
+  if (!btn) return;
+  if (!rhClearArmed || rhClearArmed.el !== btn) {
+    rhDisarmClear();
+    const label = btn.textContent;
+    btn.classList.add('armed');
+    btn.textContent = 'Sure?';
+    rhClearArmed = { el: btn, label, timer: setTimeout(() => rhDisarmClear(), 3000) };
+    return;
+  }
+  rhDisarmClear();
+  try {
+    await pywebview.api.clear_run_history();
+  } catch (e) {
+    addLog('[Статистика] Не вышло очистить историю.');
+    return;
+  }
+  // Список перерисовывается по сравнению с прошлым состоянием; после очистки
+  // прошлое состояние надо забыть, иначе пустая история «совпадёт» не с тем.
+  lastRunHistoryJson = null;
+  refreshStatus();
+}
+
+async function exportRunReport(btn) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const r = await pywebview.api.export_run_report_pdf();
+    if (r && !r.ok && r.reason !== 'cancelled') {
+      addLog('[Статистика] Отчёт не сохранён: ' + (r.reason || 'ошибка'));
+    }
+  } catch (e) {
+    addLog('[Статистика] Отчёт не сохранён.');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = was || 'PDF'; }
 }
 
 // ---------------------------------------------------------------------------
@@ -5369,6 +5523,10 @@ let puState = {
   // resolvePlaceUnitMode). К категории каталога это НЕ то же самое: category --
   // где сейчас листают карты, mode -- чей снимок считать своим.
   mode: 'story',
+  // Карта (Story/Expedition) или акт (Raid/Event), под который сохраняется и
+  // подставляется снимок. Пусто -- общий снимок режима: он же запасной, когда
+  // под карту своего нет.
+  variant: '',
 };
 
 // Remembers whichever map was picked last (see selectPlaceUnitMap), across
@@ -5433,12 +5591,75 @@ function renderPlaceUnitModeSelect() {
   el.innerHTML = Object.entries(TASK_DATA)
     .map(([mode, data]) => `<option value="${mode}"${mode === puState.mode ? ' selected' : ''}>`
                            + `${data.label}</option>`).join('');
+  renderPlaceUnitVariantSelect();
+}
+
+// Из чего выбирать «карту» у каждого режима. Story и Expedition ходят по
+// картам, Raid и Event -- по актам (у них в задаче это stage, карты нет вовсе,
+// см. TASK_DATA). Отдельного списка не заводим: берём тот же, по которому
+// собирается очередь задач, иначе два списка неминуемо разъедутся.
+function placeUnitVariants(mode) {
+  const data = TASK_DATA[mode] || {};
+  if (data.maps && data.maps.length) return data.maps;
+  if (data.stages && data.stages.length) return data.stages.map(s => `Act ${s}`);
+  return [];
+}
+
+function renderPlaceUnitVariantSelect() {
+  const el = document.getElementById('pu-variant');
+  if (!el) return;
+  const variants = placeUnitVariants(puState.mode);
+  // Выбранная карта могла остаться от прошлого режима -- в новом её нет.
+  if (puState.variant && !variants.includes(puState.variant)) puState.variant = '';
+  el.innerHTML = `<option value=""${puState.variant ? '' : ' selected'}>Whole mode</option>`
+    + variants.map(v => `<option value="${escapeHtml(v)}"`
+                        + `${v === puState.variant ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
+  el.style.display = variants.length ? '' : 'none';
 }
 
 async function onPlaceUnitModeChange(mode) {
   puState.mode = mode;
+  puState.variant = getRememberedPlaceUnitVariant(mode);
   rememberPlaceUnitMode(mode);
+  renderPlaceUnitVariantSelect();
+  await reloadDefaultSnapshot();
+}
+
+async function onPlaceUnitVariantChange(variant) {
+  puState.variant = variant || '';
+  rememberPlaceUnitVariant(puState.mode, puState.variant);
+  await reloadDefaultSnapshot();
+}
+
+// Переключил карту — на холст обязан встать ЕЁ снимок, а не остаться прежний.
+// Без этого «переключаюсь, а фотка та же» и получалось: селектор менялся, а
+// картинка нет, и точки ставились по чужому полю.
+async function reloadDefaultSnapshot() {
   await refreshDefaultSnapshotNote();
+  const reqId = ++puRequestId;
+  if (!await loadDefaultModeSnapshot(reqId)) {
+    // Снимка нет вовсе (ни своего, ни общего) — показываем сетку карт, как
+    // при открытии окна без снимка.
+    if (reqId !== puRequestId) return;
+    backToPlaceUnitMapGrid();
+  }
+}
+
+// Выбранная карта запоминается ОТДЕЛЬНО НА КАЖДЫЙ РЕЖИМ и переживает
+// перезапуск: вернувшись в Story, надо увидеть ту карту, на которой
+// остановился, а не общий снимок режима.
+function getRememberedPlaceUnitVariant(mode) {
+  try {
+    return localStorage.getItem('pu_variant_' + mode) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function rememberPlaceUnitVariant(mode, variant) {
+  try {
+    localStorage.setItem('pu_variant_' + mode, variant || '');
+  } catch (e) {}
 }
 
 // Строка под панелью: есть ли снимок по умолчанию для выбранного режима.
@@ -5447,19 +5668,30 @@ async function onPlaceUnitModeChange(mode) {
 async function refreshDefaultSnapshotNote() {
   const note = document.getElementById('pu-default-note');
   if (!note) return;
-  let has = false;
+  let has = false, exact = false;
   try {
-    const result = await pywebview.api.has_mode_map_snapshot(puState.mode);
+    const result = await pywebview.api.has_mode_map_snapshot(puState.mode, puState.variant || '');
     has = !!(result && result.has);
+    exact = !!(result && result.exact);
   } catch (e) {}
   const label = (TASK_DATA[puState.mode] || {}).label || puState.mode;
+  const where = puState.variant ? `${label} · <b>${escapeHtml(puState.variant)}</b>` : `<b>${label}</b>`;
   if (!has) {
-    note.innerHTML = `Для режима <b>${label}</b> снимка по умолчанию пока нет. `
+    note.innerHTML = `Для ${where} снимка пока нет. `
       + 'Нажми «Снимок из игры», а потом «Сделать снимком по умолчанию» — '
-      + 'и больше снимать для этого режима не придётся.';
+      + 'и больше снимать для этого места не придётся.';
     return;
   }
-  note.innerHTML = `Снимок по умолчанию для <b>${label}</b> подставляется сам. `
+  if (!exact) {
+    // Подставился ОБЩИЙ кадр режима. Сказать это вслух обязательно: иначе
+    // человек правит точки по чужому полю и узнаёт об этом только по
+    // промахам в игре.
+    note.innerHTML = `Своего снимка для ${where} нет — показан общий снимок режима `
+      + `<b>${label}</b>. Сними этот экран и нажми «Сделать снимком по умолчанию», `
+      + 'чтобы у этой карты был свой.';
+    return;
+  }
+  note.innerHTML = `Снимок для ${where} подставляется сам. `
     + '<a href="#" onclick="deleteDefaultModeSnapshot(); return false;">Удалить его</a>';
 }
 
@@ -5470,7 +5702,7 @@ async function saveDefaultModeSnapshot() {
   // прямо, а не молча ничего не сделать.
   let result = null;
   try {
-    result = await pywebview.api.save_mode_map_snapshot(puState.mode);
+    result = await pywebview.api.save_mode_map_snapshot(puState.mode, puState.variant || '');
   } catch (e) {}
   if (!result || !result.ok) {
     const reason = (result && result.reason) || 'error';
@@ -5487,14 +5719,17 @@ async function saveDefaultModeSnapshot() {
   } catch (e) {}
   renderPlaceUnitCategoryTabs();
   await refreshDefaultSnapshotNote();
-  addLog(`[Positions] Снимок сохранён по умолчанию для режима ${puState.mode}.`);
+  addLog(`[Positions] Снимок сохранён для ${puState.mode}`
+         + (puState.variant ? ` · ${puState.variant}.` : ' (весь режим).'));
 }
 
 async function deleteDefaultModeSnapshot() {
   try {
-    await pywebview.api.delete_mode_map_snapshot(puState.mode);
+    await pywebview.api.delete_mode_map_snapshot(puState.mode, puState.variant || '');
   } catch (e) {}
-  await refreshDefaultSnapshotNote();
+  // Удалили снимок карты — на холст должен встать общий кадр режима, если он
+  // есть. Иначе на экране остаётся картинка, которой уже нет на диске.
+  await reloadDefaultSnapshot();
 }
 
 // Это же окно открывается из Настроек > Отладка для выбора координат
@@ -5502,6 +5737,8 @@ async function deleteDefaultModeSnapshot() {
 // его органы управления просто скрываются -- иначе они предлагали бы сохранить
 // кадр «для режима Story», когда речь про координату кнопки в интерфейсе.
 function setPlaceUnitDefaultControlsVisible(show) {
+  // pu-variant живёт ВНУТРИ pu-default-controls, поэтому отдельно его прятать
+  // не надо — он уедет вместе с ним.
   for (const id of ['pu-default-controls', 'pu-save-default', 'pu-default-note']) {
     const el = document.getElementById(id);
     if (el) el.style.display = show ? '' : 'none';
@@ -5513,7 +5750,7 @@ function setPlaceUnitDefaultControlsVisible(show) {
 async function loadDefaultModeSnapshot(reqId) {
   let result = null;
   try {
-    result = await pywebview.api.get_mode_map_snapshot(puState.mode);
+    result = await pywebview.api.get_mode_map_snapshot(puState.mode, puState.variant || '');
   } catch (e) {}
   if (reqId !== puRequestId) return false;
   if (!result || !result.ok) return false;
@@ -5557,6 +5794,7 @@ async function openPlaceUnitModal(blockId) {
   // сразу открывается на нём, и ни сетка карт, ни ещё один снимок из игры уже
   // не нужны. Ровно за этим всё и делалось: сфотографировал один раз.
   puState.mode = resolvePlaceUnitMode();
+  puState.variant = getRememberedPlaceUnitVariant(puState.mode);
   setPlaceUnitDefaultControlsVisible(true);
   renderPlaceUnitModeSelect();
   refreshDefaultSnapshotNote();
@@ -7598,6 +7836,12 @@ async function loadReplayScreen() {
       : 'Сейчас «Старт» запускает обычный автоматический прогон по очереди задач.';
     const loops = document.getElementById('rec-loops');
     if (loops && document.activeElement !== loops) loops.value = m.loops ?? 0;
+    // Поле не трогаем, пока в нём стоит курсор: экран перечитывается сам, и
+    // иначе он затирал бы недонабранное число прямо под руками.
+    const delay = document.getElementById('rec-delay');
+    if (delay && document.activeElement !== delay) delay.value = m.start_delay ?? 2;
+    const streak = document.getElementById('rec-loss-streak');
+    if (streak && document.activeElement !== streak) streak.value = m.loss_streak_stop ?? 5;
     document.getElementById('rec-focus').classList.toggle('on', m.require_focus !== false);
   } catch (e) {}
   refreshRecordings();
@@ -7666,9 +7910,18 @@ async function pollRecordingState() {
     } else {
       btn.textContent = 'Начать запись';
       btn.classList.remove('rp-btn-stop');
-      lbl.textContent = st.state === 'running'
-        ? 'играет «' + st.name + '» · круг ' + st.loop + ' · ' + st.index + '/' + st.total
-        : 'не идёт';
+      // Отсчёт перед стартом — отдельной строкой. Эти две секунды нужны, чтобы
+      // игра успела вернуться на экран (см. START_DELAY_MS в core/replay.py), и
+      // без надписи они читались бы как «нажал, а оно не пошло».
+      if (st.countdown > 0) {
+        lbl.textContent = 'старт через ' + st.countdown.toFixed(1) + ' с — жду окно Roblox';
+      } else if (st.state === 'running') {
+        lbl.textContent = 'играет «' + st.name + '» · круг ' + st.loop
+          + ' · ' + st.index + '/' + st.total
+          + (st.matches ? ' · матчей засчитано: ' + st.matches : '');
+      } else {
+        lbl.textContent = 'не идёт';
+      }
     }
   } catch (e) {}
 }
@@ -7792,6 +8045,236 @@ async function deleteRecording(name) {
   refreshRecordings();
 }
 
+// ══════════════════ ОКНО «ЗАПИСИ» (F9) ══════════════════════════════════
+// Окно по центру приложения: выбрал строку — оно закрылось и запись пошла.
+// Пока оно открыто, окно игры спрятано, иначе оно закрасило бы его собой —
+// см. комментарий у #rec-overlay в ui/index.html.
+//
+// Порядок в recOverlayToggleRecording — главное здесь: сначала убрать окно и
+// вернуть игру, и только потом включить рекордер. Запись идёт только пока
+// Roblox видно и он в фокусе (core/replay.py, game_active), так что «начал и
+// остался смотреть на список» означало бы запись, которая стоит и ждёт.
+
+// Состояние окна объявлено в начале файла — его читают switchScreen,
+// isBlockingOverlayOpen и обработчик Esc, которые идут раньше этого места.
+
+function toggleRecordingsOverlay() {
+  if (recOverlayOpen) closeRecordingsOverlay();
+  else openRecordingsOverlay();
+}
+
+async function openRecordingsOverlay() {
+  const el = document.getElementById('rec-overlay');
+  if (!el) return;
+  // Компактная полоса ужимает окно до одной игры — окну там негде встать,
+  // да и возвращаться после записи некуда.
+  if (compactMode) toggleCompactStrip();
+  // Закрывается окно всегда на Панель, значит и открывать его надо оттуда:
+  // иначе закрытие вернуло бы игру на экран, где её быть не должно.
+  if (currentScreen !== 'dashboard') switchScreen('dashboard');
+  recOverlayOpen = true;
+  el.style.display = '';
+  el.setAttribute('aria-hidden', 'false');
+  // Окно Roblox — дочернее окно, оно рисуется поверх любого HTML. Пока
+  // список открыт, игру прячем, иначе окно окажется за ней (тот же приём,
+  // что у #pu-modal и Менеджера картинок).
+  try { window.pywebview && pywebview.api.hide_game(); } catch (e) {}
+  paintRecOverlayKeys();
+  await refreshRecOverlayOptions();
+  await refreshRecOverlay();
+}
+
+// restore=false — когда сразу после закрытия экран всё равно уезжает с
+// Панели: показывать игру только чтобы тут же её спрятать, значит моргнуть
+// ею на ровном месте.
+function closeRecordingsOverlay(restore = true) {
+  const el = document.getElementById('rec-overlay');
+  recOverlayOpen = false;
+  if (!el) return;
+  el.style.display = 'none';
+  el.setAttribute('aria-hidden', 'true');
+  // Игра обратно — но только если мы и правда на Панели и поверх неё не
+  // висит что-то ещё (общая проверка для всех модалок).
+  if (restore) restoreGameIfDashboard();
+}
+
+// Клавиши на кнопках берём из уже загруженного словаря привязок — они
+// настраиваемые, и подписать «F8» намертво значило бы врать тому, кто их
+// переназначил.
+function paintRecOverlayKeys() {
+  const put = (id, action) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (HOTKEY_CURRENT[action] || '').toUpperCase();
+  };
+  put('rec-ov-key', 'open_replay');
+  put('rec-ov-cta-key', 'toggle_record');
+}
+
+async function refreshRecOverlayOptions() {
+  try {
+    const m = await pywebview.api.get_run_mode();
+    recOverlayMode = m.mode === 'replay' ? 'replay' : 'auto';
+    recOverlaySelected = m.recording || '';
+    const loops = document.getElementById('rec-ov-loops');
+    if (loops && document.activeElement !== loops) loops.value = m.loops ?? 0;
+    const delay = document.getElementById('rec-ov-delay');
+    if (delay && document.activeElement !== delay) delay.value = m.start_delay ?? 2;
+  } catch (e) {}
+  const chip = document.getElementById('rec-ov-mode');
+  if (chip) {
+    const replay = recOverlayMode === 'replay';
+    chip.textContent = replay ? 'Старт → повтор' : 'Старт → автомат';
+    chip.classList.toggle('on', replay);
+    chip.title = replay
+      ? 'Кнопка «Старт» крутит выбранную запись. Нажми, чтобы вернуть автоматический прогон.'
+      : 'Кнопка «Старт» запускает обычный прогон по очереди задач. Нажми, чтобы она играла выбранную запись.';
+  }
+}
+
+async function recOverlayToggleMode() {
+  try { await pywebview.api.set_run_mode(recOverlayMode === 'replay' ? 'auto' : 'replay'); } catch (e) {}
+  await refreshRecOverlayOptions();
+  await refreshRecOverlay();
+}
+
+function recOverlayLoops(value) {
+  saveReplayOption('replay_loops', value);
+}
+
+function recOverlayOpenScreen() {
+  closeRecordingsOverlay(false);
+  switchScreen('replay');
+}
+
+// Одна кнопка на оба состояния: пока не пишем — «начать», пока пишем —
+// «остановить». Второе понадобится редко (останавливают клавишей из игры),
+// но кнопка, которая во время записи ничего не делает, — хуже.
+async function recOverlayToggleRecording() {
+  let st = null;
+  try { st = await pywebview.api.replay_recording_status(); } catch (e) {}
+  if (st && st.recording) {
+    try { await pywebview.api.replay_stop_recording(''); } catch (e) {}
+    recOverlayStartedRecording = false;
+    await refreshRecOverlay();
+    return;
+  }
+  const nameEl = document.getElementById('rec-ov-name');
+  const name = (nameEl && nameEl.value || '').trim();
+  // Сначала убираем всё лишнее и возвращаем игру, и только потом пишем.
+  closeRecordingsOverlay();
+  switchScreen('dashboard');
+  if (nameEl) nameEl.value = '';
+  let r = null;
+  try { r = await pywebview.api.replay_start_recording(name); } catch (e) {}
+  if (r && r.ok) {
+    recOverlayStartedRecording = true;
+    return;
+  }
+  // Не завелось — список обратно, иначе отказ остался бы одной строкой в
+  // журнале при уехавшей панели.
+  if (r && r.reason === 'macro_running') addLog('[Повтор] Сначала останови автоматический прогон.');
+  openRecordingsOverlay();
+}
+
+function recOverlayTime(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  return s < 60 ? `${s} с` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// Живая часть окна — одна кнопка. Отделена от списка намеренно: её
+// перерисовывают на каждом такте опроса, а replay_list ради этого дёргать
+// нельзя — он читает С ДИСКА все записи целиком (в плотной записи это
+// десятки тысяч событий), и дважды в секунду это чистая трата.
+// Состояние берётся из того же ответа, который уже запросил refreshRecLive.
+function paintRecOverlayState(st) {
+  const cta = document.getElementById('rec-ov-cta');
+  const title = document.getElementById('rec-ov-cta-title');
+  const sub = document.getElementById('rec-ov-cta-sub');
+  const nameEl = document.getElementById('rec-ov-name');
+  const recording = !!(st && st.recording);
+  if (cta) cta.classList.toggle('on', recording);
+  if (nameEl) nameEl.style.display = recording ? 'none' : '';
+  if (title) title.textContent = recording ? 'Остановить запись' : 'Начать запись';
+  if (sub) {
+    sub.textContent = recording
+      ? (st.waiting ? 'жду окно Roblox — вне игры не пишу'
+                    : `идёт: ${st.recorded} действий · ${recOverlayTime(st.elapsed)}`)
+      : 'Окно закроется, останется игра';
+  }
+}
+
+// Полная перерисовка со списком: при открытии, после удаления и после
+// окончания записи — то есть тогда, когда список действительно изменился.
+async function refreshRecOverlay() {
+  if (!recOverlayOpen) return;
+  let st = null;
+  try { st = await pywebview.api.replay_recording_status(); } catch (e) {}
+  paintRecOverlayState(st);
+
+  let list = [];
+  try { list = await pywebview.api.replay_list(); } catch (e) {}
+  recordingsList = list || [];
+  const count = document.getElementById('rec-ov-count');
+  if (count) count.textContent = recordingsList.length ? String(recordingsList.length) : '';
+  const box = document.getElementById('rec-ov-list');
+  if (!box) return;
+  if (!recordingsList.length) {
+    box.innerHTML = '<div class="empty-state">'
+      + '<div class="empty-state-title">Записей пока нет</div>'
+      + '<div class="empty-state-hint">Нажми «Начать запись», сыграй матч руками и останови той же клавишей. '
+      + 'Повтор отыграет всё тик в тик — вместе с паузами.</div></div>';
+    return;
+  }
+  box.innerHTML = recordingsList.map((r, i) => {
+    // Хвост ожидания показываем отдельным словом: это то время в конце, когда
+    // человек уже ничего не нажимал, а просто досиживал матч. Повтор его
+    // выжидает, и по этому числу видно, что запись «умеет ждать».
+    const wait = (r.tail || 0) >= 1
+      ? ` · <span class="rec-ov-wait">ждёт ${recOverlayTime(r.tail)}</span>` : '';
+    return `
+    <div class="rec-ov-row ${r.name === recOverlaySelected ? 'on' : ''}">
+      <button type="button" class="rec-ov-pick" onclick="recOverlayPlay(${i})"
+              title="Играть эту запись — окошко закроется">
+        <span class="rec-ov-go">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.6c0-1.2 1.3-1.9 2.3-1.3l10 6.4c.9.6.9 2 0 2.6l-10 6.4c-1 .6-2.3-.1-2.3-1.3V4.6z"/></svg>
+        </span>
+        <span class="rec-ov-txt">
+          <span class="rec-ov-nm">${escapeHtml(r.name)}</span>
+          <span class="rec-ov-mt">${r.actions} действий · ${recOverlayTime(r.seconds)}${wait}</span>
+        </span>
+      </button>
+      <span class="rec-ov-acts">
+        <button type="button" class="rec-ov-act del" onclick="recOverlayDelete(${i})" title="Удалить">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>
+        </button>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+// Выбрал запись — окошко закрылось, запись пошла. Отдельной кнопки «играть»
+// нет намеренно: список открывают именно за этим, а окошко висит поверх той
+// самой колонки, где дальше показывается ход повтора.
+// Заодно запись становится выбранной: это её будет крутить «Старт».
+async function recOverlayPlay(index) {
+  const rec = recordingsList[index];
+  if (!rec) return;
+  recOverlaySelected = rec.name;
+  closeRecordingsOverlay();
+  switchScreen('dashboard');
+  try { await pywebview.api.set_replay_option('replay_file', rec.name); } catch (e) {}
+  await playRecording(rec.name);
+}
+
+async function recOverlayDelete(index) {
+  const rec = recordingsList[index];
+  if (!rec) return;
+  try { await pywebview.api.replay_delete(rec.name); } catch (e) {}
+  if (recOverlaySelected === rec.name) recOverlaySelected = '';
+  await refreshRecOverlay();
+}
+
 // ══════════════════ КАСТОМИЗАЦИЯ ════════════════════════════════════════
 // Три ручки: фон, акцент, плотность (+скругления). Каждая ставит атрибут на
 // <html> и сохраняется в настройках. Контраст всех сочетаний проверен
@@ -7870,18 +8353,39 @@ async function czLoad() {
 // ── Живая панель записи на Дашборде ──────────────────────────────────────
 // Опрашивается вместе с остальным статусом. Показывается только во время
 // записи: в покое лишняя панель на Дашборде — шум.
+let _recLiveWasRecording = false;
 async function refreshRecLive() {
   const box = document.getElementById('rec-live');
   if (!box) return;
   let st = null;
   try { st = await pywebview.api.replay_recording_status(); } catch (e) { return; }
-  if (!st || !st.recording) { box.style.display = 'none'; return; }
+  // Окно «Записи» живёт на том же опросе — своего таймера ему не нужно, и
+  // лишнего обращения к диску тоже: перерисовывается только кнопка, список
+  // от такта к такту не меняется.
+  if (recOverlayOpen) paintRecOverlayState(st);
+  // Запись кончилась — в списке появилась новая строка, а его перерисовывают
+  // только по событию. Если начинали запись из окна «Записи», оно ещё и
+  // открывается само: остановили клавишей, сидя в игре, и увидеть
+  // «сохранилось, вот оно» больше негде.
+  const recording = !!(st && st.recording);
+  if (_recLiveWasRecording && !recording) {
+    const wasOurs = recOverlayStartedRecording;
+    recOverlayStartedRecording = false;
+    if (recOverlayOpen) refreshRecOverlay();
+    else if (wasOurs) openRecordingsOverlay();
+  }
+  _recLiveWasRecording = recording;
+  if (!recording) { box.style.display = 'none'; return; }
   box.style.display = '';
   const meta = document.getElementById('rec-live-meta');
   if (meta) {
+    // Время — по часам записи, а не по последнему действию: ожидание конца
+    // матча пишется в файл, и счётчик обязан идти, иначе выглядит как
+    // «стоит на месте, значит сломалось». Хвост называем отдельно.
+    const tail = (st.tail || 0) >= 2 ? ` · ждём ${recOverlayTime(st.tail)}` : '';
     meta.textContent = st.waiting
-      ? `жду окно Roblox · ${st.recorded} действий · ${st.elapsed || 0} с`
-      : `${st.recorded} действий · ${st.elapsed || 0} с`;
+      ? `жду окно Roblox · ${st.recorded} действий · ${recOverlayTime(st.elapsed)}`
+      : `${st.recorded} действий · ${recOverlayTime(st.elapsed)}${tail}`;
   }
   const list = document.getElementById('rec-live-list');
   if (list) {
