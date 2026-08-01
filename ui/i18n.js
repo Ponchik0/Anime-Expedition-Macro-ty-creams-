@@ -556,6 +556,61 @@
     'Complete supported Bounty Board objectives before other automation.':
       'Выполнять поддержанные цели с доски заданий раньше остальной автоматики.',
     'Auto Upgrade (In Game)': 'Авто-апгрейд (в игре)',
+
+    // --- Автомагазин (апстрим 0.17.0) ---
+    'Auto Shop': 'Автомагазин',
+    'Enable Auto Shop': 'Включить автомагазин',
+    'Runs enabled shops at safe Task Queue boundaries and resets daily progress at 00:00 UTC.':
+      'Заходит во включённые магазины между задачами очереди и обнуляет дневной прогресс в 00:00 UTC.',
+    'Gold Shop': 'Магазин за золото',
+    'Choose how many to buy on each pass. Numeric quantities repeat on later passes until sold out.':
+      'Сколько покупать за один заход. Числовое количество докупается в следующие заходы, пока товар не кончится.',
+    'Items are checked in this order. Max buys the remaining stock once.':
+      'Товары проверяются в этом порядке. «Макс.» выкупает остаток за один заход.',
+    "Couldn't load Auto Shop settings.": 'Не удалось прочитать настройки автомагазина.',
+    'Reset Today': 'Сбросить за сегодня',
+    // Max/Number — переключатель «сколько брать». Те же две кнопки стоят в
+    // Заправке и в Крафте, и там они значат ровно то же самое, поэтому
+    // перевод общий и безопасный.
+    'Max': 'Макс.',
+    'Number': 'Число',
+    'Qty': 'Кол-во',
+    // Состояния товара в списке автомагазина.
+    'Out of stock': 'Нет в наличии',
+    'Max inventory': 'Инвентарь полон',
+    'Failed today': 'Сегодня не вышло',
+    'Verifying': 'Проверяю',
+    'Retry scheduled': 'Повтор запланирован',
+    'Pending': 'В очереди',
+    'Complete': 'Готово',
+
+    // --- Перезапуск Roblox по времени и мягкая проверка панели команды ---
+    'Periodic Roblox Refresh': 'Перезапуск Roblox по времени',
+    'Restart Roblox after the selected number of hours to clear long-session memory buildup. It waits for a completed match and safe lobby boundary, so it does not interrupt a match or add FPS polling. Off by default.':
+      'Перезапускать Roblox раз в указанное число часов, чтобы сбросить память, накопленную за долгую сессию. Ждёт конца боя и возврата в лобби, поэтому бой не прерывает и ничего не опрашивает лишний раз. По умолчанию выключено.',
+    'hours': 'ч',
+    'Loose Team Panel Detection': 'Мягкая проверка панели команды',
+    'If Team Loadout keeps failing to open on your setup, this widens the OCR check that confirms it. Off by default -- the wider match can misfire on the previous screen.':
+      'Если панель команды упорно не открывается, эта галка расширяет проверку текста, подтверждающую её. По умолчанию выключено: расширенная проверка может сработать на предыдущем экране.',
+    'Refills at safe Task Queue boundaries: Max after 8 hours, or numeric amounts based on their fuel duration.':
+      'Заправляет между задачами очереди: «Макс.» — через 8 часов, числовые количества — по времени их горения.',
+
+    // --- Блок «Запись» (TinyTask автора) ---
+    'Save Recorded Input': 'Сохранить записанный ввод',
+    'Recording name...': 'Название записи…',
+    'Save Recording': 'Сохранить запись',
+    'Pick saved recording...': 'Выбери сохранённую запись…',
+    'Recording mouse + keyboard input inside the game window':
+      'Пишу мышь и клавиатуру внутри окна игры',
+
+    // --- Блок «Проверка»: самоповтор условия ---
+    'Loop': 'Цикл',
+    'Until found': 'Пока не найдётся',
+    'Polls this condition until it is found.': 'Проверяет условие, пока не найдёт.',
+    'Max searches': 'Сколько раз искать',
+    'Retry every': 'Повторять каждые',
+    '0 searches = unlimited. After a limit, Else runs. Then runs once per match.':
+      '0 — без ограничения. Когда попытки кончились, идёт ветка «не нашлось». Ветка «нашлось» выполняется один раз на совпадение.',
   };
 
   // ------------------------------------------------------- ДИНАМИЧЕСКИЕ СТРОКИ
@@ -586,6 +641,14 @@
     // Таймер обратного отсчёта проходит через state() без изменений.
     [/^(Resource Drill|Gold Mine): (\S+) \| (Resource Drill|Gold Mine): (\S+)$/,
       (_, a, av, b, bv) => `${RU[a]}: ${state(av)} | ${RU[b]}: ${state(bv)}`],
+    // Подпись карточки Автомагазина: "Gold Shop: 3 enabled | 1 complete".
+    [/^Gold Shop: (\d+) enabled \| (\d+) complete$/,
+      'Магазин за золото: включено $1 | готово $2'],
+    // Строка товара: "Daily max: 5 |" и хвост "| 2/3 attempts" -- это ДВА
+    // соседних текстовых узла, между ними лежит span с состоянием, поэтому и
+    // шаблона два, а не один на всю подпись.
+    [/^Daily max: (\d+) \|$/, 'Дневной максимум: $1 |'],
+    [/^\| (\d+)\/3 attempts$/, '| попыток: $1 из 3'],
   ];
 
   // Единая точка перевода: сначала точное совпадение, потом шаблоны.
