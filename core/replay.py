@@ -138,18 +138,73 @@ def _client_xy(hwnd: int):
         return 0, 0
 
 
-def _root_window_at_cursor() -> int:
+def _window_at_cursor() -> int:
+    """Окно непосредственно под курсором — возможно, дочернее."""
     try:
         from ctypes import wintypes
         pt = wintypes.POINT()
         ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-        h = ctypes.windll.user32.WindowFromPoint(pt)
-        if not h:
-            return 0
-        root = ctypes.windll.user32.GetAncestor(h, 2)   # GA_ROOT
-        return int(root or h)
+        return int(ctypes.windll.user32.WindowFromPoint(pt) or 0)
     except Exception:
         return 0
+
+
+def _is_child(parent: int, child: int) -> bool:
+    """Потомок ли child окна parent (на любую глубину)."""
+    try:
+        return bool(ctypes.windll.user32.IsChild(parent, child))
+    except Exception:
+        return False
+
+
+def _root_of(hwnd: int) -> int:
+    """Окно верхнего уровня, к которому принадлежит hwnd."""
+    try:
+        return int(ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd)   # GA_ROOT
+    except Exception:
+        return int(hwnd or 0)
+
+
+def _cursor_over_gui(gui_hwnd: int, game_hwnd: int) -> bool:
+    """Курсор над окном макроса — и НЕ над игрой.
+
+    ВАЖНО, почему мало сравнить корневое окно с нашим. В обычном режиме окно
+    Roblox ВСТРОЕНО в наше (SetParent, см. core/dock.py), поэтому для любой
+    точки внутри игры GetAncestor(GA_ROOT) возвращает hwnd макроса. Проверка
+    «корень == наше окно» тогда истинна всё время, пока курсор в игре, — и
+    запись молча теряет все клики и весь путь курсора, оставляя одни клавиши
+    (клавиши этой проверкой не гасятся). Ровно этот баг и был.
+
+    Поэтому сначала спрашиваем, не в игре ли курсор: игра может быть нашим
+    потомком, и тогда это всё равно ввод в игру, а не клик по нашей кнопке.
+    """
+    if not gui_hwnd:
+        return False
+    h = _window_at_cursor()
+    if not h:
+        return False
+    if game_hwnd and (h == game_hwnd or _is_child(game_hwnd, h)):
+        return False
+    return _root_of(h) == gui_hwnd
+
+
+def _game_focused(hwnd: int) -> bool:
+    """Активно ли окно игры — с той же поправкой на встроенный режим.
+
+    GetForegroundWindow всегда возвращает окно ВЕРХНЕГО УРОВНЯ. Когда игра
+    встроена в наше окно, оно верхнего уровня никогда не бывает, и сравнение
+    «активное == hwnd игры» не совпадает ни разу: галка «играть только при
+    активном окне» заморозила бы повтор навсегда.
+    """
+    if not hwnd:
+        return False
+    try:
+        if wm.is_foreground(hwnd):
+            return True
+        root = _root_of(hwnd)
+        return bool(root) and root != hwnd and wm.is_foreground(root)
+    except Exception:
+        return True             # не смогли спросить — не блокируем повтор
 
 
 def safe_name(name: str) -> str:
@@ -232,7 +287,6 @@ class Recorder:
         held = set()            # что сейчас зажато — источник схлопывания автоповтора
         last_move = 0.0
         last_xy = (-9999, -9999)
-        gui_hwnd = self._get_gui() or 0
         # Виртуальные коды своих хоткеев — их пропускаем при записи.
         skip_vks = set()
         try:
@@ -245,10 +299,14 @@ class Recorder:
 
         while not self._stop.is_set():
             hwnd = self._get_game() or 0
+            # hwnd окон спрашиваем каждый тик: окно игры может смениться
+            # (перезапуск Roblox), а наше — появиться позже начала записи.
+            gui_hwnd = self._get_gui() or 0
 
-            # Курсор над нашим окном — ничего не пишем. Окно макроса висит
-            # поверх игры, и клик по кнопке «Запись» иначе попал бы в файл.
-            over_own = bool(gui_hwnd) and _root_window_at_cursor() == gui_hwnd
+            # Курсор над нашим окном (но не над игрой внутри него) — ничего
+            # не пишем. Окно макроса висит поверх игры, и клик по кнопке
+            # «Запись» иначе попал бы в файл.
+            over_own = _cursor_over_gui(gui_hwnd, hwnd)
 
             x, y = _client_xy(hwnd)
 
@@ -437,8 +495,10 @@ class Player:
                 # is_window_focused. Из-за неверного имени hasattr всегда
                 # давал False, и галка «играть только при активном окне
                 # Roblox» молча не работала — запись игралась в любое окно.
+                # И ещё раз исправлено: спрашивать надо _game_focused, потому
+                # что встроенное окно игры активным не бывает никогда.
                 try:
-                    waiting = not wm.is_foreground(hwnd)
+                    waiting = not _game_focused(hwnd)
                 except Exception:
                     waiting = False
             if waiting:
