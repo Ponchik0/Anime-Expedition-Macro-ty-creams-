@@ -1832,3 +1832,76 @@ body.compact-mode #compact-strip { display: flex; }
   animation: none;
   border-top-color: var(--accent);
 }
+
+/* ====================================================== БЛОК «ПРОВЕРКА» == */
+/* Редактор блока Detect (проверка картинки на экране): шапка, две ветки
+   «нашлось / не нашлось» и раскрывающиеся тонкие настройки. Перенесено из
+   апстрима вместе с его же разметкой — этих классов в переписанном файле не
+   было, и панель рисовалась вовсе без стилей. Значения цветов идут через наши
+   токены (--sky у нас нейтральный, см. блок СОВМЕСТИМОСТЬ выше), поэтому
+   палитра остаётся нашей, а не апстримовской. */
+.detect-head { display: flex; align-items: center; gap: 8px; }
+.detect-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.detect-branches { display: flex; gap: 10px; }
+.detect-branch { flex: 1; min-width: 0; }
+.detect-branch-label {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-dim); margin-bottom: 4px; padding-left: 2px;
+}
+.detect-branch-then .detect-branch-label { color: var(--teal); }
+.detect-branch-else .detect-branch-label { color: var(--rose); }
+.detect-branch-sub { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+.detect-dropzone {
+  min-height: 46px;
+  border: 1px dashed color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 6px;
+  background: color-mix(in srgb, var(--bg-surface) 50%, transparent);
+}
+.detect-dropzone.drag-over { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, transparent); }
+.detect-branch-empty { font-size: 11px; color: var(--text-muted); text-align: center; padding: 8px 4px; }
+.detect-advanced {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+  border: 1px solid var(--border);
+}
+.detect-adv-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--bg-surface); }
+.detect-adv-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Самоповтор условия — новинка апстрима 0.17.0. Врезка отбита слева полосой:
+   это единственный блок внутри тонких настроек, который сам крутит цикл, и
+   отличать его от соседних строк нужно с одного взгляда. */
+.detect-loop-box {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 8px 10px; border-radius: 7px;
+  background: color-mix(in srgb, var(--brand) 8%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border));
+  border-left: 3px solid var(--brand);
+}
+.detect-loop-box.on { background: color-mix(in srgb, var(--brand) 13%, var(--bg-card)); }
+.detect-loop-head { display: flex; align-items: center; gap: 10px; }
+.detect-loop-title { color: var(--brand); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.detect-loop-settings { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.detect-loop-help { padding-left: 2px; }
+.detect-img-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.detect-hint { font-size: 10.5px; color: var(--text-muted); }
+.detect-hint code {
+  font-size: 10px; padding: 0 3px; border-radius: 3px;
+  background: var(--bg-surface); color: var(--text-dim);
+}
+.detect-expr {
+  width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  resize: vertical; min-height: 40px;
+}
+.detect-thr-slider { flex: 1; min-width: 90px; max-width: 160px; }
+.detect-thr-val, .detect-region-val { font-size: 11px; font-weight: 700; color: var(--text-dim); }
+.detect-check { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); cursor: pointer; }
+/* Мелкая кнопка-пилюля внутри блоков: «выбрать картинку», «задать область». */
+.blk-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; cursor: pointer; transition: border-color var(--t-hover), color var(--t-hover);
+}
+.blk-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
+.detect-pick { color: var(--text); border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); }
+.detect-pick.unset { color: var(--text-muted); border-style: dashed; }
