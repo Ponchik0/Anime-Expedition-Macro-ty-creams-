@@ -683,7 +683,12 @@ def delete(name: str) -> bool:
 def rename(old: str, new: str) -> bool:
     _ensure_dir()
     src, dst = path_for(old), path_for(new)
-    if not os.path.exists(src) or os.path.exists(dst):
+    if not os.path.exists(src):
+        return False
+    # dst может оказаться ТЕМ ЖЕ файлом: на Windows регистр в именах не
+    # различается, и смена одного лишь регистра («забег» -> «Забег») иначе
+    # выглядела бы как «имя занято». os.rename такую замену делает штатно.
+    if os.path.normcase(src) != os.path.normcase(dst) and os.path.exists(dst):
         return False
     try:
         os.rename(src, dst)

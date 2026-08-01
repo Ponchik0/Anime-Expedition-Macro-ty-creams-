@@ -2152,7 +2152,12 @@ class Api:
             return {"ok": True, "name": safe, "unchanged": True}
         if not replay.exists(old):
             return {"ok": False, "reason": "missing"}
-        if replay.exists(safe):
+        # Смена одного лишь регистра («забег» -> «Забег»): на Windows файловая
+        # система регистр не различает, и проверка занятости имени сказала бы
+        # «уже есть» про сам переименовываемый файл. os.rename такую замену
+        # делает штатно, поэтому проверку пропускаем.
+        case_only = safe.lower() == replay.safe_name(old).lower()
+        if not case_only and replay.exists(safe):
             return {"ok": False, "reason": "exists"}
         if not replay.rename(old, safe):
             return {"ok": False, "reason": "failed"}

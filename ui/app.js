@@ -905,6 +905,13 @@ function updateKeybindDisplay(action, key) {
   if (dashboardKeyEl) dashboardKeyEl.textContent = key ? key.toUpperCase() : '';
 }
 
+// Столько же ждёт сторож в Python (set_hotkey_capture). Держим два срока
+// равными намеренно: если Python снимет глушение сам, а кнопка останется в
+// «Нажми клавишу…», то следующее нажатие сделает СТАРОЕ действие — ровно то,
+// от чего здесь и уходим.
+const REBIND_TIMEOUT_MS = 15000;
+let rebindTimeout = null;
+
 function startRebind(action, btn) {
   // Второй клик по другой строке, пока ловится первая, оставил бы висеть
   // «Press a key...» на брошенной кнопке. Отпускаем прежний захват сначала.
@@ -919,12 +926,19 @@ function startRebind(action, btn) {
   rebindPendingKey = null;
   btn.textContent = 'Press a key...';
   btn.classList.add('listening');
+  clearTimeout(rebindTimeout);
+  rebindTimeout = setTimeout(() => {
+    const stale = cancelRebind();
+    if (stale) updateKeybindDisplay(stale, HOTKEY_CURRENT[stale] || '');
+  }, REBIND_TIMEOUT_MS);
 }
 
 function cancelRebind() {
   const action = rebindingAction;
   rebindingAction = null;
   rebindPendingKey = null;
+  clearTimeout(rebindTimeout);
+  rebindTimeout = null;
   if (action) document.getElementById(`keybind-${action}`)?.classList.remove('listening');
   try { pywebview.api.set_hotkey_capture(false); } catch (e) {}
   return action;
@@ -1001,6 +1015,8 @@ async function commitRebind() {
   const key = rebindPendingKey;
   rebindingAction = null;
   rebindPendingKey = null;
+  clearTimeout(rebindTimeout);
+  rebindTimeout = null;
   document.getElementById(`keybind-${action}`)?.classList.remove('listening');
   let res = null;
   try { res = await pywebview.api.set_hotkey(action, key); } catch (err) {}
@@ -7728,6 +7744,15 @@ async function commitRecordingRename(index) {
   const rec = recordingsList[index];
   const input = document.getElementById('rec-rename-input');
   if (!rec || !input) return;
+  // Список мог перестроиться, пока поле было открыто (запись остановили
+  // клавишей F8, и порядок поехал). Номер строки тогда указывает уже на
+  // другую запись — переименовали бы не ту.
+  if (rec.name !== renamingRecording) {
+    renamingRecording = null;
+    addLog('[Повтор] Список записей изменился — переименование отменено, попробуй ещё раз.');
+    refreshRecordings();
+    return;
+  }
   const next = input.value.trim();
   renamingRecording = null;
   let res = null;

@@ -73,6 +73,16 @@ def test_renaming_to_the_same_name_is_not_an_error(store):
     assert replay.exists("Забег")
 
 
+def test_changing_only_the_letter_case_is_allowed(store):
+    """На Windows регистр в именах файлов не различается, и проверка
+    занятости имени говорила бы «уже есть» про сам переименовываемый файл."""
+    _make("забег")
+    api = _Api()
+    res = api.replay_rename("забег", "Забег")
+    assert res["ok"], res
+    assert [r["name"] for r in replay.listing()] == ["Забег"]
+
+
 def test_forbidden_characters_are_stripped_and_reported(store):
     """safe_name вычищает то, что нельзя в имени файла. Сохранённое имя тогда
     отличается от набранного, и молчать об этом нельзя."""
