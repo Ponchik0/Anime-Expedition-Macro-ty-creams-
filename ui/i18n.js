@@ -208,6 +208,12 @@
     "Same as the Dashboard's Pause button.": 'То же, что кнопка «Пауза» на панели.',
     'Unbound': 'Не назначено',
     'Not set': 'Не задано',
+    'Press a key...': 'Нажми клавишу…',
+    'Reset to default key (press Esc while capturing to unbind)':
+      'Вернуть исходную клавишу (Esc во время ожидания — снять привязку)',
+    'Recordings Panel': 'Панель записей',
+    'Opens the Record screen (your recordings, replay settings) and back to the Dashboard on a second press.':
+      'Открывает экран «Запись»: список записей и настройки повтора. Второе нажатие возвращает на панель.',
 
     // --- Настройки: вебхук ---
     'Webhook URL': 'Ссылка вебхука',

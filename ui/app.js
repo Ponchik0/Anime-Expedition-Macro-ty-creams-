@@ -558,6 +558,14 @@ function toggleGameScreenHotkey() {
   switchScreen(currentScreen === 'dashboard' ? lastNonDashboardScreen : 'dashboard');
 }
 
+// Bound to the "Recordings Panel" hotkey (default F9) from Python.
+// Переключатель, а не «просто открыть»: записывают, находясь В ИГРЕ, и после
+// взгляда на список надо вернуться туда же. Второе нажатие возвращает на
+// Панель — то есть к игре, а не оставляет висеть поверх неё список.
+function toggleReplayScreen() {
+  switchScreen(currentScreen === 'replay' ? 'dashboard' : 'replay');
+}
+
 // ---------------------------------------------------------------------------
 // Compact strip (F7): hide the busy side panel + process log and show a slim
 // control bar at the bottom, leaving the docked game exactly where it is
@@ -851,19 +859,36 @@ async function toggleSetting(key, btn) {
 }
 
 let rebindingAction = null;
+// Пойманная клавиша ЖДЁТ отпускания и только потом уходит в Python -- см.
+// комментарий у обработчика keyup ниже.
+let rebindPendingKey = null;
 
 // Mirrors main.py's HOTKEY_DEFAULTS so the per-row x button can restore an
 // action's ORIGINAL key without a round-trip; unbinding is done by pressing
 // Esc during capture instead.
 const HOTKEY_DEFAULTS = {
   toggle_game: 'f4', skip_waiting: '', macro_start: 'f1', macro_stop: 'f2', macro_pause: 'f5', debug_screenshot: 'f3',
-  image_manager: 'f6', toggle_compact: 'f7', game_auto_upgrade: '',
+  image_manager: 'f6', toggle_compact: 'f7', toggle_record: 'f8', open_replay: 'f9', game_auto_upgrade: '',
 };
+// Порядок один на все обходы: загрузка настроек, сброс, ответ set_hotkey.
+// Раньше каждый список был написан руками отдельно, и добавленное действие
+// приходилось дописывать в трёх местах -- «Запись» так и осталась
+// недописанной: её строка не обновлялась ни при загрузке, ни при сбросе.
+const HOTKEY_ACTIONS = Object.keys(HOTKEY_DEFAULTS);
+// Последнее, что реально сохранено в Python. Нужен, чтобы вернуть подпись
+// кнопки на место, если захват клавиши отменили, не нажав ничего.
+const HOTKEY_CURRENT = {};
+
+// Перерисовывает ВСЕ строки привязок разом по словарю из Python.
+function applyHotkeys(hk) {
+  for (const action of HOTKEY_ACTIONS) updateKeybindDisplay(action, hk[action] || '');
+}
 
 // Reflects one hotkey's state into its button text and shows/hides its
 // reset (x) button -- x means "back to the default key", so it only shows
 // while the current binding differs from that default.
 function updateKeybindDisplay(action, key) {
+  HOTKEY_CURRENT[action] = key || '';
   const btn = document.getElementById(`keybind-${action}`);
   const clearBtn = document.getElementById(`keybind-clear-${action}`);
   if (btn) {
@@ -881,9 +906,28 @@ function updateKeybindDisplay(action, key) {
 }
 
 function startRebind(action, btn) {
+  // Второй клик по другой строке, пока ловится первая, оставил бы висеть
+  // «Press a key...» на брошенной кнопке. Отпускаем прежний захват сначала.
+  if (rebindingAction && rebindingAction !== action) cancelRebind();
+  // Глушим глобальные хоткеи ПЕРВЫМ делом. Без этого назначение выглядит
+  // сломанным: жмёшь F1, чтобы привязать её сюда, — а F1 попутно запускает
+  // макрос; жмёшь F4 — экран уезжает с настроек, и кажется, что привязка не
+  // сработала. Флаг снимает commitRebind/cancelRebind, плюс в Python стоит
+  // сторож на 15 с на случай, если интерфейс до этого не доживёт.
+  try { pywebview.api.set_hotkey_capture(true); } catch (e) {}
   rebindingAction = action;
+  rebindPendingKey = null;
   btn.textContent = 'Press a key...';
   btn.classList.add('listening');
+}
+
+function cancelRebind() {
+  const action = rebindingAction;
+  rebindingAction = null;
+  rebindPendingKey = null;
+  if (action) document.getElementById(`keybind-${action}`)?.classList.remove('listening');
+  try { pywebview.api.set_hotkey_capture(false); } catch (e) {}
+  return action;
 }
 
 function mapKeyName(e) {
@@ -912,36 +956,73 @@ function mapKeyName(e) {
 document.addEventListener('keydown', (e) => {
   if (!rebindingAction) return;
   e.preventDefault();
-  const action = rebindingAction;
-  rebindingAction = null;
   // Esc = deliberately set Unbound, not "bind to the Esc key".
-  const keyName = e.key === 'Escape' ? '' : mapKeyName(e);
-  document.getElementById(`keybind-${action}`).classList.remove('listening');
-  updateKeybindDisplay(action, keyName);
-  try { pywebview.api.set_hotkey(action, keyName); } catch (err) {}
+  rebindPendingKey = e.key === 'Escape' ? '' : mapKeyName(e);
+  const btn = document.getElementById(`keybind-${rebindingAction}`);
+  if (btn) btn.textContent = rebindPendingKey ? rebindPendingKey.toUpperCase() : 'Unbound';
+  // Назначаем НЕ здесь, а на отпускании клавиши. Пока она зажата, Windows
+  // повторяет нажатия, и свежая привязка выстрелила бы прямо в момент
+  // назначения: привязал F1 к старту — макрос стартанул, не дожидаясь, пока
+  // ты уберёшь палец.
 });
+
+document.addEventListener('keyup', (e) => {
+  if (!rebindingAction || rebindPendingKey === null) return;
+  e.preventDefault();
+  commitRebind();
+});
+
+// Захват не должен уметь «залипнуть»: пока он идёт, глобальные клавиши
+// молчат, и брошенный захват означал бы молчащие хоткеи. Клик мимо —
+// отмена; уход фокуса с окна (Alt+Tab прямо в режиме ожидания клавиши) —
+// доводим до конца, если клавишу уже нажали, иначе отмена.
+document.addEventListener('mousedown', () => {
+  if (rebindingAction) {
+    const action = cancelRebind();
+    if (action) updateKeybindDisplay(action, HOTKEY_CURRENT[action] || '');
+  }
+});
+
+window.addEventListener('blur', () => {
+  if (!rebindingAction) return;
+  if (rebindPendingKey !== null) commitRebind();
+  else {
+    const action = cancelRebind();
+    if (action) updateKeybindDisplay(action, HOTKEY_CURRENT[action] || '');
+  }
+});
+
+// Отдаёт клавишу в Python и перерисовывает строки по ЕГО ответу, а не по
+// своим ожиданиям: Python может клавишу не принять (библиотека не знает
+// такого имени) или освободить её у другого действия. Раньше интерфейс
+// рисовал новую привязку сразу и молчал, чем бы дело ни кончилось.
+async function commitRebind() {
+  const action = rebindingAction;
+  const key = rebindPendingKey;
+  rebindingAction = null;
+  rebindPendingKey = null;
+  document.getElementById(`keybind-${action}`)?.classList.remove('listening');
+  let res = null;
+  try { res = await pywebview.api.set_hotkey(action, key); } catch (err) {}
+  try { await pywebview.api.set_hotkey_capture(false); } catch (err) {}
+  if (res && res.hotkeys) applyHotkeys(res.hotkeys);
+  else updateKeybindDisplay(action, key);
+}
 
 // The per-row x: restores that action's original default key. (Unbinding
 // lives on Esc-during-capture, not here.)
-function clearHotkey(action) {
+async function clearHotkey(action) {
   const def = HOTKEY_DEFAULTS[action] || '';
-  updateKeybindDisplay(action, def);
-  try { pywebview.api.set_hotkey(action, def); } catch (e) {}
+  let res = null;
+  try { res = await pywebview.api.set_hotkey(action, def); } catch (e) {}
+  if (res && res.hotkeys) applyHotkeys(res.hotkeys);
+  else updateKeybindDisplay(action, def);
 }
 
 async function resetHotkeys() {
   try {
     const result = await pywebview.api.reset_hotkeys();
-    const hk = result.hotkeys || {};
-    updateKeybindDisplay('toggle_game', hk.toggle_game || '');
-    updateKeybindDisplay('skip_waiting', hk.skip_waiting || '');
-    updateKeybindDisplay('macro_start', hk.macro_start || '');
-    updateKeybindDisplay('macro_stop', hk.macro_stop || '');
-    updateKeybindDisplay('macro_pause', hk.macro_pause || '');
-    updateKeybindDisplay('debug_screenshot', hk.debug_screenshot || '');
-    updateKeybindDisplay('image_manager', hk.image_manager || '');
-    updateKeybindDisplay('toggle_compact', hk.toggle_compact || '');
-    updateKeybindDisplay('game_auto_upgrade', hk.game_auto_upgrade || '');
+    applyHotkeys(result.hotkeys || {});
   } catch (e) {}
 }
 
@@ -1165,15 +1246,7 @@ async function loadSettingsUI() {
   }
   try {
     const hk = await pywebview.api.get_hotkeys();
-    updateKeybindDisplay('toggle_game', hk.toggle_game || '');
-    updateKeybindDisplay('skip_waiting', hk.skip_waiting || '');
-    updateKeybindDisplay('macro_start', hk.macro_start || '');
-    updateKeybindDisplay('macro_stop', hk.macro_stop || '');
-    updateKeybindDisplay('macro_pause', hk.macro_pause || '');
-    updateKeybindDisplay('debug_screenshot', hk.debug_screenshot || '');
-    updateKeybindDisplay('image_manager', hk.image_manager || '');
-    updateKeybindDisplay('toggle_compact', hk.toggle_compact || '');
-    updateKeybindDisplay('game_auto_upgrade', hk.game_auto_upgrade || '');
+    applyHotkeys(hk);
     // (There was an updateDashboardHotkeys(hk) call here. No such function has
     // ever existed in this file, so every load of Settings threw a
     // ReferenceError that this bare catch swallowed. Nothing broke visibly
@@ -7568,7 +7641,12 @@ async function pollRecordingState() {
     if (st.recording) {
       btn.textContent = 'Остановить запись';
       btn.classList.add('rp-btn-stop');
-      lbl.textContent = 'идёт запись · действий: ' + st.recorded;
+      // «Жду Roblox» -- не поломка, а осознанная пауза: вне игры ввод не
+      // пишется и часы записи стоят (см. core/replay.py). Без этой подписи
+      // счётчик, который не растёт, выглядел бы как зависшая запись.
+      lbl.textContent = st.waiting
+        ? 'жду окно Roblox — вне игры не пишу · действий: ' + st.recorded
+        : 'идёт запись · действий: ' + st.recorded;
     } else {
       btn.textContent = 'Начать запись';
       btn.classList.remove('rp-btn-stop');
@@ -7579,25 +7657,104 @@ async function pollRecordingState() {
   } catch (e) {}
 }
 
+// Список как он пришёл из Python. Кнопки строк адресуют запись НОМЕРОМ в этом
+// списке, а не именем, подставленным в onclick: имя задаёт человек, и апостроф
+// в нём («Босс's раш») разрывал бы атрибут — строка ломалась целиком.
+let recordingsList = [];
+// Имя записи, которая сейчас в режиме переименования (одна за раз).
+let renamingRecording = null;
+
 async function refreshRecordings() {
   const el = document.getElementById('rec-list');
   if (!el) return;
+  // Список перерисовывается и сам по себе (запись остановили клавишей F8).
+  // Набранное в поле переименования при этом терять нельзя.
+  const typed = document.getElementById('rec-rename-input')?.value;
   let list = [];
   try { list = await pywebview.api.replay_list(); } catch (e) {}
-  if (!list || !list.length) {
+  recordingsList = list || [];
+  if (!recordingsList.length) {
+    renamingRecording = null;
     el.innerHTML = '<div class="empty-state">'
       + '<div class="empty-state-title">Записей пока нет</div>'
       + '<div class="empty-state-hint">Нажми «Начать запись», сыграй матч руками и останови. '
       + 'Макрос повторит записанное тик в тик — ставить и настраивать ничего не нужно.</div></div>';
     return;
   }
-  el.innerHTML = list.map(r => `
+  // Переименовываемая запись могла исчезнуть между обновлениями списка.
+  if (renamingRecording && !recordingsList.some(r => r.name === renamingRecording)) {
+    renamingRecording = null;
+  }
+  el.innerHTML = recordingsList.map((r, i) => (r.name === renamingRecording
+    ? `
     <div class="rh-row">
-      <span class="rh-map">${r.name}</span>
+      <input id="rec-rename-input" class="block-input" style="flex:1; min-width:0;" type="text"
+             value="${escapeHtml(r.name)}" maxlength="80"
+             onkeydown="if (event.key === 'Enter') commitRecordingRename(${i}); else if (event.key === 'Escape') cancelRecordingRename();">
+      <button class="task-icon-btn" onclick="commitRecordingRename(${i})">Сохранить</button>
+      <button class="task-icon-btn" onclick="cancelRecordingRename()">Отмена</button>
+    </div>`
+    : `
+    <div class="rh-row">
+      <span class="rh-map">${escapeHtml(r.name)}</span>
       <span class="rh-meta">${r.actions} действий · ${r.seconds} с</span>
-      <button class="task-icon-btn" onclick="playRecording('${r.name}')">Играть</button>
-      <button class="task-icon-btn" onclick="deleteRecording('${r.name}')">Удалить</button>
-    </div>`).join('');
+      <button class="task-icon-btn" onclick="playRecordingAt(${i})">Играть</button>
+      <button class="task-icon-btn" onclick="startRecordingRename(${i})">Переименовать</button>
+      <button class="task-icon-btn" onclick="deleteRecordingAt(${i})">Удалить</button>
+    </div>`)).join('');
+  if (renamingRecording) {
+    const input = document.getElementById('rec-rename-input');
+    if (input) {
+      if (typed !== undefined) input.value = typed;
+      input.focus();
+      input.select();
+    }
+  }
+}
+
+function startRecordingRename(index) {
+  const rec = recordingsList[index];
+  if (!rec) return;
+  renamingRecording = rec.name;
+  refreshRecordings();
+}
+
+function cancelRecordingRename() {
+  renamingRecording = null;
+  refreshRecordings();
+}
+
+async function commitRecordingRename(index) {
+  const rec = recordingsList[index];
+  const input = document.getElementById('rec-rename-input');
+  if (!rec || !input) return;
+  const next = input.value.trim();
+  renamingRecording = null;
+  let res = null;
+  try { res = await pywebview.api.replay_rename(rec.name, next); } catch (e) {}
+  if (res && res.ok) {
+    // safe_name вычищает символы, запрещённые в имени файла. Сохранённое имя
+    // тогда отличается от набранного, и молча подменять его нельзя.
+    if (res.sanitized) addLog(`[Повтор] Запись сохранена как «${res.name}» — часть символов в имени файла недопустима.`);
+  } else {
+    const why = {
+      empty: 'нужно непустое имя',
+      exists: 'запись с таким именем уже есть',
+      missing: 'записи больше нет — список устарел',
+    }[res && res.reason] || 'не вышло переименовать';
+    addLog(`[Повтор] Переименование отменено: ${why}.`);
+  }
+  refreshRecordings();
+}
+
+async function playRecordingAt(index) {
+  const rec = recordingsList[index];
+  if (rec) await playRecording(rec.name);
+}
+
+async function deleteRecordingAt(index) {
+  const rec = recordingsList[index];
+  if (rec) await deleteRecording(rec.name);
 }
 
 async function playRecording(name) {
@@ -7696,7 +7853,11 @@ async function refreshRecLive() {
   if (!st || !st.recording) { box.style.display = 'none'; return; }
   box.style.display = '';
   const meta = document.getElementById('rec-live-meta');
-  if (meta) meta.textContent = `${st.recorded} действий · ${st.elapsed || 0} с`;
+  if (meta) {
+    meta.textContent = st.waiting
+      ? `жду окно Roblox · ${st.recorded} действий · ${st.elapsed || 0} с`
+      : `${st.recorded} действий · ${st.elapsed || 0} с`;
+  }
   const list = document.getElementById('rec-live-list');
   if (list) {
     list.innerHTML = (st.recent && st.recent.length)

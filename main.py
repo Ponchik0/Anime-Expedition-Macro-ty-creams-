@@ -162,6 +162,51 @@ HOTKEY_DEFAULTS = {
     # — и рекордер такие клики намеренно не пишет (иначе нажатие на саму
     # кнопку «Запись» попало бы в файл). F8 свободна.
     "toggle_record": "f8",
+    # Экран «Запись» целиком: список записей, повторы, галки. Пара к F8 —
+    # записал в игре и тут же посмотрел, что получилось, не ища вкладку
+    # мышью. Повторное нажатие возвращает на Панель, то есть к игре.
+    "open_replay": "f9",
+}
+
+# Имена клавиш из браузера -> имена, которые понимает библиотека keyboard.
+# Слева то, что приходит из ui/app.js (mapKeyName: e.key в нижнем регистре
+# либо позиция по e.code), справа — написание из keyboard/_canonical_names.
+# Без этой таблицы такие клавиши МОЛЧА не регистрировались: настройка
+# сохранялась, привязка в интерфейсе показывалась, а клавиша не работала.
+_HOTKEY_ALIASES = {
+    "pageup": "page up", "pagedown": "page down",
+    "capslock": "caps lock", "numlock": "num lock", "scrolllock": "scroll lock",
+    "printscreen": "print screen", "contextmenu": "menu",
+    "arrowup": "up", "arrowdown": "down", "arrowleft": "left", "arrowright": "right",
+    "control": "ctrl", "os": "windows", "meta": "windows", " ": "space",
+}
+
+
+def normalize_hotkey(key: str) -> str:
+    key = (key or "").strip().lower()
+    return _HOTKEY_ALIASES.get(key, key)
+
+
+def hotkey_for(hotkeys: dict, action: str) -> str:
+    """Клавиша действия при регистрации.
+
+    get(action, default), а НЕ `hotkeys.get(action) or default`: пустая строка
+    здесь — это осознанное «отвязать» (Esc во время захвата). Со вторым
+    вариантом вместо неё подставлялась исходная клавиша, и отвязать действие
+    было невозможно в принципе — оно молча возвращалось на F-клавишу.
+    """
+    return normalize_hotkey(hotkeys.get(action, HOTKEY_DEFAULTS.get(action, "")))
+
+
+# Подписи для журнала: в нём должно быть «Старт макроса → F9», а не
+# «macro_start» — журнал читает человек, а не разработчик.
+HOTKEY_LABELS = {
+    "toggle_game": "Показать/скрыть игру", "skip_waiting": "Пропустить ожидание",
+    "macro_start": "Старт макроса", "macro_stop": "Стоп макроса",
+    "macro_pause": "Пауза макроса", "debug_screenshot": "Снимок для отладки",
+    "image_manager": "Менеджер картинок", "toggle_compact": "Компактная полоса",
+    "toggle_record": "Запись", "open_replay": "Панель записей",
+    "game_auto_upgrade": "Авто-апгрейд (в игре)",
 }
 
 # Stage-detail panel (shown after clicking a stage row on the Select Stage
@@ -470,6 +515,10 @@ class Api:
         self.session_start = time.time()
         self._all_time_base = cfg.load().get("all_time_seconds", 0)
         self._on_hotkeys_changed = None
+        # Пока интерфейс ловит новую клавишу, глобальные хоткеи молчат —
+        # см. set_hotkey_capture.
+        self._hotkey_capture = False
+        self._hotkey_capture_timer = None
         self.mouse = Mouse()
         self.keyboard = Keyboard()
         self._path_test_stop = None
@@ -2061,6 +2110,10 @@ class Api:
                 pass
         return {
             "recording": bool(rec and rec.running),
+            # Запись идёт, но окна Roblox сейчас не видно/не в фокусе: ввод
+            # намеренно не пишется, часы стоят. Без этого поля панель
+            # показывала бы «идёт запись», пока в файл ничего не попадает.
+            "waiting": bool(rec and rec.running and getattr(rec, "waiting", False)),
             "recorded": rec.count if rec else 0,
             "recent": recent,
             "elapsed": elapsed,
@@ -2083,11 +2136,32 @@ class Api:
         return {"ok": ok}
 
     def replay_rename(self, old: str, new: str) -> dict:
+        """Переименование записи. Причина отказа возвращается словом.
+
+        Не просто «не вышло»: имя может быть пустым, занятым или содержать
+        запрещённые в имени файла символы (их вычищает safe_name, и тогда
+        сохранённое имя отличается от набранного — об этом тоже надо сказать,
+        а не молча подменить)."""
         from core import replay
-        ok = replay.rename(old, new)
-        if ok and cfg.load().get("replay_file") == old:
-            cfg.update({"replay_file": replay.safe_name(new)})
-        return {"ok": ok}
+        old = (old or "").strip()
+        new = (new or "").strip()
+        if not new:
+            return {"ok": False, "reason": "empty"}
+        safe = replay.safe_name(new)
+        if safe == replay.safe_name(old):
+            return {"ok": True, "name": safe, "unchanged": True}
+        if not replay.exists(old):
+            return {"ok": False, "reason": "missing"}
+        if replay.exists(safe):
+            return {"ok": False, "reason": "exists"}
+        if not replay.rename(old, safe):
+            return {"ok": False, "reason": "failed"}
+        # Настройка «какую запись играть» указывает на запись ПО ИМЕНИ, и
+        # без этого переименование тихо ломало бы режим повтора.
+        if cfg.load().get("replay_file") == old:
+            cfg.update({"replay_file": safe})
+        self.push_log(f"[Повтор] Запись «{old}» переименована в «{safe}».")
+        return {"ok": True, "name": safe, "sanitized": safe != new}
 
     def replay_play(self, name: str = "") -> dict:
         from core import replay
@@ -2390,21 +2464,93 @@ class Api:
         keys_.update(data.get("hotkeys", {}))
         return keys_
 
+    def set_hotkey_capture(self, on: bool) -> dict:
+        """Интерфейс ловит новую клавишу — глобальные хоткеи на это время немые.
+
+        Иначе назначение превращается в стрельбу по себе: жмёшь F1, чтобы
+        привязать её к другому действию, — и F1 попутно запускает макрос;
+        жмёшь F4 — экран уезжает с настроек, и кажется, что привязка не
+        сработала. Гасим на время захвата ВСЕ действия, а не только то,
+        которое переназначают: мешает любое.
+
+        Сторож на 15 секунд — потому что снимает флаг интерфейс, а он может и
+        не дожить до этого (перезагрузка страницы прямо в режиме захвата).
+        Без сторожа хоткеи остались бы немыми до перезапуска приложения.
+        """
+        on = bool(on)
+        self._hotkey_capture = on
+        timer = getattr(self, "_hotkey_capture_timer", None)
+        if timer is not None:
+            timer.cancel()
+            self._hotkey_capture_timer = None
+        if on:
+            def _release():
+                self._hotkey_capture = False
+                self._hotkey_capture_timer = None
+            self._hotkey_capture_timer = threading.Timer(15.0, _release)
+            self._hotkey_capture_timer.daemon = True
+            self._hotkey_capture_timer.start()
+        return {"ok": True}
+
     def set_hotkey(self, action: str, key: str) -> dict:
+        """Назначает клавишу действию. Возвращает то, что РЕАЛЬНО сохранилось.
+
+        Интерфейс рисует строки по этому ответу, а не по своим ожиданиям:
+        раньше он показывал новую клавишу сразу и был уверен, что всё вышло,
+        хотя настройка могла не примениться, и человек видел «нажал — ничего
+        не изменилось» только при следующем заходе в настройки.
+        """
         if action not in HOTKEY_DEFAULTS:
-            return {"ok": False}
+            return {"ok": False, "reason": "unknown_action", "hotkeys": self.get_hotkeys()}
+        key = normalize_hotkey(key)
         keys_ = dict(HOTKEY_DEFAULTS)
         keys_.update(cfg.load().get("hotkeys", {}))
-        keys_[action] = (key or "").lower()
+        previous = keys_.get(action, "")
+        if key and key == previous:
+            return {"ok": True, "hotkeys": keys_, "cleared": []}
+
+        # Одна клавиша — одно действие. Раньше обе привязки просто
+        # регистрировались, и нажатие делало сразу два дела: назначил F2 на
+        # старт — и старт со стопом стреляли вместе.
+        cleared = [a for a, k in keys_.items()
+                   if a != action and key and normalize_hotkey(k) == key]
+        for a in cleared:
+            keys_[a] = ""
+        keys_[action] = key
+
         cfg.update({"hotkeys": keys_})
-        if self._on_hotkeys_changed:
-            self._on_hotkeys_changed(keys_)
-        return {"ok": True}
+        failed = self._apply_hotkeys(keys_)
+        if action in failed:
+            # Библиотека клавишу не приняла — откатываемся целиком, чтобы не
+            # оставить человека без старой привязки в обмен на нерабочую.
+            keys_[action] = previous
+            for a in cleared:
+                keys_[a] = key
+            cfg.update({"hotkeys": keys_})
+            self._apply_hotkeys(keys_)
+            self.push_log(f"[Клавиши] «{key}» не подходит под привязку — оставил как было.")
+            return {"ok": False, "reason": "bad_key", "hotkeys": keys_, "cleared": []}
+
+        label = HOTKEY_LABELS.get(action, action)
+        self.push_log(f"[Клавиши] {label} → " + (key.upper() if key else "не назначено"))
+        for a in cleared:
+            self.push_log(f"[Клавиши] {HOTKEY_LABELS.get(a, a)} освобождено: "
+                          f"клавиша занята под «{label}».")
+        return {"ok": True, "hotkeys": keys_, "cleared": cleared}
+
+    def _apply_hotkeys(self, keys_: dict) -> list:
+        """Перерегистрация. Возвращает действия, чьи клавиши не приняты."""
+        if not self._on_hotkeys_changed:
+            return []
+        try:
+            return list(self._on_hotkeys_changed(keys_) or [])
+        except Exception:
+            return []
 
     def reset_hotkeys(self) -> dict:
         cfg.update({"hotkeys": dict(HOTKEY_DEFAULTS)})
-        if self._on_hotkeys_changed:
-            self._on_hotkeys_changed(dict(HOTKEY_DEFAULTS))
+        self._apply_hotkeys(dict(HOTKEY_DEFAULTS))
+        self.push_log("[Клавиши] Все привязки возвращены к исходным.")
         return {"ok": True, "hotkeys": dict(HOTKEY_DEFAULTS)}
 
     # Task screen > Export/Import: shares a task queue (plus the Macro Manager
@@ -4798,7 +4944,10 @@ def _launch_ui():
 
             time.sleep(2)
 
-    def _register_hotkeys(hotkeys: dict):
+    def _register_hotkeys(hotkeys: dict) -> list:
+        """Перевешивает глобальные хоткеи. Возвращает действия, чьи клавиши
+        библиотека не приняла — по этому списку set_hotkey и понимает, что
+        привязку надо откатить, а не молчать."""
         # The `keyboard` lib's global hooks need root on macOS -- a plain
         # user launch raises OSError somewhere in here. Hotkeys just being
         # unavailable (use the on-screen buttons) beats the app dying, so
@@ -4808,7 +4957,7 @@ def _launch_ui():
         except (OSError, ImportError):
             api.push_log("[Macro] Global hotkeys unavailable (macOS needs the app run with elevated "
                           "permissions for keyboard hooks) -- use the on-screen buttons instead.")
-            return
+            return []
         actions = {
             # Routed through JS so each reuses its existing JS-side logic
             # (switchScreen's hide/show coordination, startMacro's button-
@@ -4835,15 +4984,32 @@ def _launch_ui():
             # интерфейс значит зависеть от того, чем он сейчас занят.
             # Зовём напрямую, как и стоп.
             "toggle_record": lambda: api.hotkey_toggle_record(),
+            # Экран записей — через интерфейс: там переключение вкладок со
+            # своей вознёй (спрятать окно игры, восстановить его на Панели).
+            "open_replay": lambda: api.push_ui("toggleReplayScreen"),
         }
+        failed = []
         for action, fn in actions.items():
-            key = hotkeys.get(action) or HOTKEY_DEFAULTS.get(action, "")
+            key = hotkey_for(hotkeys, action)
             if not key:
                 continue
             try:
-                keyboard.add_hotkey(key, fn, suppress=False)
+                keyboard.add_hotkey(key, _guarded(fn), suppress=False)
             except (ValueError, ImportError, OSError):
-                pass
+                failed.append(action)
+        return failed
+
+    def _guarded(fn):
+        """Хоткей молчит, пока интерфейс ловит новую клавишу.
+
+        Ровно то, из-за чего назначение выглядело сломанным: нажатие клавиши
+        в режиме захвата попутно делало то, на что она была назначена, — и
+        привязать её к другому действию было почти невозможно."""
+        def run():
+            if getattr(api, "_hotkey_capture", False):
+                return
+            fn()
+        return run
 
     def on_shown():
         threading.Thread(target=_dock_watchdog, daemon=True).start()

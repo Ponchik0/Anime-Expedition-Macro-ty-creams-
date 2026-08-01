@@ -207,6 +207,29 @@ def _game_focused(hwnd: int) -> bool:
         return True             # не смогли спросить — не блокируем повтор
 
 
+def _game_on_screen(hwnd: int) -> bool:
+    """Видно ли окно игры прямо сейчас.
+
+    Отдельно от фокуса, и вот почему. В обычном режиме игра встроена в наше
+    окно, и на любом экране кроме Панели макрос её ПРЯЧЕТ (hide_game ->
+    ShowWindow(SW_HIDE), см. switchScreen в ui/app.js). Фокус при этом
+    остаётся на окне макроса, то есть формально «окно игры активно» — хотя
+    игры на экране нет вовсе и человек возится в настройках. Проверка
+    видимости — то, что отличает эти два случая.
+    """
+    if not hwnd:
+        return False
+    try:
+        return bool(wm.is_window_visible(hwnd))
+    except Exception:
+        return True             # не смогли спросить — не мешаем записи
+
+
+def game_active(hwnd: int) -> bool:
+    """Идёт ли ввод именно в игру: окно есть, видно и активно."""
+    return bool(hwnd) and _game_on_screen(hwnd) and _game_focused(hwnd)
+
+
 def safe_name(name: str) -> str:
     name = (name or "").strip() or datetime.now().strftime("rec_%Y-%m-%d_%H-%M-%S")
     return re.sub(r'[\\/:*?"<>|]', "_", name)[:80]
@@ -238,6 +261,10 @@ class Recorder:
         self._lock = threading.Lock()
         self.base_w = 0
         self.base_h = 0
+        # Запись идёт, но игра сейчас не активна — ввод не пишем, часы стоят.
+        # Панель показывает это словами: иначе «пишется, а счётчик не растёт»
+        # неотличимо от поломки.
+        self.waiting = False
 
     @property
     def running(self) -> bool:
@@ -260,6 +287,7 @@ class Recorder:
             self.base_w = self.base_h = 0
         self._events = []
         self._stop.clear()
+        self.waiting = False
         self._t0 = time.perf_counter()
         _timer_precision(True)
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -272,6 +300,7 @@ class Recorder:
         self._stop.set()
         self._thread.join(timeout=2.0)
         self._thread = None
+        self.waiting = False
         _timer_precision(False)
         with self._lock:
             return list(self._events)
@@ -297,11 +326,46 @@ class Recorder:
         except Exception:
             pass
 
+        # Момент, когда игра перестала быть активной. Пока он не None, часы
+        # записи стоят — см. ниже, зачем.
+        idle_since = None
+
         while not self._stop.is_set():
             hwnd = self._get_game() or 0
             # hwnd окон спрашиваем каждый тик: окно игры может смениться
             # (перезапуск Roblox), а наше — появиться позже начала записи.
             gui_hwnd = self._get_gui() or 0
+
+            # --- пишем ТОЛЬКО когда ввод идёт в игру ---
+            # Иначе в запись попадает всё подряд: переписка в браузере, пароль,
+            # набранный в другом окне, возня в настройках макроса. При повторе
+            # это вываливается в Roblox как нажатия — в лучшем случае мусор.
+            if not game_active(hwnd):
+                if idle_since is None:
+                    # Всё зажатое закрываем СРАЗУ: иначе в файле останется
+                    # «down» без пары, и при повторе клавиша залипнет в игре до
+                    # конца круга. Координаты 0,0 — это «не двигай курсор,
+                    # просто отпусти» (см. Player._play), как и в таком же
+                    # закрытии на остановке записи.
+                    for vk in list(held):
+                        name = _MOUSE.get(vk) or WATCHED_KEYS.get(vk)
+                        if name:
+                            self._push("up", name, 0, 0)
+                    held.clear()
+                    idle_since = time.perf_counter()
+                    self.waiting = True
+                time.sleep(0.05)      # не в игре — опрашивать 250 раз в секунду незачем
+                continue
+
+            if idle_since is not None:
+                # Часы записи двигаем вперёд на всё время отсутствия. Расписание
+                # у нас абсолютное (см. шапку файла), и без этой поправки отлучка
+                # на минуту превратилась бы при повторе в минуту, когда макрос
+                # просто стоит и ничего не делает.
+                self._t0 += time.perf_counter() - idle_since
+                idle_since = None
+                self.waiting = False
+                last_xy = (-9999, -9999)   # вернулись — первую точку пути пишем сразу
 
             # Курсор над нашим окном (но не над игрой внутри него) — ничего
             # не пишем. Окно макроса висит поверх игры, и клик по кнопке
@@ -544,6 +608,17 @@ def _ensure_dir():
     os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
 
+def path_for(name: str) -> str:
+    return os.path.join(RECORDINGS_DIR, safe_name(name) + ".json")
+
+
+def exists(name: str) -> bool:
+    """Есть ли такая запись. Проверка занятости имени при переименовании —
+    именно так, а не через load(): читать весь файл ради ответа «да/нет»
+    незачем, а в большой записи это сотни тысяч событий."""
+    return os.path.exists(path_for(name))
+
+
 def save(name: str, events: list, base_w: int = 0, base_h: int = 0) -> str:
     _ensure_dir()
     name = safe_name(name)
@@ -598,9 +673,8 @@ def listing() -> list:
 
 
 def delete(name: str) -> bool:
-    path = os.path.join(RECORDINGS_DIR, safe_name(name) + ".json")
     try:
-        os.remove(path)
+        os.remove(path_for(name))
         return True
     except Exception:
         return False
@@ -608,8 +682,7 @@ def delete(name: str) -> bool:
 
 def rename(old: str, new: str) -> bool:
     _ensure_dir()
-    src = os.path.join(RECORDINGS_DIR, safe_name(old) + ".json")
-    dst = os.path.join(RECORDINGS_DIR, safe_name(new) + ".json")
+    src, dst = path_for(old), path_for(new)
     if not os.path.exists(src) or os.path.exists(dst):
         return False
     try:

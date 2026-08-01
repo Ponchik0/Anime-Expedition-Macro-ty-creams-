@@ -970,7 +970,7 @@
         <button type="button" id="btn-rec" class="rp-btn" style="min-width:150px;" onclick="toggleRecording()">Начать запись</button>
         <input id="rec-name" type="text" placeholder="Название (необязательно)" style="width:240px;">
         <div style="font-size:12px; color: var(--text-muted); flex:1; min-width:260px;">
-          Нажми «Начать запись», переключись в Roblox и сыграй как обычно. Пишутся клики, клавиши и путь курсора с настоящими паузами. Останови — запись сохранится в список.
+          Нажми «Начать запись», переключись в Roblox и сыграй как обычно. Пишутся клики, клавиши и путь курсора с настоящими паузами. Пока Roblox не на экране или не в фокусе, запись ждёт: чужой ввод в файл не попадает, и время отлучки в него тоже не идёт. Останови — запись сохранится в список.
         </div>
       </div>
     </section>
@@ -1304,6 +1304,17 @@
               <div class="keybind-group">
                 <button id="keybind-clear-toggle_record" class="keybind-clear-btn" onclick="clearHotkey('toggle_record')" title="Reset to default key (press Esc while capturing to unbind)">&times;</button>
                 <button id="keybind-toggle_record" class="keybind-btn" onclick="startRebind('toggle_record', this)">F8</button>
+              </div>
+            </div>
+            <!-- Пара к клавише записи: посмотреть список, не ища вкладку мышью. -->
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Recordings Panel</div>
+                <div class="setting-desc">Opens the Record screen (your recordings, replay settings) and back to the Dashboard on a second press.</div>
+              </div>
+              <div class="keybind-group">
+                <button id="keybind-clear-open_replay" class="keybind-clear-btn" onclick="clearHotkey('open_replay')" title="Reset to default key (press Esc while capturing to unbind)">&times;</button>
+                <button id="keybind-open_replay" class="keybind-btn" onclick="startRebind('open_replay', this)">F9</button>
               </div>
             </div>
             <!-- Хоткей авто-апгрейда из апстрима: он должен совпадать с тем,

@@ -1292,3 +1292,189 @@ def test_auto_shop_resource_card_has_required_controls():
         assert f'id="{element_id}"' in html
     assert "Numeric quantities repeat on later passes until sold out." in html
 
+
+
+# ---------------------------------------------------------------------------
+# Экран «Запись»: список записей и переименование
+# ---------------------------------------------------------------------------
+# Имя записи задаёт человек. Раньше оно подставлялось прямо в onclick
+# ("playRecording('${r.name}')"), и апостроф в названии рвал атрибут: строка
+# ломалась целиком, кнопки переставали работать. Теперь кнопки адресуют запись
+# НОМЕРОМ в списке, а имя проходит через escapeHtml.
+
+_RECORDINGS = """
+let recordingsList = [];
+let renamingRecording = null;
+const logs = [];
+const boxes = {};
+const focused = [];
+global.addLog = m => logs.push(m);
+global.document = { getElementById: id => {
+  if (id === 'rec-rename-input') return boxes.input || null;
+  return (boxes[id] = boxes[id] || { innerHTML: '' });
+} };
+eval(extract('escapeHtml'));
+"""
+
+
+def test_a_recording_name_with_an_apostrophe_does_not_break_its_row(tmp_path):
+    out = run_js(_RECORDINGS + """
+      global.pywebview = { api: { replay_list: async () => [
+        { name: "Boss's rush", actions: 12, seconds: 30.5 },
+        { name: 'Plain', actions: 3, seconds: 4.0 },
+      ] } };
+      eval(extract('refreshRecordings'));
+      refreshRecordings().then(() => console.log(JSON.stringify({
+        html: boxes['rec-list'].innerHTML,
+      })));
+    """, tmp_path)
+    html = out["html"]
+    # Имя показано экранированным, а не сырым апострофом внутри разметки.
+    assert "&#39;" in html
+    assert "Boss's" not in html
+    assert "playRecordingAt(0)" in html and "playRecordingAt(1)" in html
+    assert "startRecordingRename(0)" in html
+    assert "deleteRecordingAt(1)" in html
+
+
+def test_the_row_being_renamed_turns_into_an_input(tmp_path):
+    out = run_js(_RECORDINGS + """
+      global.pywebview = { api: { replay_list: async () => [
+        { name: 'First', actions: 1, seconds: 1 },
+        { name: 'Second', actions: 2, seconds: 2 },
+      ] } };
+      boxes.input = { focus: () => focused.push('focus'), select: () => focused.push('select'), value: '' };
+      eval(extract('refreshRecordings'));
+      eval(extract('startRecordingRename'));
+      refreshRecordings()
+        .then(() => { startRecordingRename(0); return new Promise(r => setTimeout(r, 20)); })
+        .then(() => console.log(JSON.stringify({
+          html: boxes['rec-list'].innerHTML, focused, renaming: renamingRecording,
+        })));
+    """, tmp_path)
+    html = out["html"]
+    assert out["renaming"] == "First"
+    assert 'id="rec-rename-input"' in html
+    assert "commitRecordingRename(0)" in html and "cancelRecordingRename()" in html
+    # Вторая строка остаётся обычной: переименовываем по одной.
+    assert "playRecordingAt(1)" in html
+    assert out["focused"] == ["focus", "select"]
+
+
+def test_a_refused_rename_says_why_instead_of_going_quiet(tmp_path):
+    out = run_js(_RECORDINGS + """
+      recordingsList = [{ name: 'First', actions: 1, seconds: 1 }];
+      renamingRecording = 'First';
+      boxes.input = { value: '  Second  ' };
+      global.pywebview = { api: { replay_rename: async () => ({ ok: false, reason: 'exists' }) } };
+      global.refreshRecordings = async () => {};
+      eval(extract('commitRecordingRename'));
+      commitRecordingRename(0).then(() => console.log(JSON.stringify({ logs, renaming: renamingRecording })));
+    """, tmp_path)
+    assert out["renaming"] is None
+    assert len(out["logs"]) == 1
+    assert "уже есть" in out["logs"][0]
+
+
+def test_a_rename_sends_the_trimmed_name_and_stays_quiet_when_it_works(tmp_path):
+    out = run_js(_RECORDINGS + """
+      recordingsList = [{ name: 'First', actions: 1, seconds: 1 }];
+      renamingRecording = 'First';
+      boxes.input = { value: '  Second  ' };
+      const sent = [];
+      global.pywebview = { api: { replay_rename: async (o, n) => { sent.push([o, n]); return { ok: true, name: n }; } } };
+      global.refreshRecordings = async () => {};
+      eval(extract('commitRecordingRename'));
+      commitRecordingRename(0).then(() => console.log(JSON.stringify({ sent, logs })));
+    """, tmp_path)
+    assert out["sent"] == [["First", "Second"]]
+    assert out["logs"] == []
+
+
+def test_a_sanitized_name_is_reported(tmp_path):
+    """Молча подменить набранное имя нельзя -- человек будет искать своё."""
+    out = run_js(_RECORDINGS + """
+      recordingsList = [{ name: 'First', actions: 1, seconds: 1 }];
+      renamingRecording = 'First';
+      boxes.input = { value: 'Boss: final' };
+      global.pywebview = { api: { replay_rename: async () => ({ ok: true, name: 'Boss_ final', sanitized: true }) } };
+      global.refreshRecordings = async () => {};
+      eval(extract('commitRecordingRename'));
+      commitRecordingRename(0).then(() => console.log(JSON.stringify({ logs })));
+    """, tmp_path)
+    assert len(out["logs"]) == 1
+    assert "Boss_ final" in out["logs"][0]
+
+
+# ---------------------------------------------------------------------------
+# Привязки клавиш: один список действий на все обходы
+# ---------------------------------------------------------------------------
+# Список строк был написан руками трижды (загрузка настроек, сброс, ответ
+# Python), и добавленное действие приходилось дописывать в каждый. «Запись» так
+# и осталась недописанной: её строка не обновлялась ни при загрузке, ни при
+# сбросе, а крестик сброса на ней висел всегда.
+
+_KEYBINDS = """
+const shown = {};
+const cleared = {};
+global.document = { getElementById: id => {
+  // Настоящий getElementById(null) возвращает null, а не падает: значок
+  // клавиши на Дашборде есть только у трёх действий, и для остальных
+  // updateKeybindDisplay зовёт его именно с null.
+  if (typeof id !== 'string') return null;
+  if (id.startsWith('keybind-clear-')) return (cleared[id] = cleared[id] || { style: {} });
+  if (id.startsWith('keybind-')) return (shown[id] = shown[id] || { textContent: '' });
+  return null;
+} };
+// Словарь берём из самого app.js -- копия в тесте разошлась бы с ним ровно
+// так же, как разошлись три рукописных списка в самом файле. eval'им ЛИТЕРАЛ:
+// `eval('const X = ...')` объявил бы X внутри eval и наружу не отдал.
+const src2 = fs.readFileSync(process.env.APP_JS, 'utf8');
+const defs = src2.slice(src2.indexOf('const HOTKEY_DEFAULTS = {'));
+const HOTKEY_DEFAULTS = eval('(' + defs.slice(defs.indexOf('{'), defs.indexOf('};') + 1) + ')');
+const HOTKEY_ACTIONS = Object.keys(HOTKEY_DEFAULTS);
+const HOTKEY_CURRENT = {};
+eval(extract('updateKeybindDisplay'));
+"""
+
+
+def test_every_action_is_redrawn_from_pythons_answer(tmp_path):
+    out = run_js(_KEYBINDS + """
+      eval(extract('applyHotkeys'));
+      applyHotkeys({ toggle_record: 'f8', open_replay: 'f9', macro_start: 'f1' });
+      console.log(JSON.stringify({
+        actions: HOTKEY_ACTIONS,
+        record: shown['keybind-toggle_record'].textContent,
+        replay: shown['keybind-open_replay'].textContent,
+        unbound: shown['keybind-macro_stop'].textContent,
+      }));
+    """, tmp_path)
+    # Оба новых действия обязаны быть в списке -- иначе их строки снова
+    # перестанут обновляться.
+    assert "toggle_record" in out["actions"] and "open_replay" in out["actions"]
+    assert out["record"] == "F8" and out["replay"] == "F9"
+    assert out["unbound"] == "Unbound"
+
+
+def test_the_reset_cross_hides_when_the_key_is_the_default_one(tmp_path):
+    out = run_js(_KEYBINDS + """
+      updateKeybindDisplay('toggle_record', 'f8');
+      const atDefault = cleared['keybind-clear-toggle_record'].style.visibility;
+      updateKeybindDisplay('toggle_record', 'k');
+      console.log(JSON.stringify({ atDefault, changed: cleared['keybind-clear-toggle_record'].style.visibility }));
+    """, tmp_path)
+    assert out == {"atDefault": "hidden", "changed": "visible"}
+
+
+def test_the_settings_screen_has_a_row_for_every_bindable_action():
+    """Действие без строки в настройках перебиндить нечем."""
+    import re
+    html = open(INDEX_HTML, encoding="utf-8").read()
+    src = open(APP_JS, encoding="utf-8").read()
+    defs = src[src.index("const HOTKEY_DEFAULTS = {"):]
+    defs = defs[:defs.index("};")]
+    actions = re.findall(r"(\w+):\s*'", defs)
+    assert "open_replay" in actions and "toggle_record" in actions
+    for action in actions:
+        assert f'id="keybind-{action}"' in html, f"нет строки привязки для {action}"
+        assert f'id="keybind-clear-{action}"' in html, f"нет сброса для {action}"
