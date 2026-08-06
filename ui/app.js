@@ -312,20 +312,73 @@ async function manualCheckForUpdate() {
 
   try {
     await pywebview.api.check_for_updates();
-    // check_for_updates fires the background check and returns immediately
-    // -- give it a moment to actually land before asking for the result.
-    setTimeout(async () => {
-      resetState();
-      const info = await pywebview.api.get_update_info();
-      if (info && info.available) {
-        showUpdateAvailable();
-      } else {
-        addLog && addLog("[Update] You're up to date.");
-      }
-    }, 2500);
+    // check_for_updates fires the background check and returns immediately,
+    // so POLL for the answer rather than guessing how long GitHub takes. The
+    // old code waited a flat 2.5s and then read whatever was there -- on a
+    // slow connection that was the PREVIOUS result, reported as if it were
+    // this check's. Backend marks the result 'checking' until it lands.
+    const info = await pollUpdateCheck(20000);
+    resetState();
+    reportUpdateCheck(info);
   } catch (e) {
     resetState();
+    reportUpdateCheck(null);
   }
+}
+
+async function pollUpdateCheck(timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 400));
+    try {
+      const info = await pywebview.api.get_update_info();
+      if (info && info.status !== 'checking') return info;
+    } catch (e) { /* backend busy -- ask again */ }
+  }
+  return null;  // не дождались: это тоже ответ, и он не «у тебя последняя»
+}
+
+// Every outcome says something different, and none of them says "you're up to
+// date" unless the check actually reached GitHub and compared the versions.
+// That conflation is what made the button look broken: a private repo, a dead
+// connection and a genuinely current install all printed the same line.
+// Wording is built from the STATUS, not from the backend's `reason` string:
+// that one is Russian (it goes to the log alongside the rest of the macro's
+// Russian logging), and pasting it into the panel would leave a Russian
+// sentence sitting in the English UI. Everything here is English and goes
+// through i18n.js like the rest of the interface.
+const UPDATE_CHECK_TEXT = {
+  up_to_date: c => `You're on the latest version (${c}).`,
+  disabled: () => 'Updates are switched off in this build.',
+  no_releases: () => "Couldn't check: the update repository has no releases yet.",
+  repo_unreachable: () => "Couldn't check: the update repository is private, renamed or deleted.",
+  offline: () => "Couldn't check: GitHub is unreachable.",
+};
+
+function reportUpdateCheck(info) {
+  const el = document.getElementById('update-check-status');
+  const current = (info && info.current_version) || '';
+  let text, color;
+  if (info && info.available) {
+    text = `Update available: ${current} to ${info.version}`;
+    color = 'var(--teal)';
+    showUpdateAvailable();
+  } else if (info && UPDATE_CHECK_TEXT[info.status]) {
+    text = UPDATE_CHECK_TEXT[info.status](current);
+    color = info.status === 'up_to_date' || info.status === 'disabled'
+      ? 'var(--text-muted)' : 'var(--amber, #E3B158)';
+  } else {
+    // Сюда попадает и «проверка не ответила за 20 секунд». Это тоже ответ, и
+    // он не «у тебя последняя версия».
+    text = "Couldn't check: no answer from the update server.";
+    color = 'var(--amber, #E3B158)';
+  }
+  if (el) {
+    el.textContent = text;
+    el.style.color = color;
+    el.style.display = '';
+  }
+  addLog && addLog(`[Update] ${text}`);
 }
 
 let updateProgressPoll = null;

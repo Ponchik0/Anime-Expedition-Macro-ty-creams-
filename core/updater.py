@@ -106,29 +106,83 @@ def _parse_version(tag: str) -> tuple:
     return tuple(int(n) for n in match.group(0).split("."))
 
 
-def _latest_tag_via_redirect(timeout: float, log=None) -> str:
-    """github.com/OWNER/REPO/releases/latest 302-redirects to the tagged
+# ЧЕМ КОНЧИЛАСЬ ПРОВЕРКА. Раньше исход был один на всё: {"available": False}.
+# Под него попадали и «у тебя свежая версия», и «нет интернета», и «репозиторий
+# недоступен», и «релизов ещё не выпускали» -- а интерфейс на всё это отвечал
+# «You're up to date». То есть проверка, которая не смогла проверить НИЧЕГО,
+# сообщала ровно то же самое, что успешная. Отличить одно от другого было
+# нельзя, и выглядело это как сломанная кнопка.
+CHECK_AVAILABLE = "available"          # вышла версия новее
+CHECK_UP_TO_DATE = "up_to_date"        # проверили, у тебя последняя
+CHECK_NO_RELEASES = "no_releases"      # репозиторий виден, но релизов в нём нет
+CHECK_REPO_UNREACHABLE = "repo_unreachable"  # приватный, переименован или удалён
+CHECK_OFFLINE = "offline"              # до GitHub не достучались вовсе
+CHECK_DISABLED = "disabled"            # обновления выключены (UPDATES_DISABLED)
+CHECK_CHECKING = "checking"            # проверка идёт прямо сейчас
+
+# Человеческая расшифровка -- ей отвечает и журнал, и строка под кнопкой.
+CHECK_REASONS = {
+    CHECK_NO_RELEASES: "в репозитории обновлений ещё нет ни одного релиза",
+    CHECK_REPO_UNREACHABLE: "репозиторий обновлений недоступен: он приватный, "
+                             "переименован или удалён",
+    CHECK_OFFLINE: "до GitHub не достучаться — нет сети или он не отвечает",
+}
+
+
+def _repo_is_reachable(timeout: float) -> bool:
+    """Виден ли репозиторий вообще (без учёта релизов).
+
+    Нужно ровно затем, чтобы разделить два очень разных 404 на
+    /releases/latest: «репозиторий на месте, релизов пока нет» и «репозитория
+    для нас не существует». GitHub на приватный репозиторий отвечает
+    анонимному гостю именно 404, а не 403, — чтобы не выдать сам факт его
+    существования, — поэтому по коду ответа их не различить, нужен второй
+    запрос. Он делается ТОЛЬКО на пути ошибки, то есть почти никогда."""
+    try:
+        with requests.head(f"https://github.com/{GITHUB_REPO}",
+                            allow_redirects=True, timeout=timeout) as resp:
+            return resp.status_code < 400
+    except requests.RequestException:
+        return False
+
+
+def _latest_release_tag(timeout: float, log=None) -> tuple:
+    """(тег, статус). Тег пустой всегда, когда статус не CHECK_AVAILABLE.
+
+    github.com/OWNER/REPO/releases/latest 302-redirects to the tagged
     release page -- reading the Location header off that redirect tells us
     the latest tag without ever touching api.github.com, which caps
     unauthenticated requests at 60/hour *per IP*. Many unrelated users can
     share a public IP (school/office networks, large-scale CGNAT some ISPs
     use), so that limit can get exhausted across a whole user base, not
-    just from one person restarting the app a lot -- and a rate-limited
-    (403) response used to look identical to "already up to date", since a
-    non-200 status just fell into the catch-all except and reported
-    "available": False either way. Ported from the sibling Anime Squadron
-    project's core.updater, which hit and fixed this exact failure mode
-    first. Returns "" if the redirect lookup itself fails for any reason.
+    just from one person restarting the app a lot. Ported from the sibling
+    Anime Squadron project's core.updater, which hit and fixed this exact
+    failure mode first.
     """
     try:
         with requests.head(RELEASES_PAGE_URL, allow_redirects=False, timeout=timeout) as resp:
             location = resp.headers.get("Location", "")
-            if "/releases/tag/" in location:
-                return location.rsplit("/releases/tag/", 1)[-1]
+            status = resp.status_code
     except Exception as exc:
         if log:
             log(f"[Update] Redirect-based version check failed: {exc}")
-    return ""
+        return "", CHECK_OFFLINE
+    if "/releases/tag/" in location:
+        return location.rsplit("/releases/tag/", 1)[-1], CHECK_AVAILABLE
+    # Ни тега, ни ошибки сети. Разбираемся, что именно не так, вторым запросом:
+    # без него «репозиторий приватный» и «релизов ещё нет» слились бы в одно
+    # молчание, а лечатся они совершенно по-разному.
+    reachable = _repo_is_reachable(timeout)
+    if log:
+        log(f"[Update] {RELEASES_PAGE_URL} ответил {status}, репозиторий "
+            f"{'виден' if reachable else 'недоступен'}.")
+    return "", CHECK_NO_RELEASES if reachable else CHECK_REPO_UNREACHABLE
+
+
+def _latest_tag_via_redirect(timeout: float, log=None) -> str:
+    """Прежнее имя: только тег, без статуса. Оставлено для вызывающих, кому
+    нужен один лишь номер версии."""
+    return _latest_release_tag(timeout, log)[0]
 
 
 # Обновления ВКЛЮЧЕНЫ и берутся из своего репозитория (см. GITHUB_REPO).
@@ -145,15 +199,35 @@ def _latest_tag_via_redirect(timeout: float, log=None) -> str:
 UPDATES_DISABLED = False
 
 
+def _outcome(status: str, current: str, version: str = "") -> dict:
+    """Ответ проверки, которая ничего не нашла, — но объясняет почему."""
+    return {
+        "available": False,
+        "status": status,
+        "reason": CHECK_REASONS.get(status, ""),
+        "current_version": current,
+        "version": version,
+    }
+
+
 def check_for_update(timeout: float = 6.0, log=None) -> dict:
     """Never raises -- a failed check (offline, no releases yet) just
-    reports not available so it can't break startup."""
-    if UPDATES_DISABLED:
-        return {"available": False}
+    reports not available so it can't break startup.
+
+    ВСЕГДА возвращает `status` (см. CHECK_* выше) и `current_version`. Раньше
+    возвращалось голое {"available": False} на все случаи разом, и интерфейс
+    честно печатал «You're up to date» даже когда до GitHub не дошёл ни один
+    запрос: проверка, ничего не проверившая, выглядела точно как успешная."""
     current = get_current_version()
-    tag = _latest_tag_via_redirect(timeout, log)
-    if not tag or _parse_version(tag) <= _parse_version(current):
-        return {"available": False}
+    if UPDATES_DISABLED:
+        return _outcome(CHECK_DISABLED, current)
+    tag, status = _latest_release_tag(timeout, log)
+    if not tag:
+        return _outcome(status, current)
+    if _parse_version(tag) <= _parse_version(current):
+        # Сам номер найденного релиза кладём рядом: «у тебя 1.1.0, последняя
+        # тоже 1.1.0» -- это ответ, а «обновлений нет» -- отписка.
+        return _outcome(CHECK_UP_TO_DATE, current, tag)
 
     # A newer tag genuinely exists -- worth spending one real API call
     # (subject to the 60/hr limit the redirect check above avoids for the
@@ -172,6 +246,8 @@ def check_for_update(timeout: float = 6.0, log=None) -> dict:
         # best-effort constructed link instead of exact asset metadata.
         return {
             "available": True,
+            "status": CHECK_AVAILABLE,
+            "reason": "",
             "version": tag,
             "current_version": current,
             "url": f"https://github.com/{GITHUB_REPO}/releases/tag/{tag}",
@@ -194,6 +270,8 @@ def check_for_update(timeout: float = 6.0, log=None) -> dict:
         or next((a for a in assets if a.get("name", "").lower() == "creams-macro-anime-expeditions.zip"), None))
     return {
         "available": True,
+        "status": CHECK_AVAILABLE,
+        "reason": "",
         "version": tag,
         "current_version": current,
         "url": data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases",

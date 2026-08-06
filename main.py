@@ -741,8 +741,23 @@ class Api:
         # Settings > "Check for Updates" -- an on-demand re-check, same
         # background-thread pattern as the startup one so a slow/failed
         # GitHub request can't freeze the UI.
+        #
+        # СТАТУС «ИДЁТ ПРОВЕРКА» СТАВИТСЯ ЗДЕСЬ, до запуска потока. Интерфейс
+        # раньше просто ждал 2.5 секунды и спрашивал результат -- на медленной
+        # сети он забирал ПРОШЛЫЙ ответ (или пустой стартовый) и рапортовал
+        # «у тебя последняя версия», хотя запрос ещё летел. Теперь он опрашивает
+        # до тех пор, пока статус не сменится, и врать ему нечем.
+        self._update_info = {"available": False, "status": updater.CHECK_CHECKING,
+                             "current_version": updater.get_current_version()}
+
         def run():
-            self._update_info = updater.check_for_update(log=self.push_log)
+            try:
+                self._update_info = updater.check_for_update(log=self.push_log)
+            except Exception as exc:
+                self.push_log(f"[Обновление] Проверка не удалась: {exc}")
+                self._update_info = {"available": False, "status": updater.CHECK_OFFLINE,
+                                     "reason": str(exc),
+                                     "current_version": updater.get_current_version()}
         threading.Thread(target=run, daemon=True).start()
         return {"ok": True}
 
