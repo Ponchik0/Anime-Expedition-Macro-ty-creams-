@@ -20,6 +20,8 @@ from core import keys
 from core import settings as cfg
 from core import templates as tpl
 from core import share
+from core import stats_report
+from core.runner_constants import RESULT_UNKNOWN
 from core import webhook
 from core.window import WindowManager
 from core.dock import GameDocker
@@ -246,6 +248,41 @@ REWARD_REGION_DEFAULTS = {"x": 212, "y": 429, "width": 504, "height": 106}
 STATS_REGION_DEFAULTS = {"x": 210, "y": 337, "width": 509, "height": 57}
 
 RUN_HISTORY_LIMIT = 50  # oldest entries drop off past this -- a running log, not a permanent archive
+
+# ПЕРИОДИЧЕСКАЯ СВОДКА В DISCORD (см. Api._status_report_worker).
+#
+# Зачем она вообще. До сих пор канал узнавал о прогоне ровно из двух вещей:
+# карточки очередного матча и ругани сторожа, когда исходов долго нет. То есть
+# пока всё хорошо — поток карточек, а когда плохо — тишина, изредка прерываемая
+# предупреждением. Вопрос «как там дела в целом», ради которого макрос и
+# оставляют на ночь, не отвечался ничем.
+#
+# Часы, а не минуты: это сводка, а не мониторинг. Нижняя граница в полчаса —
+# чтобы нельзя было настроить себе спам, верхняя в двое суток — чтобы отчёт
+# «раз в год» не выглядел как молча выключённый.
+STATUS_HOURS_DEFAULT = 6.0
+STATUS_HOURS_MIN = 0.5
+STATUS_HOURS_MAX = 48.0
+# Как часто планировщик просыпается посмотреть на часы. Двадцать секунд — это
+# и точность, с которой уходит итог остановленного прогона, и весь расход:
+# один cfg.load() за такт.
+STATUS_TICK_SECONDS = 20.0
+
+
+def _status_hours(data: dict) -> float:
+    """Интервал сводки из настроек, зажатый в разумные границы.
+
+    Через одну функцию и на чтении, и на записи: значение приходит из поля
+    ввода, то есть там может оказаться что угодно — пустая строка, «шесть»,
+    ноль. Ноль особенно опасен: без зажима он превратил бы планировщик в
+    рассылку по сообщению за такт."""
+    try:
+        hours = float(data.get("webhook_status_hours", STATUS_HOURS_DEFAULT))
+    except (TypeError, ValueError):
+        return STATUS_HOURS_DEFAULT
+    if hours != hours:                       # NaN: любое сравнение с ним ложно
+        return STATUS_HOURS_DEFAULT
+    return max(STATUS_HOURS_MIN, min(hours, STATUS_HOURS_MAX))
 
 # Чем забег был, по-русски — для PDF-отчёта. Интерфейс переводит подписи
 # словарём ui/i18n.js, но отчёт открывают ОТДЕЛЬНО от приложения, и там
@@ -528,6 +565,15 @@ class Api:
         self.logger = Logger()
         self.session_start = time.time()
         self._all_time_base = cfg.load().get("all_time_seconds", 0)
+        # Периодическая сводка в Discord (см. _status_report_worker):
+        # _status_accum -- сколько ЗАЧТЁННОГО времени накопилось с прошлого
+        # отчёта, _status_since -- с какого момента считать матчи в него.
+        # Копим секунды, а не храним «время следующего отчёта», именно чтобы
+        # настройка «только во время прогона» работала как пауза: остановил на
+        # ночь -- счётчик стоит, а не догоняет утром пачкой сводок.
+        self._status_accum = 0.0
+        self._status_since = self.session_start
+        self._status_unknown_base = 0
         self._on_hotkeys_changed = None
         # Пока интерфейс ловит новую клавишу, глобальные хоткеи молчат —
         # см. set_hotkey_capture.
@@ -555,6 +601,9 @@ class Api:
         # run_history persist in settings.json instead (see _record_match_result).
         self._session_wins = 0
         self._session_losses = 0
+        # Матчи, которые кончились, но исход которых распознать не вышло.
+        # Ни победа, ни поражение -- третий счётчик, см. _record_match_result.
+        self._session_unknown = 0
         # Populated by a background GitHub check kicked off shortly after
         # launch (see _check_for_update_background) -- "not available" until
         # then, so an early get_update_info() poll from the UI just no-ops
@@ -571,6 +620,11 @@ class Api:
             self.get_hotkeys,
             self.get_auto_shop_settings, self._save_auto_shop_item_state,
             self._save_auto_shop_shop_state)
+        # Планировщик сводки поднимается последним: ему нужен self.runner, а
+        # первый такт всё равно через STATUS_TICK_SECONDS. Демон -- умирает
+        # вместе с процессом, плюс сам выходит по self.stopping.
+        self._status_thread = threading.Thread(target=self._status_report_worker, daemon=True)
+        self._status_thread.start()
 
     def _run_stats_snapshot(self) -> dict:
         # Fed to the runner's match-result webhook so it can report the same
@@ -594,6 +648,10 @@ class Api:
         return {
             "session_wins": self._session_wins,
             "session_losses": self._session_losses,
+            # Матчи без распознанного исхода -- третьим числом рядом с
+            # победами и поражениями, а не вместо них (см. _record_match_result).
+            "session_unknown": getattr(self, "_session_unknown", 0),
+            "all_time_unknown": data.get("all_time_unknown", 0),
             "all_time_wins": data.get("all_time_wins", 0),
             "all_time_losses": data.get("all_time_losses", 0),
             "session_start": self.session_start,
@@ -601,6 +659,17 @@ class Api:
             "time_until_challenge": time_until_challenge,
             "results": [h.get("result") == "win" for h in reversed(history)],
             "runs_per_hour": self._calculate_runs_per_hour(history),  # Runs per hour rate over rolling window
+            # Аптайм за всё время: сохранённое на диске плюс текущая сессия,
+            # которая в файл попадёт только при выходе (см. persist_all_time).
+            # Без слагаемого «сессия» ночной прогон показывал бы вчерашнюю
+            # цифру и выглядел бы застывшим.
+            "all_time_seconds": self._all_time_base + (time.time() - self.session_start),
+            # Всё, что видно только из журнала забегов: серии, счёт за сегодня,
+            # длина матча, разбивка «автомат / повтор». Считается ЗДЕСЬ, а не в
+            # уведомлении: снимок один, а читателей у него трое — карточка
+            # автомата, карточка повтора и периодический статус.
+            "derived": stats_report.derive(history),
+            "run_history": history,
         }
 
     def reset_run_status(self, action: str = "Idle") -> None:
@@ -759,7 +828,12 @@ class Api:
             and isinstance(h.get("at"), (int, float))
             and 0 <= (now - h["at"]) <= 3600
         ]
-        if not recent:
+        # ОДНОГО ЗАБЕГА ДЛЯ ТЕМПА МАЛО. При единственной записи в окне делить
+        # не на что: промежуток между забегами ещё не наблюдался, и формула
+        # ниже мерила бы «сколько прошло с него», упираясь в нижнюю границу в
+        # минуту. Отсюда и бралось «Runs/h: 60» в карточке первого же матча —
+        # 1 × 3600 / 60. Честнее прочерк, чем цифра, взятая из зажима.
+        if len(recent) < 2:
             return "-"
         oldest_at = min(h["at"] for h in recent)
         time_span = max(now - oldest_at, 60.0)  # Minimum 1 min to prevent division by zero / spikes
@@ -794,6 +868,11 @@ class Api:
             "runs_per_hour": self._calculate_runs_per_hour(history),
             "wins": wins,
             "losses": losses,
+            # Матчи, кончившиеся без распознанного исхода: ни победа, ни
+            # поражение. На табло идут отдельной строкой и только когда они
+            # были -- см. _record_match_result.
+            "unknown": getattr(self, "_session_unknown", 0),
+            "all_time_unknown": data.get("all_time_unknown", 0),
             "win_rate": round(wins / (wins + losses) * 100) if (wins + losses) else None,
             "time_until_challenge": (
                 _time_until_challenge_ready(challenge)
@@ -913,8 +992,24 @@ class Api:
             "macro": p.name or "-",
             "current_task": p.name or "-",
             "current_repeat": f"{p.loop_num}/{loops}" if loops else f"{p.loop_num}/∞",
-            "map": f"матчей засчитано: {w.matches}" if w and w.matches else "-",
+            # Засчитанные И нераспознанные рядом: «засчитано 3» само по себе
+            # выглядит как спокойная ночь, а «засчитано 3 · не распознано 24» --
+            # как поломка, которой оно и является.
+            "map": self._replay_match_line(w),
         }
+
+    @staticmethod
+    def _replay_match_line(watcher) -> str:
+        """Строка «Map» табло во время повтора: сколько матчей засчитано и
+        сколько кончилось без распознанного исхода."""
+        if watcher is None:
+            return "-"
+        parts = []
+        if watcher.matches:
+            parts.append(f"матчей засчитано: {watcher.matches}")
+        if watcher.unknown:
+            parts.append(f"не распознано: {watcher.unknown}")
+        return " · ".join(parts) if parts else "-"
 
     def get_time_info(self) -> dict:
         return {"session_start": self.session_start, "all_time_base": self._all_time_base}
@@ -935,6 +1030,20 @@ class Api:
         # было видно, где автомат, а где своя запись: разбирая просадку
         # винрейта, это первое, что нужно знать, а по карте не отличишь.
         # Записи, сделанные до появления поля, читаются как "auto".
+        #
+        # ИСХОД МОЖЕТ БЫТЬ НЕ РАСПОЗНАН, и это отдельный случай, а не поражение.
+        # Матч кончился (виден экран результата), но баннер не совпал с
+        # эталоном. Раньше такой матч не оставлял следа нигде, кроме журнала
+        # приложения, — то есть ночь, за которую распозналось 3 матча из 27,
+        # выглядела на табло как «сыграно 3 матча». Считаем отдельно: и в
+        # победы, и в поражения такое писать одинаково нечестно, а молчать
+        # нельзя — эта цифра и есть диагноз.
+        if result == RESULT_UNKNOWN:
+            self._session_unknown = getattr(self, "_session_unknown", 0) + 1
+            data = cfg.load()
+            cfg.update({"all_time_unknown": data.get("all_time_unknown", 0) + 1})
+            return
+
         is_win = result == "win"
         if is_win:
             self._session_wins += 1
@@ -2464,24 +2573,47 @@ class Api:
                 # наблюдателю тогда пора уходить вместе с ним.
                 while_running=lambda: bool(getattr(self, "_player", None)
                                             and self._player.running),
-                on_silence=self._on_replay_silence)
+                on_silence=self._on_replay_silence,
+                # Матч кончился, а исход не разобрали -- считаем там же, где
+                # считаются победы и поражения, чтобы цифра дошла до табло,
+                # карточки и сводки, а не осталась в журнале приложения.
+                on_unknown=lambda: self._record_match_result(
+                    RESULT_UNKNOWN, "", "", source="replay", kind="Replay"))
         return self._result_watcher
 
-    def _on_replay_silence(self) -> None:
+    def _on_replay_silence(self, screenshot: str = None, detail: str = "") -> None:
         """Долго крутится, а исходов нет — сказать в Discord, а не только в
         журнал. Макрос для того и оставляют на ночь, чтобы не смотреть на него;
         поломка, о которой известно только журналу, — это поломка, о которой
-        узнают утром."""
+        узнают утром.
+
+        `detail` — лучшие счета эталонов за это затишье, посчитанные
+        наблюдателем. Прежде здесь стоял список версий («запись закрывает экран
+        быстрее», «эталоны перестали совпадать»), и в живом случае обе оказались
+        мимо: эталоны совпадали, просто на сотую ниже порога. Цифра отвечает на
+        это сразу, догадки — нет.
+
+        Со снимком экрана: с кадром видно, что было на экране, и из него же
+        режется недостающая вырезка баннера."""
         from core import replay_result
         p = getattr(self, "_player", None)
-        replay_result.send_notice(
-            self.get_webhook_settings(),
-            "Повтор идёт, а исходов нет \U000026A0\U0000FE0F",
-            f"Запись **{(p.name if p else '') or '-'}** крутится, но ни одной победы "
-            f"или поражения распознать не вышло.\nОбычно это значит, что эталоны "
-            f"`victory`/`defeat` перестали совпадать — проверь Настройки → Общие → "
-            f"Менеджер картинок.\nПовтор при этом НЕ остановлен.",
-            log=self.push_log)
+        try:
+            replay_result.send_notice(
+                self.get_webhook_settings(),
+                "Повтор идёт, а исходов нет \U000026A0\U0000FE0F",
+                f"Запись **{(p.name if p else '') or '-'}** крутится, но ни одной победы "
+                f"или поражения распознать не вышло.\n"
+                + (f"{detail}\n" if detail else "")
+                + f"Счёт ниже порога — пересними баннер своей вырезкой: Настройки → "
+                f"Общие → Менеджер картинок, проверить можно там же в «Проверке "
+                f"эталонов».\nПовтор при этом НЕ остановлен.",
+                log=self.push_log, screenshot_path=screenshot)
+        finally:
+            if screenshot:
+                try:
+                    os.remove(screenshot)
+                except OSError:
+                    pass
 
     def _replay_loss_limit(self) -> int:
         """После скольких поражений подряд повтор останавливается сам.
@@ -3180,16 +3312,206 @@ class Api:
             "enabled": data.get("webhook_enabled", False),
             "silent": data.get("webhook_silent", False),
             "mention_id": data.get("webhook_mention_id", ""),
+            # Периодическая сводка — см. _status_report_worker. Выключена по
+            # умолчанию: канал, в который сами собой начали падать сообщения,
+            # никто не просил.
+            "status_enabled": data.get("webhook_status_enabled", False),
+            "status_hours": _status_hours(data),
+            "status_only_running": data.get("webhook_status_only_running", True),
+            "status_on_stop": data.get("webhook_status_on_stop", True),
         }
 
-    def save_webhook_settings(self, url: str, enabled: bool, silent: bool, mention_id: str = "") -> dict:
-        cfg.update({
+    def save_webhook_settings(self, url: str, enabled: bool, silent: bool, mention_id: str = "",
+                               status_enabled: bool = None, status_hours=None,
+                               status_only_running: bool = None,
+                               status_on_stop: bool = None) -> dict:
+        # Поля статуса приходят необязательными: интерфейс шлёт весь набор, но
+        # вызов из четырёх аргументов (тесты, старая страница в кэше вебвью)
+        # обязан остаться рабочим и не сбрасывать чужие настройки в умолчания.
+        changes = {
             "webhook_url": url or "",
             "webhook_enabled": bool(enabled),
             "webhook_silent": bool(silent),
             "webhook_mention_id": (mention_id or "").strip(),
-        })
+        }
+        if status_enabled is not None:
+            changes["webhook_status_enabled"] = bool(status_enabled)
+        if status_hours is not None:
+            changes["webhook_status_hours"] = _status_hours({"webhook_status_hours": status_hours})
+        if status_only_running is not None:
+            changes["webhook_status_only_running"] = bool(status_only_running)
+        if status_on_stop is not None:
+            changes["webhook_status_on_stop"] = bool(status_on_stop)
+        cfg.update(changes)
         return {"ok": True}
+
+    # ============================== ПЕРИОДИЧЕСКАЯ СВОДКА В DISCORD =========
+    # Канал до сих пор узнавал о прогоне из двух вещей: карточки очередного
+    # матча и ругани сторожа, когда исходов долго нет. Пока всё хорошо -- поток
+    # карточек; когда плохо -- тишина. Вопрос «как там дела в целом», ради
+    # которого макрос и оставляют на ночь, не отвечался ничем: чтобы узнать
+    # счёт, надо было дождаться СЛЕДУЮЩЕГО матча, то есть ровно того события,
+    # которого при поломке и не происходит.
+
+    def _run_is_active(self) -> bool:
+        """Идёт ли прогон прямо сейчас -- любым из двух режимов.
+
+        Оба, а не только автомат: сводка одинаково нужна и тому, кто крутит
+        запись, и на длинной записи она даже нужнее -- повтор об игре не знает
+        ничего и сломанную запись крутит так же бодро, как рабочую."""
+        p = getattr(self, "_player", None)
+        if p is not None and getattr(p, "running", False):
+            return True
+        try:
+            return bool(self.runner.is_running())
+        except Exception:
+            return False
+
+    def _status_now_rows(self) -> list:
+        """Блок «Сейчас»: что макрос делает в эту минуту.
+
+        Без него сводка отвечала бы только на «сколько наиграно» и молчала о
+        том, идёт ли вообще прогон, -- а это первое, что хочется знать, когда
+        матчей за окно оказалось ноль."""
+        rows = dict(getattr(self, "_run_status", None) or {})
+        try:
+            # Живая строка повтора считается на опросе панели, а не хранится
+            # в _run_status (см. _replay_status), поэтому её надо запросить.
+            rows.update(self._replay_status() or {})
+        except Exception:
+            pass
+        active = self._run_is_active()
+        return [
+            ("Состояние", "идёт прогон" if active else "остановлен"),
+            ("Режим", rows.get("mode") or "-"),
+            ("Задача", rows.get("current_task") or "-"),
+            ("Круг", rows.get("current_repeat") or "-"),
+            ("Действие", rows.get("action") or "-"),
+        ]
+
+    def _send_status_report(self, final: bool = False, reset: bool = True) -> dict:
+        """Собрать и отправить сводку. `reset` -- начать новое окно отсчёта.
+
+        Ручная отправка кнопкой идёт с reset=False: посмотреть сводку сейчас --
+        это не то же самое, что сдвинуть расписание, и нажатие кнопки не должно
+        отменять очередной плановый отчёт."""
+        wh = self.get_webhook_settings()
+        url = wh.get("url")
+        if not url or not wh.get("enabled"):
+            return {"ok": False, "reason": "webhook disabled"}
+        stats = self._run_stats_snapshot()
+        since = getattr(self, "_status_since", None) or self.session_start
+        rows = stats_report.slice_since(stats.get("run_history") or [], since)
+        wins, losses = stats_report.count(rows)
+        # Нераспознанные матчи в журнал не пишутся (писать туда нечего: ни
+        # исхода, ни карты), поэтому за окно они считаются вычитанием: сколько
+        # их было на начало окна и сколько стало.
+        unknown = max(0, stats.get("session_unknown", 0)
+                       - getattr(self, "_status_unknown_base", 0))
+        # Длина окна -- НАКОПЛЕННОЕ зачтённое время, а не «сейчас минус since».
+        # При настройке «только во время прогона» это и есть честный ответ:
+        # «за 6 часов работы», а не «за 14 часов, из которых 8 макрос стоял».
+        window = getattr(self, "_status_accum", 0.0) or (time.time() - since)
+        embed = stats_report.status_embed(
+            stats, window_seconds=window, window_wins=wins, window_losses=losses,
+            window_unknown=unknown, now_rows=self._status_now_rows(), final=final,
+            timestamp=datetime.now(timezone.utc).isoformat())
+        # Пинг -- только на итоге остановленного прогона. Плановая сводка
+        # приходит сама по часам, и дёргать за неё уведомлением каждые шесть
+        # часов -- вернейший способ добиться, чтобы канал замьютили целиком.
+        mention_id = wh.get("mention_id") if final else ""
+        try:
+            res = webhook.send(url, embed, content=f"<@{mention_id}>" if mention_id else "",
+                                silent=bool(wh.get("silent")))
+        except Exception as exc:
+            self.push_log(f"[Статус] Сводка не ушла: {exc}")
+            res = {"ok": False, "reason": str(exc)}
+        if res.get("ok"):
+            self.push_log(f"[Статус] Сводка отправлена: {wins}W · {losses}L "
+                           f"за {stats_report.format_elapsed(window)}.")
+        else:
+            self.push_log(f"[Статус] Сводка не ушла: {res.get('reason')}")
+        if reset:
+            self._reset_status_window()
+        return res
+
+    def _reset_status_window(self) -> None:
+        """Начать отсчёт заново. Без замка намеренно: это три присваивания, а
+        худшее, чем может кончиться гонка с тактом планировщика, -- одна лишняя
+        секунда в следующем окне."""
+        self._status_accum = 0.0
+        self._status_since = time.time()
+        # Отметка счётчика нераспознанных на начало окна: сам он за сессию
+        # только растёт, а сводке нужно «сколько их было за ЭТИ шесть часов».
+        self._status_unknown_base = getattr(self, "_session_unknown", 0)
+
+    def _status_report_worker(self) -> None:
+        """Раз в STATUS_TICK_SECONDS смотрит на часы и решает, пора ли слать.
+
+        Тактом, а не sleep(6 часов): настройки меняются на ходу, прогон
+        стартует и встаёт, а спящий на шесть часов поток обо всём этом узнает
+        через шесть часов."""
+        last_tick = time.time()
+        was_active = False
+        while not self.stopping.wait(STATUS_TICK_SECONDS):
+            try:
+                now = time.time()
+                # Зажим на случай, когда компьютер спал: проснувшись, поток
+                # увидел бы разом восемь часов и выдал сводку «за 8 ч», в
+                # которую макрос не отработал ни минуты.
+                delta = max(0.0, min(now - last_tick, STATUS_TICK_SECONDS * 3))
+                last_tick = now
+                data = cfg.load()
+                enabled = bool(data.get("webhook_status_enabled", False)
+                                and data.get("webhook_enabled", False))
+                only_running = bool(data.get("webhook_status_only_running", True))
+                active = self._run_is_active()
+
+                if active or not only_running:
+                    self._status_accum = getattr(self, "_status_accum", 0.0) + delta
+                elif not getattr(self, "_status_accum", 0.0):
+                    # Прогон не идёт и копить пока нечего -- окно ещё не
+                    # началось. Двигаем его начало за собой, чтобы в первую же
+                    # сводку не попали вчерашние матчи.
+                    self._status_since = now
+
+                if enabled and self._status_accum >= _status_hours(data) * 3600.0:
+                    self._send_status_report(final=False)
+
+                if was_active and not active:
+                    # Прогон закончился -- сам ли (отыграны все круги, кончилась
+                    # очередь) или кнопкой. Ловим переходом, а не хуком в
+                    # stop_macro: способов остановиться больше одного, и хук
+                    # покрывал бы только тот, о котором вспомнили.
+                    if (enabled and data.get("webhook_status_on_stop", True)
+                            and self._status_worth_a_summary()):
+                        self._send_status_report(final=True)
+                    else:
+                        self._reset_status_window()
+                was_active = active
+            except Exception:
+                # Сводка -- дело десятое: она не имеет права уронить поток и
+                # тем самым отменить все следующие.
+                pass
+
+    def _status_worth_a_summary(self) -> bool:
+        """Стоит ли слать итог остановленного прогона.
+
+        Не стоит, если прогон толком не начинался: нажал «Старт», через десять
+        секунд передумал -- итог «за 10 с, матчей 0» это чистый шум. Минута
+        работы либо хотя бы один матч в окне -- уже событие."""
+        if getattr(self, "_status_accum", 0.0) >= 60.0:
+            return True
+        since = getattr(self, "_status_since", None) or self.session_start
+        rows = stats_report.slice_since(cfg.load().get("run_history", []), since)
+        return bool(rows)
+
+    def send_status_report_now(self) -> dict:
+        """Кнопка «Отправить сейчас» в настройках вебхука.
+
+        Иначе проверить сводку можно было бы только подождав шесть часов --
+        то есть никак."""
+        return self._send_status_report(final=False, reset=False)
 
     def validate_webhook_url(self, url: str) -> dict:
         return webhook.validate(url or "")

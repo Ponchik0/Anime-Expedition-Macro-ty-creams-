@@ -11,18 +11,15 @@ def test_empty_history_returns_dash():
     assert Api._calculate_runs_per_hour(invalid_history, current_time=10000.0) == "-"
 
 
-def test_single_run_within_1h():
+def test_a_single_run_gives_no_rate_at_all():
+    """Одного забега для темпа мало: промежуток между забегами ещё не
+    наблюдался. Прежде формула мерила «сколько прошло с него», упираясь в
+    нижнюю границу в минуту, и первый же матч рапортовал «Runs/h: 60» —
+    1 x 3600 / 60. Живой случай: один матч за десять часов, в карточке 60/ч."""
     now = 10000.0
 
-    # Single run 30s ago (clamped to minimum 60s time span)
-    # rate = (1 * 3600) / 60 = 60.0 -> "60"
-    history_recent = [{"at": now - 30.0}]
-    assert Api._calculate_runs_per_hour(history_recent, current_time=now) == "60"
-
-    # Single run 30 minutes ago (1800s time span)
-    # rate = (1 * 3600) / 1800 = 2.0 -> "2"
-    history_half_hour = [{"at": now - 1800.0}]
-    assert Api._calculate_runs_per_hour(history_half_hour, current_time=now) == "2"
+    assert Api._calculate_runs_per_hour([{"at": now - 30.0}], current_time=now) == "-"
+    assert Api._calculate_runs_per_hour([{"at": now - 1800.0}], current_time=now) == "-"
 
 
 def test_multiple_runs_within_1h():
@@ -41,15 +38,16 @@ def test_multiple_runs_within_1h():
 def test_filtering_out_runs_older_than_3600_seconds():
     now = 10000.0
 
-    # 2 runs older than 3600s, 1 run within 3600s
+    # 2 runs older than 3600s, 2 runs within 3600s
     history = [
+        {"at": now - 1200.0},  # Recent (within 1h)
         {"at": now - 1800.0},  # Recent (within 1h)
         {"at": now - 3601.0},  # Older than 1h
         {"at": now - 5000.0},  # Older than 1h
     ]
-    # Filtered recent only has the run at now - 1800.0
-    # rate = (1 * 3600) / 1800 = 2.0 -> "2"
-    assert Api._calculate_runs_per_hour(history, current_time=now) == "2"
+    # Filtered recent keeps the two runs inside the window; the old pair must
+    # not stretch the span. oldest_at = now - 1800 -> (2 * 3600) / 1800 = 4.0
+    assert Api._calculate_runs_per_hour(history, current_time=now) == "4"
 
     # All runs older than 3600s should result in "-"
     history_all_old = [
@@ -62,9 +60,8 @@ def test_filtering_out_runs_older_than_3600_seconds():
 def test_non_integer_rate_formatting():
     now = 10000.0
 
-    # 1 run 1000 seconds ago -> time_span = 1000.0
-    # rate = (1 * 3600) / 1000 = 3.6 -> "3.6"
-    history = [{"at": now - 1000.0}]
+    # 2 runs, oldest 2000s ago -> rate = (2 * 3600) / 2000 = 3.6 -> "3.6"
+    history = [{"at": now - 1000.0}, {"at": now - 2000.0}]
     assert Api._calculate_runs_per_hour(history, current_time=now) == "3.6"
 
 

@@ -769,6 +769,42 @@ def find_in_gray_multiscale(haystack_gray: np.ndarray, name: str, template_dir: 
     return None
 
 
+def best_match_in_gray(haystack_gray: np.ndarray, name: str, template_dir: str = UI_ASSETS_DIR,
+                        stop_at: float = None) -> dict:
+    """The BEST score `name` reaches on this frame -- match dict or None if
+    nothing scored above zero at all. Same variant/scale sweep as
+    find_in_gray_multiscale, but it answers "how close was it" instead of
+    "did it clear this one threshold".
+
+    ЗАЧЕМ ОТДЕЛЬНО. Через find_in_gray_multiscale разложить кадр по полосам
+    («уверенно» / «на грани» / «нет») можно только зовя её на каждый порог по
+    разу — то есть прогоняя весь перебор вариантов и масштабов заново на
+    каждом промахе, а промах как раз самый дорогой случай. Здесь перебор
+    один, а решать по счёту — дело вызывающего. Ровно эта цифра нужна и
+    Проверке эталонов, и наблюдателю повтора: 0.89 при пороге 0.90 — это не
+    «ничего не найдено», это «почти», и вести себя с ним надо иначе.
+
+    stop_at обрывает перебор, как только счёт его достал: когда уверенное
+    совпадение уже есть, искать ЕЩЁ более уверенное незачем. Без него
+    быстрый путь find_in_gray_multiscale (выход на первом попадании 1x)
+    потерялся бы, и каждый опрос платил бы за полный перебор.
+    """
+    best = None
+    for scale in SCALE_FACTORS:
+        for gray, mask in _scaled_templates(name, template_dir, scale):
+            # Порог 0: нам нужен сам счёт, а не ответ «да/нет». Отрицательные
+            # счета (TM_CCOEFF_NORMED их даёт) find_in_gray отсеивает сама —
+            # это и есть «не похоже ни на что».
+            match = find_in_gray(haystack_gray, gray, 0.0, mask)
+            if match is None:
+                continue
+            if best is None or match["score"] > best["score"]:
+                best = match
+            if stop_at is not None and best["score"] >= stop_at:
+                return best
+    return best
+
+
 DEBUG_DIR = os.path.join(constants.APP_DIR, "debug")
 
 

@@ -248,6 +248,16 @@
     'No notification ping.': 'Без звука и упоминания.',
     'Discord User ID': 'Discord ID для пинга',
     'Paste Clipboard': 'Вставить из буфера',
+    'Periodic Status': 'Сводка по часам',
+    'Sends a summary to Discord on a timer: matches for the period, session and all-time record, streaks, and what the macro is doing right now. Off by default.':
+      'Присылает в Discord сводку по таймеру: матчи за промежуток, счёт сессии и за всё время, серии и то, чем макрос занят прямо сейчас. Отвечает на «как там дела», не дожидаясь следующего матча. По умолчанию выключено.',
+    'Only While Running': 'Только во время прогона',
+    'The timer only counts while a run is going, so a macro stopped for the night stays quiet instead of piling up summaries. Default on.':
+      'Таймер тикает только пока идёт прогон: остановил на ночь — сводки не приходят, а не сыплются пачкой утром. По умолчанию включено.',
+    'Summary On Stop': 'Итог при остановке',
+    'One final summary the moment a run ends -- whether you stopped it or it ran out of loops. Default on.':
+      'Одна итоговая сводка в момент, когда прогон закончился — кнопкой или сам, отыграв все круги. По умолчанию включено.',
+    'Send Now': 'Отправить сейчас',
 
     // --- Настройки: отладка ---
     'Health Check': 'Проверка окружения',
@@ -679,6 +689,9 @@
     // шаблона два, а не один на всю подпись.
     [/^Daily max: (\d+) \|$/, 'Дневной максимум: $1 |'],
     [/^\| (\d+)\/3 attempts$/, '| попыток: $1 из 3'],
+    // Подвал табло: матчи, кончившиеся без распознанного баннера. Появляется,
+    // только когда такие были, — поэтому шаблон, а не строка со всегда-нулём.
+    [/^(\d+) unrecognised this session$/, 'не распознано за сессию: $1'],
   ];
 
   // Единая точка перевода: сначала точное совпадение, потом шаблоны.

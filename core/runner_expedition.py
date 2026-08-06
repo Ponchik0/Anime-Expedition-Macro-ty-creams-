@@ -84,10 +84,20 @@ class ExpeditionOps:
             # навсегда и уходить в слив без юнитов.
             self._exp_start_game_reclicks += 1
             if self._exp_start_game_reclicks > EXP_STUCK_START_GAME_CLICKS:
+                # Флагом, а не возвратом None: None здесь означает «на этом
+                # такте ничего не решилось, опрашивай дальше», и выйти им из
+                # ожидания матча невозможно — забег просто досидел бы до
+                # 30-минутного таймаута, продолжая долбиться в тот же экран.
+                # Флаг читает _wait_for_match_result и заканчивает ожидание
+                # по-настоящему, после чего задача идёт на восстановление:
+                # лобби, повторный заход, Pre Start снова расставляет юнитов.
+                # Тот же приём, что у _battle_leave_requested.
+                self._exp_stuck = True
                 self._log(f'[Macro] "{start_name}" пере-нажималась '
                            f'{self._exp_start_game_reclicks} раз подряд, а забег не сдвинулся '
                            f'ни на один чекпойнт — застряли. Выхожу в лобби и захожу заново.')
-                self._save_debug_screenshot_unconditional(hwnd, "expedition_stuck_start_game")
+                self._exp_stuck_shot = self._save_debug_screenshot_unconditional(
+                    hwnd, "expedition_stuck_start_game")
                 return None
             debug_path = self._debug_save(hwnd, start_name, start_match)
             suffix = f" Debug: {debug_path}" if debug_path else ""

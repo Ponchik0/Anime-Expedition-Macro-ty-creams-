@@ -662,6 +662,21 @@ async function refreshStatus() {
 
     const totalRuns = allTimeWins + allTimeLosses;
     document.getElementById('stat-total-runs').textContent = `${totalRuns} total run${totalRuns === 1 ? '' : 's'}`;
+
+    // Matches that ended without a readable Victory/Defeat banner -- neither a
+    // win nor a loss, so they get their own line rather than skewing either
+    // count. Hidden entirely at zero: see the markup comment.
+    const unknown = status.unknown ?? 0;
+    const unknownWrap = document.getElementById('stat-unknown-wrap');
+    if (unknownWrap) {
+      unknownWrap.style.display = unknown ? '' : 'none';
+      // Plain English here -- i18n.js picks dynamic strings up through its
+      // MutationObserver and translates them by pattern (see RU_PATTERNS).
+      if (unknown) {
+        document.getElementById('stat-unknown').textContent =
+          `${unknown} unrecognised this session`;
+      }
+    }
     setRatioBar('bar-session-wins', 'bar-session-losses', wins, losses);
     setRatioBar('bar-alltime-wins', 'bar-alltime-losses', allTimeWins, allTimeLosses);
     renderRunHistory(status.run_history ?? []);
@@ -2230,8 +2245,31 @@ async function loadWebhookUI() {
     document.getElementById('webhook-mention-id').value = wh.mention_id || '';
     document.getElementById('toggle-webhook-enabled').classList.toggle('on', !!wh.enabled);
     document.getElementById('toggle-webhook-silent').classList.toggle('on', !!wh.silent);
+    // Periodic status -- see _status_report_worker in main.py.
+    document.getElementById('webhook-status-hours').value = wh.status_hours ?? 6;
+    document.getElementById('toggle-webhook-status').classList.toggle('on', !!wh.status_enabled);
+    document.getElementById('toggle-webhook-status-running').classList.toggle('on', wh.status_only_running !== false);
+    document.getElementById('toggle-webhook-status-stop').classList.toggle('on', wh.status_on_stop !== false);
     updateWebhookValidity(wh.url || '');
   } catch (e) {}
+}
+
+// The periodic summary is otherwise only observable by waiting out the whole
+// interval -- which is no way to find out whether it looks right.
+async function sendStatusReportNow() {
+  const btn = document.getElementById('webhook-status-now-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    const result = await pywebview.api.send_status_report_now();
+    setWebhookStatus(result.ok ? 'Status summary sent -- check Discord.' : `Failed: ${result.reason}`,
+                      result.ok ? 'var(--teal)' : 'var(--rose)');
+  } catch (e) {
+    setWebhookStatus('Failed to send.', 'var(--rose)');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Now';
+  }
 }
 
 function revealWebhookUrl() {
@@ -2340,8 +2378,17 @@ async function saveWebhookSettings(silentSave) {
   const mentionId = document.getElementById('webhook-mention-id').value.trim();
   const enabled = document.getElementById('toggle-webhook-enabled').classList.contains('on');
   const silent = document.getElementById('toggle-webhook-silent').classList.contains('on');
+  const statusEnabled = document.getElementById('toggle-webhook-status').classList.contains('on');
+  const statusRunning = document.getElementById('toggle-webhook-status-running').classList.contains('on');
+  const statusStop = document.getElementById('toggle-webhook-status-stop').classList.contains('on');
+  // Clamped here as well as in Python: the field accepts anything typed, and
+  // the input should show what actually got saved rather than what was typed.
+  const hoursInput = document.getElementById('webhook-status-hours');
+  const hours = Math.min(48, Math.max(0.5, parseFloat(hoursInput.value) || 6));
+  hoursInput.value = hours;
   try {
-    await pywebview.api.save_webhook_settings(url, enabled, silent, mentionId);
+    await pywebview.api.save_webhook_settings(url, enabled, silent, mentionId,
+                                               statusEnabled, hours, statusRunning, statusStop);
     updateWebhookValidity(url);
     if (!silentSave) setWebhookStatus('Saved.', 'var(--teal)');
   } catch (e) {

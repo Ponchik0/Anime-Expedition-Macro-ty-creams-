@@ -100,17 +100,27 @@ def test_the_focus_gate_can_still_be_turned_off(monkeypatch):
 
 @pytest.fixture
 def watcher(monkeypatch):
-    screen = {"banner": None, "end_button": False, "relaxed": None}
+    """Экран задаётся СЧЁТАМИ эталонов, а не «нашлось/не нашлось»: наблюдатель
+    теперь и сам решает по счёту, а не по одному порогу."""
+    screen = {"victory": 0.0, "defeat": 0.0,
+              replay_result.MATCH_END_BUTTON_NAME: 0.0, "spot": (100, 100),
+              "wander": False}
     results = []
 
-    def find_image(hwnd, name, **kw):
-        if name == replay_result.MATCH_END_BUTTON_NAME:
-            return {"score": 0.95} if screen["end_button"] else None
-        relaxed = kw.get("threshold") == replay_result.MATCH_RESULT_RELAXED_THRESHOLD
-        want = screen["relaxed"] if relaxed else screen["banner"]
-        return {"score": 0.95} if name == want else None
+    def best_match_in_gray(shot, name, template_dir=None, stop_at=None):
+        score = screen.get(name, 0.0)
+        if not score:
+            return None
+        x, y = screen["spot"]
+        if screen["wander"]:
+            # Пятно уползает на каждый опрос — так ведёт себя случайное
+            # совпадение на движущейся картинке боя, но не баннер.
+            screen["spot"] = (x + 90, y + 90)
+        return {"score": score, "x": x, "y": y}
 
-    monkeypatch.setattr(replay_result.vision, "find_image", find_image)
+    monkeypatch.setattr(replay_result.vision, "capture_game_gray",
+                        lambda hwnd, region=None: types.SimpleNamespace(size=1))
+    monkeypatch.setattr(replay_result.vision, "best_match_in_gray", best_match_in_gray)
     monkeypatch.setattr(replay_result.vision, "save_window_screenshot", lambda h, p: None)
     monkeypatch.setattr(replay_result._replay, "game_active", lambda hwnd: True)
     monkeypatch.setattr(replay_result, "POLL_INTERVAL", 0.02)
@@ -120,76 +130,122 @@ def watcher(monkeypatch):
     w.stop()
 
 
-def test_a_single_frame_is_not_enough_to_count_a_match(watcher):
-    """Один совпавший кадр — это может быть анимация или наложение. Ложная
-    победа портит винрейт навсегда, поэтому нужно подтверждение."""
+def test_a_confident_banner_counts_from_the_very_first_frame(watcher):
+    """ЭТО И БЫЛА ЦЕНА НОЧИ. Требование «два совпадения подряд» стояло на любом
+    совпадении, включая уверенное. У живого человека баннер брал порог со счётом
+    0.90-0.91 при пороге 0.90 — на таком зазоре кадры мерцают, и любой единичный
+    промах обнулял подтверждение. За десять часов засчитался ОДИН матч из сотни.
+
+    Автомат в этом месте засчитывает первое попадание (_wait_for_result в
+    core/runner.py), и повтор обязан делать то же самое."""
+    w, screen, results = watcher
+    w.start("забег")
+    screen["victory"] = replay_result.STRONG_THRESHOLD
+    time.sleep(replay_result.POLL_INTERVAL * 3)
+    screen["victory"] = 0.0            # мелькнул и пропал
+    time.sleep(0.15)
+
+    assert len(results) == 1, "уверенное совпадение засчитывается сразу"
+    assert results[0][0] == "win"
+
+
+def test_a_single_weak_frame_is_not_enough_to_count_a_match(watcher):
+    """Совпадение НИЖЕ уверенного порога может быть и кадром анимации, и
+    полупрозрачным наложением. Ложная победа портит винрейт навсегда, поэтому
+    слабому нужно подтверждение."""
     w, screen, results = watcher
     assert replay_result.CONFIRM_SIGHTINGS >= 2
 
-    # Ставим баннер ровно на один опрос и тут же убираем.
     w.start("забег")
-    screen["banner"] = "victory"
+    screen["victory"] = 0.85           # полоса «почти»
     time.sleep(replay_result.POLL_INTERVAL * 0.6)
-    screen["banner"] = None
+    screen["victory"] = 0.0
     time.sleep(0.2)
 
-    assert not results, "мелькнувший кадр не должен становиться матчем"
+    assert not results, "мелькнувший слабый кадр не должен становиться матчем"
 
 
-def test_a_banner_that_stays_is_counted(watcher):
+def test_a_weak_banner_that_holds_its_place_is_counted(watcher):
+    """Слабое совпадение, которое держится НА ОДНОМ МЕСТЕ, — это настоящий
+    баннер, просто эталон не дотягивает до порога. Ровно этот случай и терялся:
+    у автомата тут страховка по кнопке «Repeat Stage», а повтор молчал."""
     w, screen, results = watcher
     w.start("забег")
-    screen["banner"] = "defeat"
-    time.sleep(0.2)
-    assert len(results) == 1
-    assert results[0][0] == "loss"
-
-
-# ── 2b. Вторая примета конца матча (как у автомата) ───────────────────────
-
-def test_a_weak_banner_is_recognised_when_the_result_panel_is_up(watcher):
-    """Баннер не дотянул до обычного порога, но кнопка «Repeat Stage» на
-    экране — значит панель результата точно есть, и баннер там тоже есть,
-    просто слабый. Автомат в этом месте перепроверяет мягче, и повтор обязан
-    делать ровно то же самое."""
-    w, screen, results = watcher
-    w.start("забег")
-    screen["banner"] = None            # обычным порогом не находится
-    screen["end_button"] = True        # но панель результата на экране
-    screen["relaxed"] = "victory"      # мягким — находится
+    screen["victory"] = 0.85
     time.sleep(0.2)
 
     assert len(results) == 1
     assert results[0][0] == "win"
 
 
-def test_without_the_result_panel_a_weak_banner_is_ignored(watcher):
-    """Мягкий порог включается ТОЛЬКО когда панель результата видно. Иначе он
-    ловил бы похожие пятна прямо посреди боя."""
+def test_a_weak_match_that_wanders_is_ignored(watcher):
+    """А вот слабое совпадение, которое ПОЛЗЁТ по экрану, — это случайное пятно
+    похожей яркости посреди боя. Настоящий баннер стоит на месте; место и есть
+    то, что отличает одно от другого, раз счёт уже не отличает."""
     w, screen, results = watcher
     w.start("забег")
-    screen["banner"] = None
-    screen["end_button"] = False
-    screen["relaxed"] = "victory"
-    time.sleep(0.2)
+    screen["wander"] = True
+    screen["victory"] = 0.85
+    time.sleep(0.3)
+
     assert not results
+
+
+# ── 2b. Вторая примета конца матча (как у автомата) ───────────────────────
+
+def test_the_result_panel_alone_ends_the_match_without_faking_a_result(watcher):
+    """Баннер не читается вовсе, но на экране кнопка «Repeat Stage» — матч
+    кончился, и притворяться, что ничего не было, нельзя. Автомат отвечает на
+    это RESULT_UNKNOWN: забег засчитан кончившимся, в статистику не идёт.
+
+    Прежде повтор в этом месте не делал НИЧЕГО — и сотня таких матчей за ночь
+    выглядела снаружи как полная тишина."""
+    w, screen, results = watcher
+    logs = []
+    w._log = logs.append
+    w.start("забег")
+    screen[replay_result.MATCH_END_BUTTON_NAME] = 0.95
+    time.sleep(0.2)
+
+    assert not results, "исход неизвестен — в статистику писать нечего"
+    assert w.unknown == 1, "но сам факт конца матча посчитан"
+    assert any("не распознал" in m for m in logs), logs
 
 
 # ── 3. Сторож тишины ──────────────────────────────────────────────────────
 
-def test_silence_is_reported_once_not_every_poll(watcher):
-    """Ругаться надо один раз на затишье. Сообщение раз в полторы секунды
-    всю ночь — это не предупреждение, а мусор в журнале."""
+def test_silence_is_repeated_not_said_once_and_forgotten(watcher):
+    """ВТОРАЯ ЦЕНА ТОЙ ЖЕ НОЧИ. Сторож ругался один раз за затишье и сбрасывался
+    только распознанным исходом — то есть в единственном случае, ради которого
+    написан, выдавал одно сообщение на пятнадцатой минуте и молчал следующие
+    десять часов. Повторяем, удваивая паузу."""
     w, screen, _ = watcher
     shouts = []
-    w._on_silence = lambda: shouts.append(1)
+    w._on_silence = lambda shot=None, detail="": shouts.append(detail)
     w._log = lambda m: None
-    monkeypatched_limit = 0.05
-    w._silent_too_long = lambda since: (time.perf_counter() - since) >= monkeypatched_limit
+    w._silence_limit = lambda: 0.05
 
     w.start("забег")
-    time.sleep(0.25)                   # много опросов подряд
-    assert len(shouts) == 1, f"о тишине должны сказать один раз, а не {len(shouts)}"
+    time.sleep(0.35)
+    assert len(shouts) >= 2, f"о тишине надо напоминать, а не сказать один раз: {shouts}"
+
+
+def test_the_silence_message_reports_scores_instead_of_guessing(watcher):
+    """Прежний текст перечислял версии, и в живом случае промахнулся мимо обеих:
+    эталоны совпадали, просто на сотую ниже порога. Счёт отвечает на это сразу."""
+    w, screen, _ = watcher
+    shouts = []
+    w._on_silence = lambda shot=None, detail="": shouts.append(detail)
+    w._log = lambda m: None
+    w._silence_limit = lambda: 0.05
+
+    # Ниже даже мягкого порога — исходом это не станет, но цифру человек
+    # обязан увидеть: «0.78 при пороге 0.90» и есть ответ, чего не хватает.
+    screen["victory"] = 0.78
+    w.start("забег")
+    time.sleep(0.2)
+
+    assert shouts and "victory 0.78" in shouts[0], shouts
 
 
 def test_the_silence_threshold_scales_with_the_recording_length(watcher):

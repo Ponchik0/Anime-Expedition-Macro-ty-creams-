@@ -47,6 +47,8 @@ class _Runner(runner_module.MacroRunner):
         self._expedition_extract_count = 0
         self._expedition_extract_accept_at = 1
         self._exp_start_game_reclicks = 0
+        self._exp_stuck = False
+        self._exp_stuck_shot = None
         self._exp_last_sighting_at = 0.0
         self._battle_started_at = 0.0
         self._coords = {"screen_middle_x": 576, "screen_middle_y": 378}
@@ -132,6 +134,36 @@ def test_the_start_button_loop_eventually_gives_up(rig, monkeypatch):
 
     assert rig._exp_start_game_reclicks > EXP_STUCK_START_GAME_CLICKS
     assert any("застряли" in m for m in rig.logs), rig.logs
+    # Флагом, а не возвратом: None здесь означает «опрашивай дальше», и выйти
+    # им из ожидания матча невозможно — забег досидел бы до 30-минутного
+    # таймаута, продолжая долбиться в тот же экран.
+    assert rig._exp_stuck is True, "ожидание матча должно быть прервано флагом"
+
+
+def test_the_stuck_flag_ends_the_match_wait_and_pings_discord(rig, monkeypatch):
+    """Проверка сквозная: флаг обязан оборвать ожидание матча и уйти в
+    уведомление, иначе предохранитель только перестаёт жать кнопку, а забег
+    всё равно висит до таймаута."""
+    sent = []
+    rig._exp_stuck = True
+    rig._exp_stuck_shot = None
+    rig._battle_leave_requested = False
+    rig._battle_status_minute = None
+    rig._pause_event = threading.Event()
+    rig._retry_pending_placements = lambda *a: None
+    rig._tick_loop_phases = lambda *a: None
+    rig._infinite_wave_limit = lambda task: None
+    rig._set_status = lambda **kw: None
+    rig._check_expedition_wave_result = lambda hwnd, stop: None
+    rig._send_event_webhook = lambda *a, **kw: sent.append(a[2])
+    monkeypatch.setattr(runner_module.vision, "find_image", lambda *a, **kw: None)
+
+    out = rig._wait_for_match_result(HWND, threading.Event(), mode="expedition",
+                                      webhook={"url": "x", "enabled": True}, task={})
+
+    assert out is None, "ожидание матча обязано закончиться, а не крутиться дальше"
+    assert any("застряла" in t for t in sent), sent
+    assert rig._exp_stuck is False, "флаг снимается, иначе следующий матч оборвётся сразу"
 
 
 def test_a_few_start_button_sightings_are_still_normal(rig, monkeypatch):

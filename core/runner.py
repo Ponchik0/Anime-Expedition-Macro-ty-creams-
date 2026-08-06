@@ -28,6 +28,7 @@ from . import camera
 from . import keys
 from . import ocr_windows
 from . import stage_select
+from . import stats_report
 from . import vision
 from . import wave as wave_module
 from .diagnostics import FailureCategory, RecoveryAction, FailureReport, create_failure_report, save_failure_snapshot
@@ -286,6 +287,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # старта, не сдвинув забег ни на один чекпойнт (см.
         # EXP_STUCK_START_GAME_CLICKS). Обнуляется на каждом чекпойнте.
         self._exp_start_game_reclicks = 0
+        # Порог перейден -- ожидание матча пора кончать. Флагом, потому что
+        # возврат None из проверки чекпойнта означает «опрашивай дальше» и
+        # выйти им из ожидания невозможно.
+        self._exp_stuck = False
+        self._exp_stuck_shot = None
         # Consecutive-loss fail-safe (see MAX_CONSECUTIVE_LOSSES_SAME_MAP):
         # how many losses in a row on _consecutive_loss_map so far -- reset
         # to 0 on any win, or restarted at 1 for a new map, so only a real
@@ -1876,6 +1882,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             task.get("extract_after")) + 1
         self._exp_last_sighting_at = 0.0  # fresh match, fresh sighting-debounce clock (see EXP_COLOR_SIGHTING_DEBOUNCE)
         self._exp_start_game_reclicks = 0  # свежий матч -- свежий счётчик застревания
+        self._exp_stuck = False
+        self._exp_stuck_shot = None
         # Spirit City Act 3's boss/cutscene "Click anywhere to close" popup
         # (see _click_close_popup_if_found) only ever shows up there.
         watch_close_popup = (task.get("mode") == "raid" and task.get("map") == "Spirit City"
@@ -2082,6 +2090,19 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 result = self._check_expedition_wave_result(hwnd, stop_event)
                 if result is not None:
                     return result
+                if self._exp_stuck:
+                    # Забег застрял на экране, который макрос не понимает (см.
+                    # EXP_STUCK_START_GAME_CLICKS). Кончаем ожидание здесь, а
+                    # не досиживаем до 30-минутного таймаута: восстановление
+                    # задачи вернёт в лобби и заново отработает Pre Start.
+                    self._exp_stuck = False
+                    self._send_event_webhook(
+                        webhook, task, "Expedition застряла \U000026A0\U0000FE0F",
+                        "Кнопка старта появлялась снова и снова, а забег не дошёл ни до "
+                        "одного чекпойнта.\n\nВыхожу в лобби и захожу заново — иначе "
+                        "следующий заход пошёл бы без юнитов.",
+                        0xE3B158, screenshot_path=getattr(self, "_exp_stuck_shot", None))
+                    return None
                 # СТРАХОВКА КОНЦА МАТЧА РАБОТАЕТ И В EXPEDITION.
                 #
                 # Раньше эта ветка делала `continue` и проскакивала мимо
@@ -2138,7 +2159,27 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._log(f'[Macro] Neither "victory" nor "defeat" matched within {MATCH_RESULT_TIMEOUT / 60:.0f} min. '
                    f'If the result screen was actually showing, its reference image isn\'t matching your '
                    f'setup -- add your own crop via Settings > General > Image Manager.')
-        self._save_debug_screenshot_unconditional(hwnd, "match_result_timeout")
+        shot = self._save_debug_screenshot_unconditional(hwnd, "match_result_timeout")
+        # УВЕДОМЛЕНИЕ О ЗАВИСАНИИ В БОЮ.
+        #
+        # Сторож бездействия (_check_stall) сюда не дотягивается: он считает
+        # прогрессом смену строки действия, а бой сам отбивает её раз в минуту
+        # (_pulse_battle_status), чтобы длинный забег не признавали зависшим.
+        # Из-за этого В БОЮ сторож слеп — то есть ровно там, где застревание и
+        # случается: в живом логе Expedition девять минут крутила один и тот же
+        # экран, и ни строчки тревоги.
+        #
+        # Здесь этот случай уже пойман (матч не кончился за отведённое время),
+        # и единственное, чего не хватало, — сказать об этом наружу. Со
+        # скриншотом: по нему сразу видно, что было на экране, а без него
+        # причину пришлось бы искать по логам заново.
+        self._send_event_webhook(
+            webhook, task, "Матч не закончился \U000026A0\U0000FE0F",
+            f"За {MATCH_RESULT_TIMEOUT / 60:.0f} минут не появилось ни «Victory», ни «Defeat».\n"
+            f"Обычно это значит, что макрос застрял на экране, который не понимает, "
+            f"либо эталоны баннеров перестали совпадать.\n\n"
+            f"Забег прерван, задача пойдёт на восстановление.",
+            0xE3B158, screenshot_path=shot)
         return None
 
     def _match_ended_without_a_banner(self, hwnd, allow_start_game_fallback: bool = True):
@@ -2412,6 +2453,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             # что баннер не распознаётся, иначе счётчики будут молча
             # недосчитывать матчи.
             self._log(f"[Macro] {label} ({duration}) -- исход не распознан, в статистику не пишу.")
+            # В ПОБЕДЫ И ПОРАЖЕНИЯ не пишем (там пришлось бы соврать), но
+            # СОСЧИТАТЬ обязаны: «за ночь кончилось 27 матчей, распознано 3» --
+            # это и есть диагноз, и до сих пор его нельзя было получить ниоткуда,
+            # кроме как вычитав журнал приложения глазами. Счётчик отдельный,
+            # см. Api._record_match_result.
+            try:
+                self._record_result(RESULT_UNKNOWN, map_name, duration, kind=self._run_kind(task))
+            except Exception:
+                pass
             self._send_event_webhook(
                 webhook, task, "Итог матча не распознан",
                 f"Матч на **{map_name}** кончился ({duration}), но баннер «Victory»/«Defeat» не совпал.\n"
@@ -2596,31 +2646,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             self._log(f"[Macro] Couldn't capture the result screenshot for the webhook: {exc}")
             return None
 
-    @staticmethod
-    def _tree_rows(rows) -> str:
-        """Tree-style lines for one inline embed field (the field's own name
-        is the header, so no bracketed header here): each (label, value) as a
-        box-drawing branch with a bold label and a code value, last row on
-        the └ corner. e.g. ├ **Elapsed:** `11h 27m` / └ ..."""
-        rows = [r for r in rows if r is not None]
-        lines = []
-        for i, (label, value) in enumerate(rows):
-            branch = "└" if i == len(rows) - 1 else "├"
-            lines.append(f"{branch} **{label}:** `{value}`")
-        return "\n".join(lines)
-
-    @staticmethod
-    def _format_elapsed(seconds: float) -> str:
-        """Session runtime as "11h 27m" / "27m 4s" / "45s" -- longer scale
-        than _format_duration (a single match), so it leads with hours."""
-        seconds = max(0, int(seconds))
-        h, rem = divmod(seconds, 3600)
-        m, s = divmod(rem, 60)
-        if h:
-            return f"{h}h {m}m"
-        if m:
-            return f"{m}m {s}s"
-        return f"{s}s"
+    # Tree-style lines for one embed field, and session runtime as "11h 27m" --
+    # both moved to core/stats_report.py, which is where the fields that use
+    # them are now assembled (for BOTH the automat and the replay). Kept as
+    # names on the runner because the placement tally below still draws its own
+    # field, and because these two are the vocabulary of every notification the
+    # macro sends: one spelling, one place.
+    _tree_rows = staticmethod(stats_report.tree_rows)
+    _format_elapsed = staticmethod(stats_report.format_elapsed)
 
     def _send_result_webhook(self, webhook: dict, result: str, task: dict, duration: str,
                               screenshot_path: str = None, placement: dict = None) -> None:
@@ -2668,35 +2701,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             snap = {}
         sw, sl = snap.get("session_wins", 0), snap.get("session_losses", 0)
         aw, al = snap.get("all_time_wins", 0), snap.get("all_time_losses", 0)
-        session_time = self._format_elapsed(time.time() - snap["session_start"]) if snap.get("session_start") else "-"
 
         where = " · ".join(p for p in (map_name, stage, difficulty) if p and p != "-")
-        session_rate = f"{round(sw / (sw + sl) * 100)}%" if (sw + sl) else "-"
-        all_time_rate = f"{round(aw / (aw + al) * 100)}%" if (aw + al) else "-"
         tuc = snap.get("time_until_challenge", "-")
         runs_per_hour = snap.get("runs_per_hour", "-")
 
-        # Inline, tree-style fields (bold labels, code values) side by side --
-        # Match / Session / All Time. The visual win/loss tiles + activity
-        # grid live in the separate status-card image below.
-        fields = [
-            {"name": "⚔️ Match", "value": self._tree_rows([
-                ("Result", ("Victory \U0001F3C6" if is_win else "Defeat \U0001F480")
-                            if outcome_known else "не распознан"),
-                ("Duration", duration or "-"),
-            ] + ([("Stage", where)] if where else [])), "inline": True},
-            {"name": "\U0001F4CA Session", "value": self._tree_rows([
-                ("Elapsed", session_time),
-                ("Record", f"{sw}W · {sl}L"),
-                ("Rate", session_rate),
-                ("Runs/h", runs_per_hour),
-                ("Challenge", tuc),
-            ]), "inline": True},
-            {"name": "\U0001F3C6 All Time", "value": self._tree_rows([
-                ("Record", f"{aw}W · {al}L"),
-                ("Rate", all_time_rate),
-            ]), "inline": False},
-        ]
+        # Inline, tree-style fields (bold labels, code values) side by side.
+        # СОБИРАЕТ ИХ core/stats_report.py, а не этот файл: ровно такую же
+        # карточку шлёт повтор записи (core/replay_result.py), и пока поля
+        # перечисляли оба места по отдельности, добавить строку значило
+        # добавить её дважды -- то есть рано или поздно один раз. Здесь
+        # остаётся только блок «Match»: он и есть то, чем уведомления двух
+        # режимов отличаются по существу.
+        fields = stats_report.report_fields("⚔️ Match", [
+            ("Result", ("Victory \U0001F3C6" if is_win else "Defeat \U0001F480")
+                        if outcome_known else "не распознан"),
+            ("Duration", duration or "-"),
+        ] + ([("Stage", where)] if where else []), snap)
         # РАССТАНОВКА -- поле появляется только когда с ней было не всё в
         # порядке. Освободившееся от «Links» место отдано тому, что реально
         # решает исход забега: юнит, не вставший до старта, стоит матча, а
@@ -2737,9 +2758,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # Полоска серии под описанием -- шкала винрейта сессии на 10 делений.
         # Место, освободившееся от «Links», отдано тому, что реально читают:
         # как идёт сессия, видно с одного взгляда, без вычитывания процентов.
-        if sw + sl:
-            filled = int(round(sw / (sw + sl) * 10))
-            description += f"\n`{'▰' * filled}{'▱' * (10 - filled)}` **{session_rate}** за сессию"
+        bar = stats_report.session_bar(sw, sl)
+        if bar:
+            description += f"\n{bar} за сессию"
 
         version = snap.get("version")
         footer = "Anime Expeditions" + (f" · v{version}" if version else "")

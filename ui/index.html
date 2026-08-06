@@ -410,6 +410,14 @@
             <b id="stat-total-runs">0 total runs</b>
             <span class="rp-foot-sep">&middot;</span>
             <span>lifetime record</span>
+            <!-- Матчи, кончившиеся без распознанного исхода. Спрятано, пока их
+                 нет: строка, вечно показывающая ноль, читается как «всё в
+                 порядке» и потому перестаёт читаться совсем — а нужна она ровно
+                 в тот раз, когда цифра не ноль. -->
+            <span id="stat-unknown-wrap" style="display: none;">
+              <span class="rp-foot-sep">&middot;</span>
+              <span id="stat-unknown" style="color: var(--amber, #E3B158);">0 unrecognised</span>
+            </span>
           </div>
         </section>
 
@@ -1457,12 +1465,48 @@
           </div>
 
           <div class="px-2" style="border-top: 1px solid var(--border); margin-top: 4px;">
-            <div class="setting-row" style="border-bottom: none;">
+            <div class="setting-row">
               <div>
                 <div class="setting-label">Silent Mode</div>
                 <div class="setting-desc">No notification ping.</div>
               </div>
               <button id="toggle-webhook-silent" class="toggle-switch" onclick="toggleWebhookField('silent', this)"></button>
+            </div>
+
+            <!-- Периодическая сводка. Отдельно от карточек матчей, потому что
+                 отвечает на другой вопрос: не «чем кончился этот матч», а «что
+                 вообще происходит, пока я на это не смотрю». Когда что-то
+                 ломается, матчей нет вовсе -- и до сих пор канал в этом случае
+                 просто молчал. -->
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Periodic Status</div>
+                <div class="setting-desc">Sends a summary to Discord on a timer: matches for the period, session and all-time record, streaks, and what the macro is doing right now. Off by default.</div>
+              </div>
+              <div class="flex items-center gap-2" style="flex-shrink: 0;">
+                <input id="webhook-status-hours" type="number" min="0.5" max="48" step="0.5" class="block-input" style="width: 78px;" onchange="saveWebhookSettings(true)">
+                <span style="font-size: 11px; color: var(--text-muted);">hours</span>
+                <button id="toggle-webhook-status" class="toggle-switch" onclick="toggleWebhookField('status', this)"></button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Only While Running</div>
+                <div class="setting-desc">The timer only counts while a run is going, so a macro stopped for the night stays quiet instead of piling up summaries. Default on.</div>
+              </div>
+              <button id="toggle-webhook-status-running" class="toggle-switch" onclick="toggleWebhookField('status_running', this)"></button>
+            </div>
+
+            <div class="setting-row" style="border-bottom: none;">
+              <div>
+                <div class="setting-label">Summary On Stop</div>
+                <div class="setting-desc">One final summary the moment a run ends -- whether you stopped it or it ran out of loops. Default on.</div>
+              </div>
+              <div class="flex items-center gap-2" style="flex-shrink: 0;">
+                <button id="webhook-status-now-btn" onclick="sendStatusReportNow()" class="wh-paste-btn">Send Now</button>
+                <button id="toggle-webhook-status-stop" class="toggle-switch" onclick="toggleWebhookField('status_stop', this)"></button>
+              </div>
             </div>
           </div>
         </section>

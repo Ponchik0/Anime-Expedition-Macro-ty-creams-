@@ -10,6 +10,7 @@
 """
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,12 +25,14 @@ def rig(monkeypatch):
     screen = {"banner": None, "missing": set()}
     results = []
 
-    def find_image(hwnd, name, **kw):
+    def best_match_in_gray(shot, name, template_dir=None, stop_at=None):
         if name in screen["missing"]:
             raise replay_result.vision.TemplateNotFound(name)
-        return {"score": 0.99} if name == screen["banner"] else None
+        return {"score": 0.99, "x": 100, "y": 100} if name == screen["banner"] else None
 
-    monkeypatch.setattr(replay_result.vision, "find_image", find_image)
+    monkeypatch.setattr(replay_result.vision, "capture_game_gray",
+                        lambda hwnd, region=None: SimpleNamespace(size=1))
+    monkeypatch.setattr(replay_result.vision, "best_match_in_gray", best_match_in_gray)
     monkeypatch.setattr(replay_result.vision, "save_window_screenshot", lambda hwnd, path: None)
     monkeypatch.setattr(replay_result._replay, "game_active", lambda hwnd: True)
     monkeypatch.setattr(replay_result, "POLL_INTERVAL", 0.02)
@@ -115,6 +118,28 @@ def test_a_missing_template_is_reported_once_and_never_crashes(rig):
 
     assert not results
     assert len([m for m in logs if "victory" in m]) == 1, logs
+
+
+def test_restarting_right_away_does_not_lose_the_watcher(rig):
+    """Остановил повтор и тут же запустил снова.
+
+    Прежний наблюдатель уходит сам, но проверяет это раз в такт — то есть
+    какое-то время ещё жив. Раньше start() в этот момент молча отказывал, и
+    история по такому прогону не писалась ВООБЩЕ: повтор крутится, а победы и
+    поражения мимо."""
+    w, screen, results = rig
+    assert w.start("первый")
+    assert w.running
+
+    # Не дожидаясь, пока прошлый поток заметит остановку, стартуем заново.
+    assert w.start("второй"), "повторный запуск обязан пройти"
+    assert w.running
+    assert w.name == "второй"
+    assert w.matches == 0, "счётчик матчей у нового прогона свой"
+
+    screen["banner"] = "victory"
+    _settle(0.2)
+    assert len(results) == 1, "новый прогон должен писать историю"
 
 
 def test_the_handler_blowing_up_does_not_kill_the_watcher(rig):
