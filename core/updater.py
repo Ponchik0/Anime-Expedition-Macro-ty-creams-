@@ -48,8 +48,39 @@ from . import constants
 # чужой релиз поверх наших правок в core/ и ui/, теперь он тянет
 # ровно то, что мы сами туда запушили.
 GITHUB_REPO = "Ponchik0/ae"
-RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
+
+# ────────────────────────── ГДЕ ЛЕЖАТ РЕЛИЗЫ ──────────────────────────────
+# ДВА РАЗНЫХ РЕПОЗИТОРИЯ, И ЭТО НЕ ПЕРЕСТРАХОВКА.
+#
+# GITHUB_REPO выше — исходники. Он может быть ПРИВАТНЫМ, и тогда ни один
+# запрос отсюда до него не достучится: GitHub требует авторизацию, а токен,
+# положенный в приложение, из него достаётся за минуту — то есть раздаёт
+# доступ к приватному репозиторию всем, у кого есть сборка. Приватный
+# репозиторий с зашитым токеном — это публичный репозиторий, только с лишними
+# шагами.
+#
+# RELEASES_REPO — маленький ПУБЛИЧНЫЙ репозиторий, в котором нет кода, а есть
+# только релизы с приложенным архивом сборки. Проверка версии и скачивание
+# ходят исключительно туда, поэтому исходники остаются закрытыми, а
+# обновления работают у всех и без всяких ключей.
+#
+# ЧТО СДЕЛАТЬ, ЧТОБЫ ЗАРАБОТАЛО (один раз):
+#   1. создать публичный репозиторий, например Ponchik0/ae-releases;
+#   2. вписать его сюда, в RELEASES_REPO;
+#   3. выпускать релиз ИМЕННО В НЁМ: тег = номеру из файла VERSION, а к
+#      релизу приложить архив сборки (RELEASE_ZIP_NAME ниже).
+# Пока здесь стоит приватный GITHUB_REPO, проверка честно скажет
+# «репозиторий обновлений недоступен» — и это правда, а не поломка.
+#
+# ОБНОВЛЕНИЕ ИЗ ИСХОДНИКОВ (запуск через `python main.py`) при приватных
+# исходниках работать не будет и не должно: качать оттуда нечего без доступа.
+# Тому, у кого доступ есть, обновляться надо через `git pull`, а не кнопкой.
+# Кнопка — для собранного .exe, и он обновляется из архива релиза, то есть
+# ровно из того, что лежит в публичном RELEASES_REPO.
+RELEASES_REPO = GITHUB_REPO
+
+RELEASES_LATEST_URL = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
+RELEASES_PAGE_URL = f"https://github.com/{RELEASES_REPO}/releases/latest"
 # The packaged release zip (exe + the loose Assets/ folder side by side,
 # see release.yml) -- the ONE download everything uses: new installs, the
 # bootstrapper, AND frozen-build updates (the exe is extracted out of it
@@ -139,7 +170,7 @@ def _repo_is_reachable(timeout: float) -> bool:
     существования, — поэтому по коду ответа их не различить, нужен второй
     запрос. Он делается ТОЛЬКО на пути ошибки, то есть почти никогда."""
     try:
-        with requests.head(f"https://github.com/{GITHUB_REPO}",
+        with requests.head(f"https://github.com/{RELEASES_REPO}",
                             allow_redirects=True, timeout=timeout) as resp:
             return resp.status_code < 400
     except requests.RequestException:
@@ -250,9 +281,9 @@ def check_for_update(timeout: float = 6.0, log=None) -> dict:
             "reason": "",
             "version": tag,
             "current_version": current,
-            "url": f"https://github.com/{GITHUB_REPO}/releases/tag/{tag}",
-            "zip_url": f"https://github.com/{GITHUB_REPO}/archive/refs/tags/{tag}.zip",
-            "release_zip_url": f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/{RELEASE_ZIP_NAME}",
+            "url": f"https://github.com/{RELEASES_REPO}/releases/tag/{tag}",
+            "zip_url": f"https://github.com/{RELEASES_REPO}/archive/refs/tags/{tag}.zip",
+            "release_zip_url": f"https://github.com/{RELEASES_REPO}/releases/download/{tag}/{RELEASE_ZIP_NAME}",
             "notes": "",
         }
 
@@ -274,10 +305,10 @@ def check_for_update(timeout: float = 6.0, log=None) -> dict:
         "reason": "",
         "version": tag,
         "current_version": current,
-        "url": data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases",
-        "zip_url": data.get("zipball_url") or f"https://github.com/{GITHUB_REPO}/archive/refs/tags/{tag}.zip",
+        "url": data.get("html_url") or f"https://github.com/{RELEASES_REPO}/releases",
+        "zip_url": data.get("zipball_url") or f"https://github.com/{RELEASES_REPO}/archive/refs/tags/{tag}.zip",
         "release_zip_url": release_zip_asset["browser_download_url"] if release_zip_asset else
-                           f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/{RELEASE_ZIP_NAME}",
+                           f"https://github.com/{RELEASES_REPO}/releases/download/{tag}/{RELEASE_ZIP_NAME}",
         "notes": (data.get("body") or "").strip(),
     }
 
@@ -729,8 +760,8 @@ def ensure_assets_present(log) -> bool:
     # existed). Only the zip's Assets/ entries are extracted -- the exe it
     # also carries is ignored (see _extract_assets_zip_addonly).
     current = get_current_version()
-    urls = [f"https://github.com/{GITHUB_REPO}/releases/download/v{current}/{RELEASE_ZIP_NAME}",
-            f"https://github.com/{GITHUB_REPO}/releases/latest/download/{RELEASE_ZIP_NAME}"]
+    urls = [f"https://github.com/{RELEASES_REPO}/releases/download/v{current}/{RELEASE_ZIP_NAME}",
+            f"https://github.com/{RELEASES_REPO}/releases/latest/download/{RELEASE_ZIP_NAME}"]
     for url in urls:
         if merge_assets_update(url, log):
             log("[Update] Assets folder restored.")

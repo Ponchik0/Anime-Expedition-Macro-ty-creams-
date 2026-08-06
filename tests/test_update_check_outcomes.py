@@ -169,6 +169,37 @@ def test_every_outcome_carries_a_status_and_the_current_version(
     assert res["current_version"] == "1.1.0"
 
 
+# ── Приватные исходники, публичные релизы ────────────────────────────────
+# Исходники могут быть закрыты, и тогда до них не достучится ни один запрос
+# отсюда: GitHub требует авторизацию, а токен в приложении достаётся из него за
+# минуту, то есть раздаёт доступ всем, у кого есть сборка. Поэтому всё сетевое
+# ходит в ОТДЕЛЬНЫЙ публичный репозиторий релизов. Стоит одной ссылке уехать
+# обратно на приватный — и обновление молча начнёт получать 404 у всех.
+
+def test_nothing_network_facing_points_at_the_source_repo(monkeypatch, at_version):
+    """Каждая ссылка, по которой клиент реально ходит, — из RELEASES_REPO."""
+    at_version("1.1.0")
+    monkeypatch.setattr(updater, "RELEASES_REPO", "owner/public-releases")
+    monkeypatch.setattr(updater, "GITHUB_REPO", "owner/private-source")
+    monkeypatch.setattr(updater, "RELEASES_PAGE_URL",
+                        "https://github.com/owner/public-releases/releases/latest")
+    _head(monkeypatch, releases=_Resp(302, "https://github.com/o/r/releases/tag/1.2.0"))
+    _no_api(monkeypatch)
+
+    res = updater.check_for_update()
+
+    for key in ("url", "zip_url", "release_zip_url"):
+        assert "public-releases" in res[key], (key, res[key])
+        assert "private-source" not in res[key], (key, res[key])
+
+
+def test_the_module_level_urls_are_built_from_the_releases_repo():
+    """Ссылки собираются один раз при импорте — проверяем именно их, а не то,
+    что удалось подменить в тесте."""
+    assert updater.RELEASES_REPO in updater.RELEASES_PAGE_URL
+    assert updater.RELEASES_REPO in updater.RELEASES_LATEST_URL
+
+
 def test_the_repo_is_only_asked_about_when_something_went_wrong(monkeypatch, at_version):
     """Второй запрос -- цена разбора ошибки, и платить её на каждой удачной
     проверке незачем."""
