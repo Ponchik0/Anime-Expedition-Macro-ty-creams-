@@ -88,7 +88,12 @@ def sim(monkeypatch):
                 patch[:, :] = 0
         return patch
 
+    # Два шва: с версии 0.18 Windows читает содержимое окна, macOS снимает
+    # экран (см. _capture_place_search_region). Окно фальшивой игры в (0, 0),
+    # поэтому числа одни и те же и подделка у них общая.
     monkeypatch.setattr(ocr, "capture_region", capture_region)
+    monkeypatch.setattr(runner_blocks.vision, "capture_window_region_bgr",
+                        lambda _hwnd, region: capture_region(*region))
     monkeypatch.setattr(vision, "find_image", lambda *a, **k: None)
     monkeypatch.setattr(vision, "wait_for_image", lambda *a, **k: None)
 
@@ -217,7 +222,11 @@ def test_an_empty_queue_costs_nothing(sim, monkeypatch):
     """Вызов стоит в цикле опроса боя, то есть срабатывает раз в секунду в
     каждом забеге -- он обязан выходить сразу, ничего не снимая с экрана."""
     calls = []
+    # Оба пути захвата: пустая очередь не должна трогать экран ни на одной
+    # платформе (см. _capture_place_search_region).
     monkeypatch.setattr(ocr, "capture_region", lambda *a: calls.append(a))
+    monkeypatch.setattr(runner_blocks.vision, "capture_window_region_bgr",
+                        lambda *a: calls.append(a))
 
     sim._retry_pending_placements(1, threading.Event())
 

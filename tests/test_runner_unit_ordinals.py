@@ -86,17 +86,26 @@ def sim(monkeypatch):
     # расстановка и читает, чтобы понять, что клик зарегистрировался (см.
     # runner_blocks._tile_still_highlighted). Без этого фальшивая игра
     # утверждала бы, что клик не проходит НИКОГДА.
+    #
+    # ДВА ШВА, А НЕ ОДИН: с версии 0.18 кадр берётся через
+    # _capture_place_search_region, и путь там разный -- Windows читает
+    # содержимое окна (vision.capture_window_region_bgr), macOS снимает экран
+    # (ocr.capture_region), потому что подсветка выпадает из
+    # CGWindowListCreateImage. Окно фальшивой игры стоит в (0, 0), поэтому
+    # числа в обоих швах одни и те же, и подделка у них общая.
     occupied = set()
 
-    def capture_region(l, t, w, h):
+    def patch_at(l, t, w, h):
         patch = np.full((h, w, 3), 255, np.uint8)
         for (px, py) in occupied:
             if l <= px < l + w and t <= py < t + h:
                 patch[:, :] = 0
         return patch
 
-    monkeypatch.setattr(ocr, "capture_region", capture_region)
-    monkeypatch.setattr(runner_blocks, "capture_region", capture_region, raising=False)
+    monkeypatch.setattr(ocr, "capture_region", patch_at)
+    monkeypatch.setattr(runner_blocks, "capture_region", patch_at, raising=False)
+    monkeypatch.setattr(runner_blocks.vision, "capture_window_region_bgr",
+                        lambda _hwnd, region: patch_at(*region))
 
     def found(name):
         return {"x": 0, "y": 0, "w": 10, "h": 10, "cx": 5, "cy": 5, "score": 0.99}

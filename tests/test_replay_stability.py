@@ -107,7 +107,7 @@ def watcher(monkeypatch):
               "wander": False}
     results = []
 
-    def best_match_in_gray(shot, name, template_dir=None, stop_at=None):
+    def best_match_in_gray_multiscale(shot, name, template_dir=None, stop_at=None):
         score = screen.get(name, 0.0)
         if not score:
             return None
@@ -120,7 +120,7 @@ def watcher(monkeypatch):
 
     monkeypatch.setattr(replay_result.vision, "capture_game_gray",
                         lambda hwnd, region=None: types.SimpleNamespace(size=1))
-    monkeypatch.setattr(replay_result.vision, "best_match_in_gray", best_match_in_gray)
+    monkeypatch.setattr(replay_result.vision, "best_match_in_gray_multiscale", best_match_in_gray_multiscale)
     monkeypatch.setattr(replay_result.vision, "save_window_screenshot", lambda h, p: None)
     monkeypatch.setattr(replay_result._replay, "game_active", lambda hwnd: True)
     monkeypatch.setattr(replay_result, "POLL_INTERVAL", 0.02)

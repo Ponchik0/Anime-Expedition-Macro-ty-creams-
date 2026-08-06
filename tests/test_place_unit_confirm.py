@@ -58,12 +58,22 @@ def _canvas():
 
 
 def _patch_screen(monkeypatch, screen):
-    """capture_region поверх готового кадра -- как настоящий, с вырезкой."""
+    """Захват поверх готового кадра -- как настоящий, с вырезкой.
+
+    ДВА ШВА, А НЕ ОДИН: с версии 0.18 кадр берётся через
+    _capture_place_search_region, и путь там разный -- Windows читает
+    содержимое окна (vision.capture_window_region_bgr), macOS снимает экран
+    (ocr.capture_region), потому что подсветка выпадает из
+    CGWindowListCreateImage. Окно фальшивой игры стоит в (0, 0), поэтому числа
+    в обоих швах одни и те же, и подделка у них общая. Подставить только один
+    значило бы проверять одну платформу из двух."""
     def capture_region(x, y, w, h):
         return screen[y:y + h, x:x + w]
 
     monkeypatch.setattr(ocr, "capture_region", capture_region)
     monkeypatch.setattr(runner_blocks, "capture_region", capture_region, raising=False)
+    monkeypatch.setattr(runner_blocks.vision, "capture_window_region_bgr",
+                        lambda _hwnd, region: capture_region(*region))
 
 
 def _blob(screen, cx, cy, size=9):
@@ -88,7 +98,7 @@ def test_stray_white_pixel_no_longer_beats_a_real_highlight(monkeypatch):
     _blob(screen, 576 + 10, 378 + 4)          # настоящая подсветка чуть дальше
     _patch_screen(monkeypatch, screen)
 
-    offset = _Runner()._scan_place_search_box(0, 0, *spot)
+    offset = _Runner()._scan_place_search_box(0, 0, 0, *spot)
 
     assert offset == (10, 4), f"ожидался центр пятна, получено {offset}"
 
@@ -101,7 +111,7 @@ def test_cursor_already_on_the_highlight_does_not_move(monkeypatch):
     screen[:, :] = 255
     _patch_screen(monkeypatch, screen)
 
-    assert _Runner()._scan_place_search_box(0, 0, 576, 378) == (0, 0)
+    assert _Runner()._scan_place_search_box(0, 0, 0, 576, 378) == (0, 0)
 
 
 def test_a_highlight_bigger_than_the_search_box_is_not_read_as_drift(monkeypatch):
@@ -127,7 +137,7 @@ def test_a_highlight_bigger_than_the_search_box_is_not_read_as_drift(monkeypatch
     screen[378 - 1:378 + 2, 576 - 1:576 + 2] = 0        # дырка под курсором
     _patch_screen(monkeypatch, screen)
 
-    offset = _Runner()._scan_place_search_box(0, 0, *spot)
+    offset = _Runner()._scan_place_search_box(0, 0, 0, *spot)
 
     assert offset == (0, 0), (
         f"курсор внутри подсветки — сноса быть не должно, получено {offset}")
@@ -144,7 +154,7 @@ def test_a_genuinely_occupied_tile_still_reports_drift(monkeypatch):
     _blob(screen, 576 + 13, 378 - 11, size=9)    # соседняя свободная клетка
     _patch_screen(monkeypatch, screen)
 
-    assert _Runner()._scan_place_search_box(0, 0, *spot) == (13, -11)
+    assert _Runner()._scan_place_search_box(0, 0, 0, *spot) == (13, -11)
 
 
 def test_a_clipped_blob_falls_back_to_the_nearest_pixel(monkeypatch):
@@ -157,7 +167,7 @@ def test_a_clipped_blob_falls_back_to_the_nearest_pixel(monkeypatch):
     screen[378 - 30:378 + 31, 576 - 60:576 - 9] = 255
     _patch_screen(monkeypatch, screen)
 
-    dx, dy = _Runner()._scan_place_search_box(0, 0, *spot)
+    dx, dy = _Runner()._scan_place_search_box(0, 0, 0, *spot)
     # Ближайший белый пиксель — ровно на кромке полосы, в 10px слева.
     assert (dx, dy) == (-10, 0), f"ожидался ближайший пиксель полосы, получено {(dx, dy)}"
 
@@ -169,7 +179,7 @@ def test_lone_pixel_still_works_when_there_is_no_blob(monkeypatch):
     screen[378 - 5, 576 + 4] = 255
     _patch_screen(monkeypatch, screen)
 
-    assert _Runner()._scan_place_search_box(0, 0, 576, 378) == (4, -5)
+    assert _Runner()._scan_place_search_box(0, 0, 0, 576, 378) == (4, -5)
 
 
 def test_thin_white_line_is_not_taken_for_a_tile(monkeypatch):
@@ -181,7 +191,7 @@ def test_thin_white_line_is_not_taken_for_a_tile(monkeypatch):
     assert 16 > PLACE_HIGHLIGHT_MIN_PIXELS  # площади хватает, габаритов нет
     _patch_screen(monkeypatch, screen)
 
-    offset = _Runner()._scan_place_search_box(0, 0, 576, 378)
+    offset = _Runner()._scan_place_search_box(0, 0, 0, 576, 378)
 
     # Пятном не признана -- сработал откат к ближайшему пикселю, а не центр.
     assert offset == (12, 0), f"полоску приняли за клетку: {offset}"
@@ -189,7 +199,7 @@ def test_thin_white_line_is_not_taken_for_a_tile(monkeypatch):
 
 def test_nothing_white_is_still_nothing(monkeypatch):
     _patch_screen(monkeypatch, _canvas())
-    assert _Runner()._scan_place_search_box(0, 0, 576, 378) is None
+    assert _Runner()._scan_place_search_box(0, 0, 0, 576, 378) is None
 
 
 def test_short_capture_near_the_edge_does_not_index_out_of_range(monkeypatch):
@@ -201,8 +211,10 @@ def test_short_capture_near_the_edge_does_not_index_out_of_range(monkeypatch):
     small = np.full((side, side, 3), 255, np.uint8)
     monkeypatch.setattr(ocr, "capture_region", lambda x, y, w, h: small)
     monkeypatch.setattr(runner_blocks, "capture_region", lambda x, y, w, h: small, raising=False)
+    monkeypatch.setattr(runner_blocks.vision, "capture_window_region_bgr",
+                        lambda _hwnd, _region: small)
 
-    assert _Runner()._scan_place_search_box(0, 0, 1150, 750) == (0, 0)
+    assert _Runner()._scan_place_search_box(0, 0, 0, 1150, 750) == (0, 0)
 
 
 # ---------------------------------------------------------------------------

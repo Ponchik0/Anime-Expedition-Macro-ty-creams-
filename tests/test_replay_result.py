@@ -25,14 +25,14 @@ def rig(monkeypatch):
     screen = {"banner": None, "missing": set()}
     results = []
 
-    def best_match_in_gray(shot, name, template_dir=None, stop_at=None):
+    def best_match_in_gray_multiscale(shot, name, template_dir=None, stop_at=None):
         if name in screen["missing"]:
             raise replay_result.vision.TemplateNotFound(name)
         return {"score": 0.99, "x": 100, "y": 100} if name == screen["banner"] else None
 
     monkeypatch.setattr(replay_result.vision, "capture_game_gray",
                         lambda hwnd, region=None: SimpleNamespace(size=1))
-    monkeypatch.setattr(replay_result.vision, "best_match_in_gray", best_match_in_gray)
+    monkeypatch.setattr(replay_result.vision, "best_match_in_gray_multiscale", best_match_in_gray_multiscale)
     monkeypatch.setattr(replay_result.vision, "save_window_screenshot", lambda hwnd, path: None)
     monkeypatch.setattr(replay_result._replay, "game_active", lambda hwnd: True)
     monkeypatch.setattr(replay_result, "POLL_INTERVAL", 0.02)

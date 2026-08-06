@@ -227,7 +227,7 @@ class ResultWatcher:
         `missing` копит имена эталонов, которых нет на диске: ругаться о них
         надо один раз, а не каждые полсекунды все полчаса забега."""
         try:
-            hit = vision.best_match_in_gray(shot, image_name, stop_at=STRONG_THRESHOLD)
+            hit = vision.best_match_in_gray_multiscale(shot, image_name, stop_at=STRONG_THRESHOLD)
         except vision.TemplateNotFound:
             if image_name not in missing:
                 missing.add(image_name)

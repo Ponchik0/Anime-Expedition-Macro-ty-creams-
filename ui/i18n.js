@@ -192,6 +192,13 @@
     'UTC game day:': 'Игровые сутки (UTC):',
     'Auto Bounty': 'Авто-задания',
     'Enable Auto Bounty': 'Включить авто-задания',
+    // Пришло с апстримом 0.18: перереролл карточек до мифика.
+    'Auto Mythic Bounty': 'Авто-мифик в заданиях',
+    'Rerolls each eligible card until its card title verifies as Mythic.':
+      'Перекручивает каждую подходящую карточку, пока её название не подтвердится как Mythic.',
+    'Mythic Reroll Safety Limit': 'Предел перекруток на мифик',
+    'Maximum rerolls for one card before Auto Bounty leaves it unclaimed. Allowed range: 1–100.':
+      'Сколько раз перекручивать одну карточку, прежде чем авто-задания оставят её незабранной. Допустимо от 1 до 100.',
     'Auto Crafting': 'Авто-крафт',
     'Enable Auto Crafting': 'Включить авто-крафт',
     'Craft every': 'Крафтить каждые',
@@ -248,6 +255,9 @@
     'No notification ping.': 'Без звука и упоминания.',
     'Discord User ID': 'Discord ID для пинга',
     'Paste Clipboard': 'Вставить из буфера',
+    'Progress Updates': 'Уведомления о ходе очереди',
+    'Send task and challenge start/finish notifications.':
+      'Присылать отметки о начале и конце каждой задачи и каждого челленджа.',
     'Periodic Status': 'Сводка по часам',
     'Sends a summary to Discord on a timer: matches for the period, session and all-time record, streaks, and what the macro is doing right now. Off by default.':
       'Присылает в Discord сводку по таймеру: матчи за промежуток, счёт сессии и за всё время, серии и то, чем макрос занят прямо сейчас. Отвечает на «как там дела», не дожидаясь следующего матча. По умолчанию выключено.',
@@ -260,6 +270,13 @@
     'Send Now': 'Отправить сейчас',
 
     // --- Настройки: отладка ---
+    // Пришло с апстримом 0.18: живая проверка блока Detect и пипетка кнопки
+    // Teams.
+    'Test Detect': 'Проверить Detect',
+    'Waiting for test...': 'Жду проверки...',
+    'Teams Button Click': 'Точка нажатия кнопки Teams',
+    'Optional manual point inside the Teams button. Pick the lower/inner part if the image-match center misses; Auto uses the detected image center.':
+      'Необязательная своя точка внутри кнопки Teams. Ставь ближе к низу и внутрь, если центр найденной картинки промахивается; «Авто» бьёт в центр найденного.',
     'Health Check': 'Проверка окружения',
     'Run Health Check': 'Проверить окружение',
     'Diagnostics': 'Диагностика',
