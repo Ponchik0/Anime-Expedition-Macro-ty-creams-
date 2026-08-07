@@ -200,6 +200,29 @@ def test_the_module_level_urls_are_built_from_the_releases_repo():
     assert updater.RELEASES_REPO in updater.RELEASES_LATEST_URL
 
 
+def test_updating_from_source_refuses_instead_of_quietly_doing_nothing(
+        tmp_path, monkeypatch):
+    """Если релизы когда-нибудь переедут в отдельный репозиторий, скачивать
+    «исходники» станет неоткуда: там будет архив сборки, а не код. Молча
+    разложить его README поверх установки и перезапуститься на той же версии —
+    худший из возможных исходов: выглядит как успех, а версия не меняется."""
+    monkeypatch.setattr(updater, "RELEASES_REPO", "owner/public-releases")
+
+    with pytest.raises(RuntimeError) as exc:
+        updater.stage_source_update("https://example.invalid/x.zip",
+                                    str(tmp_path), log=lambda *_: None)
+
+    assert "git pull" in str(exc.value)
+    assert "owner/public-releases" in str(exc.value)
+
+
+def test_updating_from_source_is_allowed_while_the_repo_is_one_and_public():
+    """Обратная сторона: пока код и релизы в одном репозитории, отказывать не
+    за что — обновление из исходников работает, и защита выше молчит."""
+    assert updater.RELEASES_REPO == updater.GITHUB_REPO
+    updater._refuse_source_update_from_releases_repo()  # не должно бросить
+
+
 def test_the_repo_is_only_asked_about_when_something_went_wrong(monkeypatch, at_version):
     """Второй запрос -- цена разбора ошибки, и платить её на каждой удачной
     проверке незачем."""

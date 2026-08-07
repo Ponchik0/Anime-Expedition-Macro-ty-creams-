@@ -28,9 +28,16 @@ import zipfile
 import requests
 
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
-GITHUB_REPO = "Cweamy/Anime-Expeditions-Creams-Macro"
-RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
-API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+# Where releases are published -- keep in sync with core/updater.py's
+# RELEASES_REPO (that constant's comment explains what has to change here too
+# if the sources are ever made private again).
+#
+# This used to name the ENGINE AUTHOR's repo, left over from the fork: the
+# bootstrapper installed and updated to upstream's build, not ours -- anyone
+# handed this installer got a different app than the one it ships with.
+RELEASES_REPO = "Ponchik0/ae"
+RELEASES_PAGE = f"https://github.com/{RELEASES_REPO}/releases/latest"
+API_URL = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
 # Must match release.yml's packaged Windows zip name exactly (dashes on
 # purpose -- GitHub rewrites spaces in asset filenames to dots, dashes
 # stay put). The bootstrapper is Windows-only, so always the -Windows zip.
@@ -116,7 +123,7 @@ def _find_zip_asset_url() -> str | None:
                     return asset["browser_download_url"]
     except Exception:
         pass
-    return f"https://github.com/{GITHUB_REPO}/releases/latest/download/{ZIP_ASSET_NAME}"
+    return f"https://github.com/{RELEASES_REPO}/releases/latest/download/{ZIP_ASSET_NAME}"
 
 
 def _download_and_extract(url: str) -> bool:
