@@ -85,6 +85,17 @@ jobs:
           Copy-Item Assets package/Assets -Recurse
           Compress-Archive -Path package/* -DestinationPath "dist/Anime-Expeditions-Macro-Windows.zip"
 
+      # Установщик (см. installer.py). Собирается ПОСЛЕ архива и отдельным
+      # шагом, потому что это самостоятельная маленькая программа: он не
+      # содержит приложения, а скачивает его с этого же релиза при запуске.
+      # Отсюда и порядок — архив должен уже лежать в релизе, иначе первый же
+      # запущенный установщик не найдёт, что ставить.
+      #
+      # Отдельного uninstall.exe не собираем: это тот же файл с ключом
+      # --uninstall, он копирует себя в папку установки (см. do_install).
+      - name: Build installer
+        run: python build_installer.py
+
       - name: Get changelog from the tag message
         # A curated summary, not GitHub's raw commit-list changelog --
         # written into the tag itself (`git tag -a vX.Y.Z -m "..."`) when
@@ -129,6 +140,7 @@ jobs:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
           files: |
+            dist/Anime Expeditions Macro Setup.exe
             dist/Anime-Expeditions-Macro-Windows.zip
             dist/Anime Expeditions Macro.exe
 
