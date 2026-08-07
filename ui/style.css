@@ -2256,6 +2256,12 @@ body.compact-mode #compact-strip { display: flex; }
 .detect-test-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
 .detect-test-preview-wrap { min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); }
 .detect-test-image { display: block; width: 100%; height: auto; }
+/* Пока снимок не сделан, у <img> нет атрибута src (closeDetectTest его
+   снимает), и браузер рисует на этом месте значок битой картинки — первое,
+   что человек видит, открыв проверку Detect. Прячем до появления снимка.
+   Правка чисто в стилях: JS уже делает removeAttribute('src'), трогать его
+   незачем. */
+.detect-test-image:not([src]), .detect-test-image[src=""] { display: none; }
 .detect-test-details { display: flex; flex-direction: column; gap: 6px; }
 .detect-test-detail { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 7px; border-left: 3px solid var(--text-muted); background: var(--bg-surface); }
 .detect-test-detail.found { border-left-color: var(--teal); }

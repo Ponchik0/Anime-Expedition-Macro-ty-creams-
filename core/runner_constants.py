@@ -400,7 +400,11 @@ REJOIN_DEEPLINK = f"roblox://experiences/start?placeId={PLACE_ID}"
 # и занимал поле во весь размах эмбеда (см. runner._send_result_webhook).
 # Оставлены здесь как единственное место, где эти адреса записаны в коде.
 DISCORD_INVITE_URL = "https://discord.gg/cgua6CZDst"
-GITHUB_REPO_URL = "https://github.com/Cweamy/Anime-Expeditions-Creams-Macro"
+# Исходники ЭТОЙ сборки. Раньше здесь стоял репозиторий автора движка — для
+# ссылки с подписью «исходники» это неверно: код, который сейчас работает,
+# лежит не там. Discord и YouTube рядом остаются авторскими намеренно, это его
+# сообщество и его канал, а не наши.
+GITHUB_REPO_URL = "https://github.com/Ponchik0/ae"
 YOUTUBE_URL = "https://www.youtube.com/@Cweamya"
 REJOIN_TIMEOUT = 90.0  # relaunching Roblox from scratch can take a while
 REJOIN_POLL_INTERVAL = 2.0
