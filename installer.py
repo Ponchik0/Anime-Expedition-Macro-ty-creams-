@@ -285,7 +285,12 @@ class InstallerWindow:
                                      self.startmenu_var.get(), self.say, self.progress)
                 self.root.after(0, lambda: self._done_install(target, version))
         except Exception as exc:
-            self.root.after(0, lambda: self._failed(exc))
+            # exc привязывается аргументом по умолчанию, а не захватывается
+            # замыканием: Python удаляет имя при выходе из except, а лямбда
+            # выполнится ПОЗЖЕ, из очереди Tk. С захватом здесь падал бы
+            # NameError — то есть вместо понятного окна с причиной ошибки
+            # человек не увидел бы ничего.
+            self.root.after(0, lambda e=exc: self._failed(e))
 
     def _failed(self, exc):
         self.bar.stop()
