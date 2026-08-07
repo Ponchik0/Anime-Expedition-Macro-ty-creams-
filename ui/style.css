@@ -1899,6 +1899,24 @@ body.compact-mode #compact-strip { display: flex; }
   --text:       #f0f0f0;
   --text-dim:   #b7b7b7;
   --text-muted: #8f8f8f;
+
+  /* АКЦЕНТ ТОЖЕ НЕЙТРАЛЬНЫЙ — иначе тема не чёрно-белая.
+     Раньше здесь переопределялись только фоны и текст, а --accent оставался
+     латунным из :root и протекал в чёрную тему: кнопки, выделение и рамки
+     фокуса светились тёплым жёлтым посреди серого. Это и выглядело
+     «кофейным», хотя фон был чёрный.
+
+     Роль акцента берёт на себя СВЕТЛОТА: самое светлое пятно на экране —
+     то, что сейчас выбрано или чего от тебя ждут. Контраст посчитан:
+     16.93:1 на окне, 16.16:1 на панели, 15.04:1 на карточке, 13.61:1 на поле;
+     тёмный текст на заливке акцентом — 16.93:1. Норма 4.5:1. */
+  --accent:       #e8e8e8;
+  --accent-hover: #ffffff;
+
+  /* --ok и --err НЕ трогаем намеренно. Зелёный и красный здесь не украшение:
+     это «работает» и «ошибка», победа и поражение. Обесцветить их значило бы
+     сделать исход боя неотличимым от любой другой строки. На чёрном они
+     читаются с запасом — 9.74:1 и 6.34:1. */
 }
 
 /* --- Холодный тёмный: те же уровни, но нейтраль уведена в синеву --- */
@@ -2301,4 +2319,157 @@ body.compact-mode #compact-strip { display: flex; }
   padding: 1px 4px;
   border-radius: 4px;
   margin-right: 4px;
+}
+
+/* ============================================ ЭКРАН ПЕРВОГО ЗАПУСКА (onb-) =
+   Классы onb-* стояли в разметке и в app.js, но стилей у них НЕ БЫЛО НИ
+   ОДНОГО — при переписывании этого файла с нуля их не перенесли. Первый
+   экран, который видит человек, открывался голым текстом: чекбоксы системные,
+   колонок нет, отметки проверки не видно. Ниже — недостающая часть.
+
+   Оформление подчиняется тем же правилам, что и весь файл: разделение слоёв
+   фоном и границей 1px, ни градиентов, ни свечений, скругления до 8px,
+   отступы по шкале --s*. Цвет несёт смысл и только его: зелёный — проверка
+   пройдена, красный — не пройдена, латунь — отмечено человеком.
+   ========================================================================= */
+.onb-intro {
+  margin: 0 0 var(--s5);
+  color: var(--text-dim);
+  font-size: 13px;
+  max-width: 70ch;          /* строка длиннее просто не читается */
+}
+.onb-intro b { color: var(--text); font-weight: 600; }
+
+/* Две колонки на широком окне, одна на узком. auto-fit + minmax вместо
+   брейкпоинта: колонка сама схлопывается, когда ей мало места. */
+.onb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--s4);
+}
+.onb-actions { margin-top: var(--s5); }
+
+.onb-ingame {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-card);
+  padding: var(--s4);
+}
+.onb-ingame-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+  font-size: 13px; font-weight: 600;
+}
+.onb-ingame-sub {
+  display: block;
+  font-size: 12px; font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+/* Счётчик. Нейтральный по умолчанию — цветным он становится, только когда
+   действительно что-то сообщает. */
+.onb-ingame-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 1px var(--s2);
+}
+.onb-ingame-count.all { color: var(--ok);  border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.onb-ingame-count.bad { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--border)); }
+
+.onb-ingame-list { list-style: none; margin: 0; padding: 0; }
+.onb-ingame-list > li {
+  padding: var(--s3) 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.onb-ingame-list > li:first-child { border-top: 0; padding-top: 0; }
+.onb-ingame-list > li:last-child { padding-bottom: 0; }
+.onb-ingame-list label { display: flex; gap: var(--s3); cursor: pointer; align-items: flex-start; }
+
+/* Настоящий <input> прячем, но НЕ через display:none — так он выпадает из
+   обхода с клавиатуры. Оставляем его на месте нулевого размера, фокус
+   отрисовывается на нарисованной коробке ниже. */
+.onb-ingame-list input[type="checkbox"] {
+  position: absolute; opacity: 0; width: 0; height: 0;
+}
+.onb-ingame-box {
+  flex-shrink: 0;
+  width: 16px; height: 16px; margin-top: 1px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  position: relative;
+  transition: border-color var(--t-hover) var(--ease), background var(--t-hover) var(--ease);
+}
+.onb-ingame-list label:hover .onb-ingame-box { border-color: var(--accent); }
+.onb-ingame-list input:focus-visible + .onb-ingame-box {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.onb-ingame-list input:checked + .onb-ingame-box {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.onb-ingame-list input:checked + .onb-ingame-box::after {
+  content: ""; position: absolute;
+  left: 4.5px; top: 1px; width: 4px; height: 8px;
+  border: solid var(--accent); border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.onb-ingame-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.onb-ingame-name { font-size: 13px; font-weight: 500; color: var(--text); }
+/* Требуемое значение настройки — моноширинно и в рамке: это то, что человек
+   выставляет в игре дословно, и оно не должно теряться в предложении. */
+.onb-ingame-name b {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  padding: 0 5px;
+  margin-left: var(--s2);
+}
+.onb-ingame-why { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+.onb-ingame-list > li.checked .onb-ingame-name { color: var(--text-dim); }
+
+/* --- Список «На этом компьютере»: не чекбоксы, а вердикт проверки --------- */
+.onb-machine .onb-ingame-list > li {
+  display: flex; gap: var(--s3); align-items: flex-start;
+}
+.onb-machine-mark {
+  flex-shrink: 0;
+  width: 16px; height: 16px; margin-top: 1px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  position: relative;
+}
+/* Пройдено: галочка. Не пройдено: косой крест. Форма, а не только цвет —
+   зелёный и красный для дальтоника почти неразличимы (проверено численно:
+   при дейтеранопии разница между ними ΔE 7.3). */
+.onb-machine .onb-ingame-list > li.pass .onb-machine-mark { border-color: var(--ok); }
+.onb-machine .onb-ingame-list > li.pass .onb-machine-mark::after {
+  content: ""; position: absolute;
+  left: 4.5px; top: 1px; width: 4px; height: 8px;
+  border: solid var(--ok); border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+.onb-machine .onb-ingame-list > li.fail .onb-machine-mark { border-color: var(--err); }
+.onb-machine .onb-ingame-list > li.fail .onb-machine-mark::before,
+.onb-machine .onb-ingame-list > li.fail .onb-machine-mark::after {
+  content: ""; position: absolute;
+  left: 6px; top: 3px; width: 1.5px; height: 8px;
+  background: var(--err);
+}
+.onb-machine .onb-ingame-list > li.fail .onb-machine-mark::before { transform: rotate(45deg); }
+.onb-machine .onb-ingame-list > li.fail .onb-machine-mark::after  { transform: rotate(-45deg); }
+/* Ещё не проверяли — пусто. Справочная строка — точка: её никто не проверит,
+   и вид «непройденной проверки» у неё был бы враньём. */
+.onb-machine .onb-ingame-list > li.info .onb-machine-mark {
+  border-style: dashed; border-color: var(--border);
+}
+.onb-machine-detail { color: var(--text-dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-ingame-box { transition: none; }
 }

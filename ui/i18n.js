@@ -299,6 +299,56 @@
       'Необязательная своя точка внутри кнопки Teams. Ставь ближе к низу и внутрь, если центр найденной картинки промахивается; «Авто» бьёт в центр найденного.',
     'Health Check': 'Проверка окружения',
     'Run Health Check': 'Проверить окружение',
+
+    // --- Первый запуск: чек-лист окружения (#onboarding-modal) ---
+    // Экран, который человек видит РАНЬШЕ всего остального, оставался целиком
+    // английским. Списки рисует app.js через innerHTML, поэтому ключи здесь —
+    // это ровно строки из INGAME_REQUIREMENTS и MACHINE_REQUIREMENTS,
+    // переведённые наблюдателем на лету.
+    //
+    // НАЗВАНИЯ НАСТРОЕК ROBLOX НЕ ПЕРЕВОДИМ намеренно: «UI Scale»,
+    // «Auto Sprint», «Show Match and Rewards», «Auto Vote Start» — это подписи
+    // в самой игре, и человек ищет их там глазами. Переведёшь — он не найдёт
+    // их в меню. Переводим только объяснения, зачем это нужно.
+    'A one-time checklist -- these are the things that cause almost every "it doesn\'t work". You can close this at any time; the same list lives in':
+      'Разовый список — это то, из-за чего почти всегда «не работает». Окно можно закрыть в любой момент, тот же список лежит в',
+    'Settings > Debug': 'Настройки → Отладка',
+
+    'Set these in Roblox': 'Выстави это в Roblox',
+    "only you can — the macro can't see into the game":
+      'кроме тебя некому — макрос не видит, что внутри игры',
+    'Every reference image was captured at 1. At any other scale the macro is hunting for buttons that are the wrong size.':
+      'Все эталоны сняты при значении 1. При другом масштабе макрос ищет кнопки не того размера.',
+    'The built-in walk paths are timed for sprint speed. With this off your character stops short, and units place in the wrong spot or not at all.':
+      'Встроенные маршруты рассчитаны на скорость спринта. Без него персонаж не доходит, и юниты встают не туда или не встают вовсе.',
+    'It covers the part of the screen the macro reads after a match.':
+      'Она закрывает ту часть экрана, которую макрос читает после боя.',
+    'The macro votes at the right moment itself. Left on, rounds start before Pre Start has run.':
+      'Макрос голосует сам в нужный момент. Если оставить включённым, бой начнётся раньше, чем отработает Pre Start.',
+
+    'On this computer': 'На этом компьютере',
+    'Health Check verifies these for you': 'проверку окружения макрос делает сам',
+    'not checked': 'не проверено',
+    'Windows display scale at 100%': 'Масштаб экрана Windows — 100%',
+    'Settings > Display. Any other scale shifts every click.':
+      'Параметры → Дисплей. Любой другой масштаб смещает каждый клик.',
+    'Same elevation as Roblox': 'Те же права, что у Roblox',
+    "Don't run one as Administrator without the other -- Windows silently drops clicks upward.":
+      'Не запускай что-то одно от администратора: Windows молча гасит клики снизу вверх.',
+    'Accessibility and Input Monitoring granted': 'Выданы «Универсальный доступ» и «Мониторинг ввода»',
+    'System Settings > Privacy & Security, then restart the app. Without them clicks do nothing.':
+      'Системные настройки → Конфиденциальность и безопасность, потом перезапустить приложение. Без них клики не проходят.',
+    'Screen Recording granted': 'Выдана «Запись экрана»',
+    'Without it every capture comes back black.': 'Без неё каждый снимок экрана приходит чёрным.',
+    'Room for side-by-side': 'Хватает ширины для окна рядом',
+    'Needs ~1564 logical points of width -- pick a "More Space" scaled resolution on small MacBooks.':
+      'Нужно около 1564 логических точек по ширине — на маленьких MacBook выбери разрешение «Больше пространства».',
+    'Assets folder next to the app': 'Папка Assets лежит рядом с приложением',
+    'It holds every reference image the macro searches for.':
+      'В ней лежат все эталоны, которые макрос ищет на экране.',
+    'Text reading (optional)': 'Чтение текста (не обязательно)',
+    'Only used for stats and reward reading. Install Tesseract later from Settings > General if you want those.':
+      'Нужно только для чтения статистики и наград. Tesseract можно поставить позже из «Настройки → Общие».',
     'Diagnostics': 'Диагностика',
     'Export Failure Report': 'Выгрузить отчёт об ошибке',
     'Macro Coordinates': 'Координаты макроса',

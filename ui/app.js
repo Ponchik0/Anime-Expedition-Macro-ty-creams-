@@ -1377,8 +1377,19 @@ const THEME_ACCENTS = {
   default: '#7c9dff', ocean: '#58a6ff', emerald: '#3fbf8f', sakura: '#e87a9e',
   violet: '#a878f0', sunset: '#e8935a', crimson: '#e05a6d', mono: '#aab2c8',
 };
-let activeThemeBase = 'default';
+// Фон на ЧИСТОЙ установке. Тёплый тёмный (:root) остаётся в списке и
+// выбирается вручную, но первым человек видит нейтральный чёрный.
+//
+// Ставится ЗДЕСЬ ЖЕ, при разборе файла, а не только после загрузки настроек:
+// настройки приходят через мост pywebview, то есть заметно позже первой
+// отрисовки, и без этой строки окно успевало моргнуть тёплым фоном и лишь
+// потом почернеть. Сохранённое значение приезжает следом и перекрывает —
+// тот, кто выбрал другой фон, своего выбора не теряет.
+const DEFAULT_THEME_BASE = 'black';
+
+let activeThemeBase = DEFAULT_THEME_BASE;
 let activeThemeAccent = 'default';
+document.documentElement.dataset.themeBase = DEFAULT_THEME_BASE;
 
 function applyThemeBase(name, announce) {
   activeThemeBase = THEME_BASES[name] ? name : 'default';
@@ -1563,7 +1574,10 @@ async function loadSettingsUI() {
         pywebview.api.set_setting('theme_accent', migrated.accent);
       } catch (e) {}
     } else {
-      applyThemeBase(s.theme_base || 'default', false);
+      // DEFAULT_THEME_BASE, а не 'default': на чистой установке интерфейс
+      // открывается чёрным. Выбор при этом никуда не делся — «Настройки →
+      // Кастомизация → Фон», и сохранённое значение здесь всегда сильнее.
+      applyThemeBase(s.theme_base || DEFAULT_THEME_BASE, false);
       applyThemeAccent(s.theme_accent || 'default', false);
     }
     // Остальные ручки кастомизации — здесь же, при старте. Иначе они
