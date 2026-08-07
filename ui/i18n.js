@@ -108,6 +108,16 @@
 
     // --- Экран ожидания ---
     'Waiting for Roblox': 'Жду Roblox',
+    // Два шага подключения и подсказка под ними. Строка про «dock in
+    // automatically» стояла в разметке с самого начала, но в словарь заведена
+    // не была — и оставалась английской прямо под русской строкой на первом
+    // же экране, который видит человек.
+    'Roblox is running': 'Roblox запущен',
+    'Window docked': 'Окно встроено',
+    "Launch Roblox, it'll dock in automatically": 'Запусти Roblox — окно встроится само',
+    'Roblox found, docking it now': 'Roblox найден, встраиваю окно',
+    "Roblox isn't responding yet — check that it's actually running":
+      'Roblox пока не отвечает — проверь, запущен ли он',
     'Launch Roblox': 'Запустить Roblox',
     'Skip': 'Пропустить',
     'Skip Waiting': 'Пропустить ожидание',

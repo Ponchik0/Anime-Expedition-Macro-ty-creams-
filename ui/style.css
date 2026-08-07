@@ -1759,6 +1759,59 @@ body.compact-mode #compact-strip { display: flex; }
   animation: spin 900ms linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Один знак приложения. Размер обычного заголовка, БЕЗ разряженных заглавных
+   над ним: имя и так стоит в шапке окна, а три повтора подряд — не бренд, а шум. */
+.loading-wordmark {
+  margin-top: var(--s3);
+  font-size: 20px; font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* Два шага подключения. Ровно столько, сколько приложение умеет проверить —
+   см. комментарий в index.html. Моноширинный размер не нужен, а вот
+   ФИКСИРОВАННАЯ ширина отметки нужна: без неё подписи прыгают влево-вправо в
+   момент, когда шаг становится выполненным, и спокойное ожидание превращается
+   в дёргающийся список. */
+.dock-steps {
+  display: flex; flex-direction: column; gap: var(--s2);
+  margin-top: var(--s5);
+  min-width: 180px;
+}
+.dock-step {
+  display: flex; align-items: center; gap: var(--s2);
+  font-size: 13px; font-weight: 500;
+  color: var(--text-muted);
+  transition: color var(--t-tab) var(--ease);
+}
+.dock-step-mark {
+  width: 14px; height: 14px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  position: relative;
+  transition: border-color var(--t-tab) var(--ease);
+}
+/* Идёт прямо сейчас: подсвечен акцентом, но БЕЗ свечения и пульсации —
+   вращается только эмблема выше, двух крутящихся вещей на экране не надо. */
+.dock-step.is-active { color: var(--text); }
+.dock-step.is-active .dock-step-mark { border-color: var(--accent); }
+.dock-step.is-active .dock-step-mark::after {
+  content: ""; position: absolute; inset: 3px;
+  border-radius: 50%; background: var(--accent);
+}
+/* Выполнен: галочка, нарисованная границами, чтобы не тащить сюда SVG. */
+.dock-step.is-done { color: var(--text-dim); }
+.dock-step.is-done .dock-step-mark { border-color: var(--ok); }
+.dock-step.is-done .dock-step-mark::after {
+  content: ""; position: absolute;
+  left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid var(--ok); border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-step, .dock-step-mark { transition: none; }
+}
+
 .loading-tag {
   display: inline-flex; align-items: center; gap: var(--s2);
   padding: var(--s1) var(--s3);

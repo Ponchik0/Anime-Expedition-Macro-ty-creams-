@@ -157,6 +157,12 @@ let recOverlaySelected = '';
 // Called from Python (main.py) the moment docking actually succeeds,
 // don't wait on the 1.5s status poll for a state this important to flip.
 function showDocked() {
+  // Экран ожидания уходит — глушим его опрос, иначе он продолжал бы спрашивать
+  // Python про окна игры всю сессию впустую (см. pollDockState).
+  stopDockPoll();
+  setDockStep('dock-step-running', 'done');
+  setDockStep('dock-step-docked', 'done');
+
   document.getElementById('waiting-screen').style.display = 'none';
   document.getElementById('main-layout').style.display = 'flex';
   document.getElementById('titlebar').style.display = 'flex';
@@ -463,15 +469,82 @@ function runPendingFirstRun() {
   if (what === 'onboarding') showOnboarding();
 }
 
+// --- Состояние подключения на экране ожидания -------------------------------
+// Два шага, и оба — ПРОВЕРЯЕМЫЕ: «Roblox запущен» спрашивается у
+// Api.list_roblox_windows (реальный перечень окон игры), «окно встроено»
+// выставляется из showDocked. Больше шагов не рисуем: индикатор, который
+// показывает прогресс, никем не измеренный, обманывает ровно в тот момент,
+// когда на него смотрят — когда что-то не работает.
+//
+// Опрос живёт ТОЛЬКО пока виден экран ожидания и глушится в showDocked и
+// skipWaiting. Иначе он продолжал бы дёргать Python всю сессию ради экрана,
+// которого давно нет на виду.
+let dockPollTimer = null;
+let dockWaitStarted = 0;
+// Последняя подсказка запоминается ПО-АНГЛИЙСКИ, а не читается из textContent.
+// Читать из DOM здесь нельзя: словарь (ui/i18n.js) переводит узел сразу после
+// записи, поэтому сравнение «в поле уже то же самое?» никогда не совпало бы, и
+// каждые две секунды строка переписывалась бы английской, чтобы её тут же
+// перевели обратно — мигание на ровном месте.
+let lastDockHint = '';
+
+function setDockStep(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('is-done', state === 'done');
+  el.classList.toggle('is-active', state === 'active');
+}
+
+// Молчащий экран через минуту читается как зависший, поэтому подсказка
+// меняется: сначала «запусти игру», а если её так и не видно — прямо об этом.
+function updateDockHint(running) {
+  const hint = document.getElementById('dock-hint');
+  if (!hint) return;
+  const waited = (Date.now() - dockWaitStarted) / 1000;
+  const text = running
+    ? "Roblox found, docking it now"
+    : (waited > 12
+        ? "Roblox isn't responding yet — check that it's actually running"
+        : "Launch Roblox, it'll dock in automatically");
+  if (text === lastDockHint) return;
+  lastDockHint = text;
+  hint.textContent = text;
+}
+
+async function pollDockState() {
+  let running = false;
+  try {
+    const windows = await pywebview.api.list_roblox_windows();
+    running = Array.isArray(windows) && windows.length > 0;
+  } catch (e) {
+    return;  // мост ещё не поднялся или вызов сорвался — молча ждём следующий тик
+  }
+  setDockStep('dock-step-running', running ? 'done' : 'active');
+  setDockStep('dock-step-docked', running ? 'active' : null);
+  updateDockHint(running);
+}
+
+function stopDockPoll() {
+  if (dockPollTimer) { clearInterval(dockPollTimer); dockPollTimer = null; }
+}
+
 function showWaiting() {
   if (skipped) return;  // user chose to use the panel before Roblox docks, don't yank it away
   document.getElementById('main-layout').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'flex';
   document.getElementById('titlebar').style.display = 'none';
+
+  dockWaitStarted = Date.now();
+  setDockStep('dock-step-running', 'active');
+  setDockStep('dock-step-docked', null);
+  stopDockPoll();
+  pollDockState();
+  dockPollTimer = setInterval(pollDockState, 2000);
 }
 
 function skipWaiting() {
   skipped = true;
+  stopDockPoll();
   try { window.pywebview && pywebview.api.skip_waiting(); } catch (e) {}
   document.getElementById('waiting-screen').style.display = 'none';
   document.getElementById('main-layout').style.display = 'flex';

@@ -181,22 +181,33 @@
         <span class="loading-emblem-core"></span>
       </div>
 
-      <div class="flex flex-col items-center" style="margin-top: 14px; line-height: 1;">
-        <span class="logo-anime text-[11px] uppercase tracking-[0.3em] font-bold">Anime</span>
-        <span class="logo-expeditions brand-font text-3xl font-bold" style="line-height: 1.15; margin-top: 2px;">Expeditions</span>
+      <!-- ОДИН знак вместо трёх. Здесь стояло имя приложения три раза подряд
+           за 60 пикселей по вертикали: разряженные заглавные «ANIME»,
+           заголовок «Expeditions» и плашка «Anime Expeditions» под ним. Мелкие
+           разряженные заглавные над заголовком убраны намеренно и возвращать
+           их не нужно: это самый затасканный приём сгенерированных макетов, и
+           держать его на первом же экране — расписываться за него. -->
+      <div class="loading-wordmark brand-font">Anime Expeditions</div>
+
+      <!-- Не декоративный прогресс, а ДВА ФАКТА, которые приложение реально
+           умеет проверить: видно ли хоть одно окно Roblox
+           (Api.list_roblox_windows) и встроено ли оно (showDocked).
+           Шагов ровно столько, сколько система знает. Нарисовать четыре
+           красивых пункта, из которых проверяются два, — это уже не
+           диагностика, а картинка, которая врёт именно тогда, когда на неё
+           смотрят: в момент, когда что-то не работает.
+           Заодно это подсказка без единого слова инструкции: встало на первом
+           пункте — Roblox не запущен; на втором — окно ищется. -->
+      <div class="dock-steps" id="dock-steps">
+        <div class="dock-step" id="dock-step-running">
+          <span class="dock-step-mark"></span><span>Roblox is running</span>
+        </div>
+        <div class="dock-step" id="dock-step-docked">
+          <span class="dock-step-mark"></span><span>Window docked</span>
+        </div>
       </div>
 
-      <div class="loading-tag" style="margin-top: 8px;">
-        <span class="loading-tag-dot"></span>Anime Expeditions
-      </div>
-
-      <div class="flex items-center gap-1.5 text-sm font-semibold" style="color: var(--text); margin-top: 18px;">
-        <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2">
-          <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="0.6" fill="var(--brand)"/>
-        </svg>
-        Waiting for Roblox<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
-      </div>
-      <div class="text-xs font-medium" style="color: var(--text-muted); margin-top: 4px;">Launch Roblox, it'll dock in automatically</div>
+      <div class="text-xs font-medium" id="dock-hint" style="color: var(--text-muted); margin-top: 10px;">Launch Roblox, it'll dock in automatically</div>
 
       <div class="flex items-center gap-2" style="margin-top: 16px;">
         <button onclick="launchRoblox()" class="loading-skip-btn flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full border transition"
