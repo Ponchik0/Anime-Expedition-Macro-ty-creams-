@@ -24,66 +24,24 @@ import os
 import sys
 import ctypes
 import subprocess
-import zipfile
-import requests
+
+import installer_lib as lib
 
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
-# Where releases are published -- keep in sync with core/updater.py's
-# RELEASES_REPO (that constant's comment explains what has to change here too
-# if the sources are ever made private again).
-#
-# This used to name the ENGINE AUTHOR's repo, left over from the fork: the
-# bootstrapper installed and updated to upstream's build, not ours -- anyone
-# handed this installer got a different app than the one it ships with.
-RELEASES_REPO = "Ponchik0/ae"
-RELEASES_PAGE = f"https://github.com/{RELEASES_REPO}/releases/latest"
-API_URL = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
-# Must match release.yml's packaged Windows zip name exactly (dashes on
-# purpose -- GitHub rewrites spaces in asset filenames to dots, dashes
-# stay put). The bootstrapper is Windows-only, so always the -Windows zip.
-ZIP_ASSET_NAME = "Anime-Expeditions-Macro-Windows.zip"
-LOCAL_ZIP = os.path.join(APP_DIR, ".bootstrap_download.zip")
-VERSION_FILE = os.path.join(APP_DIR, ".bootstrap_version")
 
-# The app's own filename is NOT hardcoded. core/updater.py deliberately finds
-# the build by extension "so a future exe rename doesn't silently break
-# updating"; this file used to name it literally, so the same rename would make
-# the bootstrapper extract everything correctly and then report
-# "Couldn't download the macro" because it was looking for the old name.
-_EXE_HINT = "Anime Expeditions Macro.exe"   # tried first; just a hint
+# ВСЁ ОБЩЕЕ ЖИВЁТ В installer_lib. Здесь раньше лежали свои копии: адрес
+# репозитория, имя архива, разбор редиректа, поиск вложения, распаковка и
+# проверка _is_inside. Последняя — защита от того, что запись из архива
+# уедет за пределы папки (zip-slip), и держать её в двух файлах было
+# опаснее всего: копии расходятся, и отставшая становится дырой.
+# Теперь и установщик, и бутстраппер зовут одну реализацию.
+VERSION_FILE = os.path.join(APP_DIR, ".bootstrap_version")
 
 
 def find_local_exe() -> str:
-    """Path of the installed app exe, preferring the known name and otherwise
-    taking the only .exe next to this bootstrapper. Returns the hinted path
-    when nothing is installed yet, so callers can still use it as the
-    "where it will land" target."""
-    hinted = os.path.join(APP_DIR, _EXE_HINT)
-    if os.path.isfile(hinted):
-        return hinted
-    try:
-        me = os.path.basename(os.path.abspath(sys.argv[0])).lower()
-        found = [f for f in os.listdir(APP_DIR)
-                 if f.lower().endswith(".exe") and f.lower() != me]
-    except OSError:
-        found = []
-    if len(found) == 1:
-        return os.path.join(APP_DIR, found[0])
-    return hinted
+    """Путь до установленного приложения рядом с бутстраппером."""
+    return lib.app_exe_path(APP_DIR)
 
-
-def _is_inside(root: str, target: str) -> bool:
-    """Whether `target` really resolves to somewhere under `root`.
-
-    Replaces a pattern check that only inspected the FIRST path component
-    (`":" in parts[0]`). os.path.join restarts at any later absolute component,
-    so an entry like "a/b/D:/payload.exe" sailed past that check and landed at
-    "D:payload.exe" -- outside the install entirely. Asking where the path
-    actually ends up cannot be fooled by where the drive letter happens to sit.
-    """
-    root = os.path.realpath(root)
-    target = os.path.realpath(target)
-    return target == root or target.startswith(root + os.sep)
 
 MB_OK = 0x40
 MB_ERROR = 0x10
@@ -96,78 +54,18 @@ def _msg(text: str, icon: int = MB_OK):
         pass
 
 
-def _latest_tag() -> str | None:
-    """Same trick core/updater.py uses: the plain github.com releases page
-    redirects to the tagged release, which tells us the latest version
-    without touching the rate-limited api.github.com endpoint."""
+def _download_and_extract() -> bool:
+    """Скачивает архив релиза и раскладывает его рядом с бутстраппером.
+
+    Правила распаковки (exe перезаписывается, файлы в Assets добавляются, но
+    не перетираются, всё, что уезжает за пределы папки, отбрасывается) живут
+    в installer_lib.extract_release — одни и те же для установщика и для
+    бутстраппера."""
     try:
-        resp = requests.head(RELEASES_PAGE, allow_redirects=False, timeout=10)
-        location = resp.headers.get("Location", "")
-        if "/releases/tag/" in location:
-            return location.rsplit("/releases/tag/", 1)[-1]
-    except Exception:
-        pass
-    return None
-
-
-def _find_zip_asset_url() -> str | None:
-    """The packaged release zip's download URL (exe + Assets/, see module
-    docstring). Falls back to a constructed /releases/latest/download/ link
-    if the API call fails/rate-limits -- the asset name is fixed by
-    release.yml, so the constructed URL is just as good when the API isn't."""
-    try:
-        resp = requests.get(API_URL, timeout=15)
-        if resp.status_code == 200:
-            for asset in resp.json().get("assets", []):
-                if asset.get("name", "").lower() == ZIP_ASSET_NAME.lower():
-                    return asset["browser_download_url"]
-    except Exception:
-        pass
-    return f"https://github.com/{RELEASES_REPO}/releases/latest/download/{ZIP_ASSET_NAME}"
-
-
-def _download_and_extract(url: str) -> bool:
-    """Downloads the release zip and lays it out beside this bootstrapper:
-    the exe always overwritten (that's the update), Assets files add-only
-    (never clobbering an image the user has replaced/added -- see module
-    docstring). The zip is fetched to a temp name first so a half-finished
-    download can never masquerade as a good archive on the next run."""
-    try:
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            with open(LOCAL_ZIP, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-        with zipfile.ZipFile(LOCAL_ZIP) as zf:
-            for info in zf.infolist():
-                if info.is_dir():
-                    continue
-                # Normalize + sanity-check each entry path: zip filenames are
-                # untrusted input, so anything absolute or dotted-out of the
-                # install folder is skipped outright.
-                parts = info.filename.replace("\\", "/").split("/")
-                if not parts or any(p in ("", ".", "..") for p in parts):
-                    continue
-                dest = os.path.join(APP_DIR, *parts)
-                # Containment is checked on the RESOLVED path, not by pattern
-                # matching -- see _is_inside.
-                if not _is_inside(APP_DIR, dest):
-                    continue
-                is_asset = parts[0].lower() == "assets"
-                if is_asset and os.path.exists(dest):
-                    continue  # user's own/edited reference image -- keep it
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with zf.open(info) as src, open(dest, "wb") as out:
-                    out.write(src.read())
+        lib.install_release(APP_DIR)
         return os.path.isfile(find_local_exe())
     except Exception:
         return False
-    finally:
-        try:
-            os.remove(LOCAL_ZIP)
-        except OSError:
-            pass
 
 
 def _local_version() -> str:
@@ -190,7 +88,7 @@ def ensure_app() -> bool:
     """Make sure the real exe (and its Assets folder) is present and up to
     date. Returns True if it's ready to launch, False if there's nothing
     usable at all."""
-    latest = _latest_tag()
+    latest = lib.latest_tag()
     have_exe = os.path.isfile(find_local_exe())
     # The Assets check matters for installs made by an OLD bootstrapper
     # (which only ever downloaded the bare exe): same tag, but no Assets
@@ -201,8 +99,7 @@ def ensure_app() -> bool:
     if have_exe and have_assets and (not latest or latest == _local_version()):
         return True  # already up to date (or offline -- just use what we have)
 
-    zip_url = _find_zip_asset_url()
-    ok = _download_and_extract(zip_url)
+    ok = _download_and_extract()
     if ok and latest:
         _save_local_version(latest)
     return ok or have_exe

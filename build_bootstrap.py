@@ -28,6 +28,11 @@ cmd = [
     f"--icon={os.path.join(ROOT, 'logo.ico')}",
     "--distpath=dist",
     "--workpath=build",
+    # installer_lib теперь общий с установщиком (там же живёт защита от
+    # zip-slip). PyInstaller находит его по импорту, но указываем явно:
+    # молча потерянный модуль всплывёт только при запуске готового exe, а
+    # бутстраппер запускают на чужой машине, где отлаживать некому.
+    "--hidden-import=installer_lib",
     os.path.join(ROOT, "bootstrap.py"),
 ]
 
