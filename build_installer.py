@@ -62,12 +62,17 @@ cmd = [
     os.path.join(ROOT, "installer.py"),
 ]
 
-print("Собираю установщик через PyInstaller...")
+# ВЫВОД ТОЛЬКО ASCII, и это не вкусовщина. Сборка идёт в GitHub Actions, где
+# консоль Windows работает в cp1252: любая кириллица в print роняет скрипт с
+# UnicodeEncodeError ЕЩЁ ДО запуска PyInstaller. Именно так этот шаг и упал на
+# первом же релизе — сборка не начиналась вовсе. Комментарии по-русски можно,
+# их никто не печатает; строки в print — нельзя.
+print("Building installer exe with PyInstaller...")
 if subprocess.run(cmd, cwd=ROOT).returncode != 0:
-    print("\nСБОРКА НЕ УДАЛАСЬ")
+    print("\nBuild FAILED!")
     sys.exit(1)
 
 out = os.path.join(ROOT, "dist", f"{EXE_NAME}.exe")
 size = os.path.getsize(out) / 1048576 if os.path.isfile(out) else 0
-print(f"\nГотово: dist/{EXE_NAME}.exe ({size:.1f} МБ)")
-print("Он же становится uninstall.exe в папке установки — см. installer.do_install.")
+print(f"\nDone! Check dist/{EXE_NAME}.exe ({size:.1f} MB)")
+print("Same file becomes uninstall.exe in the install folder -- see installer.do_install.")
