@@ -18,18 +18,23 @@ Requires:
     py -3.12 -m pip install pyinstaller
     py -3.12 build_pyinstaller.py
 
-Output: dist/Cream's Macro - Anime Expeditions.exe
+Output: dist/Anime Expeditions Macro.exe
 """
 import subprocess
 import sys
 import os
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+# Named after the tool, not after a person: this is a fork, and shipping a
+# download that carries the upstream author's handle read as though it were
+# his build. Attribution for the engine lives in README's "Авторство"
+# section, which is where it belongs -- a filename is not a credit line.
+#
 # No apostrophe -- PyInstaller writes --name straight into an
 # auto-generated .spec file as an unescaped Python string literal
-# ("Cream's Macro..." breaks that file's own syntax). Nuitka took the name
-# as a plain filename argument, so this never came up there.
-EXE_NAME = "Creams Macro - Anime Expeditions"
+# (a name like "Cream's Macro..." breaks that file's own syntax). Nuitka took
+# the name as a plain filename argument, so this never came up there.
+EXE_NAME = "Anime Expeditions Macro"
 
 # winforms.py imports win32 unconditionally even though edgechromium is the
 # backend actually used at runtime -- PyInstaller's own pywebview hook
@@ -132,14 +137,14 @@ def _windows_version_file():
     mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[
     StringFileInfo([StringTable('040904B0', [
-      StringStruct('CompanyName', "Cream's Macro"),
+      StringStruct('CompanyName', "Ponchik0"),
       StringStruct('FileDescription', "Anime Expeditions Macro"),
       StringStruct('FileVersion', "{ver}"),
       StringStruct('InternalName', "{EXE_NAME}"),
       StringStruct('OriginalFilename', "{EXE_NAME}.exe"),
-      StringStruct('ProductName', "Cream's Macro - Anime Expeditions"),
+      StringStruct('ProductName', "Anime Expeditions Macro"),
       StringStruct('ProductVersion', "{ver}"),
-      StringStruct('LegalCopyright', "Cream's Macro"),
+      StringStruct('LegalCopyright', "MIT. Основано на Cream's Macro (Cweamy)"),
     ])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

@@ -1,5 +1,5 @@
 """
-Cream's Macro | Anime Expeditions
+Anime Expeditions Macro
 Run:  python main.py            (launches the docked macro UI)
       python main.py --test     (CLI diagnostics for mouse/keyboard/window)
 """

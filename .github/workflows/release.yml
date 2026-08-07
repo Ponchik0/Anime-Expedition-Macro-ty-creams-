@@ -81,9 +81,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force package | Out-Null
-          Copy-Item "dist/Creams Macro - Anime Expeditions.exe" package/
+          Copy-Item "dist/Anime Expeditions Macro.exe" package/
           Copy-Item Assets package/Assets -Recurse
-          Compress-Archive -Path package/* -DestinationPath "dist/Creams-Macro-Anime-Expeditions-Windows.zip"
+          Compress-Archive -Path package/* -DestinationPath "dist/Anime-Expeditions-Macro-Windows.zip"
 
       - name: Get changelog from the tag message
         # A curated summary, not GitHub's raw commit-list changelog --
@@ -129,8 +129,8 @@ jobs:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
           files: |
-            dist/Creams-Macro-Anime-Expeditions-Windows.zip
-            dist/Creams Macro - Anime Expeditions.exe
+            dist/Anime-Expeditions-Macro-Windows.zip
+            dist/Anime Expeditions Macro.exe
 
       # Python script, not inline bash+jq -- the jq version sent Discord
       # invalid JSON (HTTP 400, code 50109) on the real runner the first
@@ -176,7 +176,7 @@ jobs:
       - name: Package macOS zip (.app + editable Assets folder)
         run: |
           mkdir -p package
-          cp -R "dist/Creams Macro - Anime Expeditions.app" package/
+          cp -R "dist/Anime Expeditions Macro.app" package/
           cp -R Assets package/Assets
           # ditto, not zip -- preserves the .app bundle's resource forks/
           # permissions the way macOS expects; a plain zip of a .app can
@@ -185,9 +185,9 @@ jobs:
           # made manual extraction awkward and silently broke the updater's Assets
           # merge on mac (it looked for Assets/ at the zip root). The updater still
           # tolerates old wrapped zips -- see core/updater.py.
-          cd package && ditto -c -k --sequesterRsrc . ../dist/Creams-Macro-Anime-Expeditions-macOS.zip
+          cd package && ditto -c -k --sequesterRsrc . ../dist/Anime-Expeditions-Macro-macOS.zip
 
       - name: Upload macOS asset to the release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Creams-Macro-Anime-Expeditions-macOS.zip
+          files: dist/Anime-Expeditions-Macro-macOS.zip

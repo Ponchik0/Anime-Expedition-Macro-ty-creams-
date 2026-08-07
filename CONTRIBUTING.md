@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-Guidelines for contributing code, documentation, and assets to Creams Macro.
+Guidelines for contributing code, documentation, and assets to Anime Expeditions Macro.
 
 ---
 
@@ -16,8 +16,8 @@ Install prerequisites before starting development:
 
 1. Clone repository:
    ```bash
-   git clone https://github.com/Cweamy/Anime-Expeditions-Creams-Macro.git
-   cd Anime-Expeditions-Creams-Macro
+   git clone https://github.com/Ponchik0/ae.git
+   cd ae
    ```
 
 2. Create virtual environment:

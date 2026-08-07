@@ -56,6 +56,13 @@ else:
 #    signature and gets wiped every time the .app is replaced on self-update.
 # ~/Library/Application Support/<app> is the macOS-standard home for this:
 # writable, persistent across updates, and immune to translocation.
+# ЭТО ИМЯ НЕ ПЕРЕИМЕНОВЫВАТЬ ВМЕСТЕ СО СБОРКОЙ. Сборка называется
+# "Anime Expeditions Macro" (см. build_pyinstaller.py) -- здесь осталось
+# старое имя намеренно: это ПАПКА С ДАННЫМИ, а не название загрузки. Сменить
+# его значит увести настройки, шаблоны, маршруты и эталоны каждого, кто уже
+# пользуется mac-сборкой, в новую пустую папку — данные не удалятся, но
+# пропадут из виду, а это ровно то же самое на ощупь. Переименовывать только
+# вместе с переносом старой папки в новую, не раньше.
 if IS_FROZEN and sys.platform == "darwin":
     APP_DIR = os.path.join(
         os.path.expanduser("~/Library/Application Support"),

@@ -97,8 +97,22 @@ RELEASES_PAGE_URL = f"https://github.com/{RELEASES_REPO}/releases/latest"
 # platform's zip automatically. The Windows zip briefly shipped unsuffixed
 # (v0.3.0-v0.4.0 as published) -- renamed for symmetry once the mac zip
 # joined it.
-RELEASE_ZIP_NAME = ("Creams-Macro-Anime-Expeditions-macOS.zip" if sys.platform == "darwin"
-                     else "Creams-Macro-Anime-Expeditions-Windows.zip")
+#
+# Renamed in v1.1.2: the old name carried the upstream author's handle
+# ("Creams-..."), so every download this fork published read as his build.
+# Safe to rename BECAUSE of the suffix-first matching described above -- the
+# platform suffix is the part that must never change; the rest is a label.
+# The old names stay reachable through _RELEASE_ZIP_LEGACY_NAMES below.
+RELEASE_ZIP_NAME = ("Anime-Expeditions-Macro-macOS.zip" if sys.platform == "darwin"
+                     else "Anime-Expeditions-Macro-Windows.zip")
+
+# Every name this zip has ever shipped under, newest first -- tried in order
+# when only a constructed URL is available (see _get_release_zip_with_fallback).
+_RELEASE_ZIP_LEGACY_NAMES = (
+    "Creams-Macro-Anime-Expeditions-macOS.zip" if sys.platform == "darwin"
+    else "Creams-Macro-Anime-Expeditions-Windows.zip",
+    "Creams-Macro-Anime-Expeditions.zip",   # unsuffixed, v0.3.0-v0.4.0
+)
 # BUNDLE_DIR, not APP_DIR -- VERSION ships as part of the app itself (it's
 # what identifies which release you're running), not user-owned data.
 VERSION_FILE = os.path.join(constants.BUNDLE_DIR, "VERSION")
@@ -725,7 +739,7 @@ def _get_release_zip_with_fallback(release_zip_url: str, log):
     the real name shouldn't get retried into confusion on legacy names)."""
     base, _, name = release_zip_url.rpartition("/")
     candidates = [release_zip_url]
-    for legacy in (RELEASE_ZIP_NAME, "Creams-Macro-Anime-Expeditions.zip"):
+    for legacy in (RELEASE_ZIP_NAME, *_RELEASE_ZIP_LEGACY_NAMES):
         alt = f"{base}/{legacy}"
         if alt not in candidates:
             candidates.append(alt)
@@ -1043,7 +1057,7 @@ def stage_exe_update(new_exe_path: str) -> str:
 setlocal enabledelayedexpansion
 set LOG="{log_path}"
 echo ---- %date% %time% ---- > %LOG%
-echo Updating Cream's Macro -- please wait, this window closes itself...
+echo Updating Anime Expeditions Macro -- please wait, this window closes itself...
 echo [1/5] Waiting for the app to close itself (image: {exe_name})... >> %LOG%
 rem taskkill is the SAFETY NET for a shutdown that hangs, not the way the app
 rem normally closes -- so wait for the app to go on its own FIRST and only

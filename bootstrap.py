@@ -1,5 +1,5 @@
 """
-Tiny bootstrapper for Cream's Macro | Anime Expeditions.
+Tiny bootstrapper for Anime Expeditions Macro.
 
 Downloads the real app from GitHub Releases on first run (or when a newer
 version is out) and launches it. Built as its own separate, much smaller
@@ -41,7 +41,7 @@ API_URL = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
 # Must match release.yml's packaged Windows zip name exactly (dashes on
 # purpose -- GitHub rewrites spaces in asset filenames to dots, dashes
 # stay put). The bootstrapper is Windows-only, so always the -Windows zip.
-ZIP_ASSET_NAME = "Creams-Macro-Anime-Expeditions-Windows.zip"
+ZIP_ASSET_NAME = "Anime-Expeditions-Macro-Windows.zip"
 LOCAL_ZIP = os.path.join(APP_DIR, ".bootstrap_download.zip")
 VERSION_FILE = os.path.join(APP_DIR, ".bootstrap_version")
 
@@ -49,8 +49,8 @@ VERSION_FILE = os.path.join(APP_DIR, ".bootstrap_version")
 # the build by extension "so a future exe rename doesn't silently break
 # updating"; this file used to name it literally, so the same rename would make
 # the bootstrapper extract everything correctly and then report
-# "Couldn't download Cream's Macro" because it was looking for the old name.
-_EXE_HINT = "Creams Macro - Anime Expeditions.exe"   # tried first; just a hint
+# "Couldn't download the macro" because it was looking for the old name.
+_EXE_HINT = "Anime Expeditions Macro.exe"   # tried first; just a hint
 
 
 def find_local_exe() -> str:
@@ -91,7 +91,7 @@ MB_ERROR = 0x10
 
 def _msg(text: str, icon: int = MB_OK):
     try:
-        ctypes.windll.user32.MessageBoxW(0, text, "Cream's Macro", icon)
+        ctypes.windll.user32.MessageBoxW(0, text, "Anime Expeditions Macro", icon)
     except Exception:
         pass
 
@@ -211,7 +211,7 @@ def ensure_app() -> bool:
 def main():
     if not ensure_app():
         _msg(
-            "Couldn't download Cream's Macro. Check your internet connection "
+            "Couldn't download Anime Expeditions Macro. Check your internet connection "
             "and try again.",
             MB_ERROR,
         )
