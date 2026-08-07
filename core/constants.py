@@ -56,18 +56,41 @@ else:
 #    signature and gets wiped every time the .app is replaced on self-update.
 # ~/Library/Application Support/<app> is the macOS-standard home for this:
 # writable, persistent across updates, and immune to translocation.
-# ЭТО ИМЯ НЕ ПЕРЕИМЕНОВЫВАТЬ ВМЕСТЕ СО СБОРКОЙ. Сборка называется
-# "Anime Expeditions Macro" (см. build_pyinstaller.py) -- здесь осталось
-# старое имя намеренно: это ПАПКА С ДАННЫМИ, а не название загрузки. Сменить
-# его значит увести настройки, шаблоны, маршруты и эталоны каждого, кто уже
-# пользуется mac-сборкой, в новую пустую папку — данные не удалятся, но
-# пропадут из виду, а это ровно то же самое на ощупь. Переименовывать только
-# вместе с переносом старой папки в новую, не раньше.
+# ПЕРЕИМЕНОВАНИЕ ПАПКИ ДАННЫХ. Сборка называется "Anime Expeditions Macro"
+# (см. build_pyinstaller.py), и папка данных теперь тоже. Но у того, кто уже
+# пользовался mac-сборкой, все настройки, шаблоны, маршруты и эталоны лежат
+# под СТАРЫМ именем. Просто сменить строку значило бы запустить приложение с
+# нуля: данные не удалятся, но пропадут из виду, а на ощупь это то же самое.
+#
+# Поэтому старая папка ПЕРЕЕЗЖАЕТ, и ровно один раз: перенос делается, только
+# если старая есть, а новой ещё нет. Дальше условие само перестаёт
+# выполняться. os.rename, а не копирование: он атомарный и не оставляет двух
+# расходящихся копий, за которыми потом не уследить.
+#
+# Любая ошибка переезда — не повод не запуститься: тогда остаёмся на СТАРОЙ
+# папке, где данные лежат. Пустое новое место было бы хуже отказа.
+_MAC_APP_DIR_LEGACY = "Creams Macro - Anime Expeditions"
+_MAC_APP_DIR = "Anime Expeditions Macro"
+
+
+def _resolve_mac_app_dir(support_dir: str) -> str:
+    """Куда класть данные mac-сборки, с разовым переездом со старого имени.
+
+    Отдельной функцией, а не пятью строками на уровне модуля, по одной
+    причине: это перенос ПОЛЬЗОВАТЕЛЬСКИХ данных, а проверить его на Windows
+    руками нельзя. Функцию покрывают тесты, ветку `if` — нет."""
+    new = os.path.join(support_dir, _MAC_APP_DIR)
+    legacy = os.path.join(support_dir, _MAC_APP_DIR_LEGACY)
+    if os.path.isdir(legacy) and not os.path.exists(new):
+        try:
+            os.rename(legacy, new)
+        except OSError:
+            return legacy  # переезд не удался — работаем там, где данные лежат
+    return new
+
+
 if IS_FROZEN and sys.platform == "darwin":
-    APP_DIR = os.path.join(
-        os.path.expanduser("~/Library/Application Support"),
-        "Creams Macro - Anime Expeditions",
-    )
+    APP_DIR = _resolve_mac_app_dir(os.path.expanduser("~/Library/Application Support"))
     try:
         os.makedirs(APP_DIR, exist_ok=True)
     except OSError:
