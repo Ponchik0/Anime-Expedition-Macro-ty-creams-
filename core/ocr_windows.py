@@ -44,58 +44,123 @@ def is_available() -> bool:
     return _engine is not None
 
 
+def backend_name() -> str:
+    """Name of the active WinRT projection, or an empty string if unavailable."""
+    return _backend.name if is_available() else ""
+
+
+def unavailable_reason() -> str:
+    """Why Windows OCR is unavailable after probing. Mainly for diagnostics."""
+    is_available()
+    return _unavailable_reason
+
+
+def _warn_if_unavailable() -> None:
+    global _warned_unavailable
+    if _warned_unavailable:
+        return
+    _warned_unavailable = True
+    detail = unavailable_reason()
+    log.warning("Windows OCR unavailable%s", f": {detail}" if detail else "")
+
+
+def _software_bitmap_from_image(img):
+    bgr = img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    bgra = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
+    h, w = bgra.shape[:2]
+    buf = _backend.crypto.CryptographicBuffer.create_from_byte_array(bytes(bgra.tobytes()))
+    if _backend.buffer_alpha_arg:
+        return _backend.imaging.SoftwareBitmap.create_copy_from_buffer(
+            buf,
+            _backend.imaging.BitmapPixelFormat.BGRA8,
+            w,
+            h,
+            _backend.imaging.BitmapAlphaMode.PREMULTIPLIED,
+        )
+    return _backend.imaging.SoftwareBitmap.create_copy_from_buffer(
+        buf,
+        _backend.imaging.BitmapPixelFormat.BGRA8,
+        w,
+        h,
+    )
+
+
+def _recognize(img):
+    bitmap = _software_bitmap_from_image(img)
+    with _lock:
+        # A fresh loop per call (not a cached one): recognitions can come
+        # from different threads -- an asyncio loop is bound to the
+        # thread that created it, so reusing one across threads raises.
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_engine.recognize_async(bitmap))
+        finally:
+            loop.close()
+
+
+def _rapidocr_text(img) -> str:
+    try:
+        from core import ocr
+        return ocr._rapidocr_text(img)
+    except Exception:
+        return ""
+
+
+def _rapidocr_lines(img) -> list:
+    try:
+        from core import ocr
+        engine = ocr.get_rapidocr()
+        if engine is None or img is None or img.size == 0:
+            return []
+        if not img.flags["C_CONTIGUOUS"]:
+            import numpy as np
+            img = np.ascontiguousarray(img)
+        if img.ndim == 2:
+            rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        else:
+            rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        result, _elapsed = engine(rgb_img)
+        lines = []
+        for item in result or []:
+            if len(item) < 2:
+                continue
+            bbox, text = item[0], item[1]
+            xs = [int(p[0]) for p in bbox]
+            ys = [int(p[1]) for p in bbox]
+            x1, x2 = min(xs), max(xs)
+            y1, y2 = min(ys), max(ys)
+            lines.append({
+                "text": text or "",
+                "x": x1, "y": y1, "w": x2 - x1, "h": y2 - y1,
+                "cx": (x1 + x2) // 2, "cy": (y1 + y2) // 2,
+            })
+        return lines
+    except Exception:
+        return []
+
+
 def ocr_image(img) -> str:
     """Recognize text in a numpy image (grayscale or BGR). Returns the
     recognized text as one space-joined string, or '' on any failure --
     callers regex/whitelist it themselves, exactly like a Tesseract
     result. Never raises: OCR is best-effort everywhere it's used."""
     if not is_available():
-        return ""
+        _warn_if_unavailable()
+        return _rapidocr_text(img)
     try:
-        from winsdk.windows.graphics.imaging import SoftwareBitmap, BitmapPixelFormat, BitmapAlphaMode
-        from winsdk.windows.security.cryptography import CryptographicBuffer
-
-        bgr = img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        bgra = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
-        h, w = bgra.shape[:2]
-        buf = CryptographicBuffer.create_from_byte_array(bytes(bgra.tobytes()))
-        sb = SoftwareBitmap.create_copy_from_buffer(buf, BitmapPixelFormat.BGRA8, w, h,
-                                                     BitmapAlphaMode.PREMULTIPLIED)
-        with _lock:
-            # A fresh loop per call (not a cached one): recognitions can come
-            # from different threads -- an asyncio loop is bound to the
-            # thread that created it, so reusing one across threads raises.
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(_engine.recognize_async(sb))
-            finally:
-                loop.close()
-        return result.text or ""
+        result = _recognize(img)
+        return result.text or _rapidocr_text(img)
     except Exception:
-        return ""
+        return _rapidocr_text(img)
 
 
 def ocr_lines(img) -> list:
     """Recognize text while preserving each line's image-space bounds."""
     if not is_available():
-        return []
+        _warn_if_unavailable()
+        return _rapidocr_lines(img)
     try:
-        from winsdk.windows.graphics.imaging import SoftwareBitmap, BitmapPixelFormat, BitmapAlphaMode
-        from winsdk.windows.security.cryptography import CryptographicBuffer
-
-        bgr = img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        bgra = cv2.cvtColor(bgr, cv2.COLOR_BGR2BGRA)
-        h, w = bgra.shape[:2]
-        buf = CryptographicBuffer.create_from_byte_array(bytes(bgra.tobytes()))
-        bitmap = SoftwareBitmap.create_copy_from_buffer(
-            buf, BitmapPixelFormat.BGRA8, w, h, BitmapAlphaMode.PREMULTIPLIED)
-        with _lock:
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(_engine.recognize_async(bitmap))
-            finally:
-                loop.close()
-
+        result = _recognize(img)
         lines = []
         for line in result.lines:
             words = list(line.words)
@@ -111,6 +176,8 @@ def ocr_lines(img) -> list:
                 "x": x1, "y": y1, "w": x2 - x1, "h": y2 - y1,
                 "cx": (x1 + x2) // 2, "cy": (y1 + y2) // 2,
             })
-        return lines
+        if lines:
+            return lines
+        return _rapidocr_lines(img)
     except Exception:
-        return []
+        return _rapidocr_lines(img)
