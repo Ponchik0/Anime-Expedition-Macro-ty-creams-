@@ -2125,6 +2125,7 @@ class Api:
     def _default_fuel_settings() -> dict:
         return {
             "enabled": False,
+            "interval_minutes": 0,
             "resources": {
                 "resource_drill": {
                     "enabled": False,
@@ -2152,6 +2153,7 @@ class Api:
 
         canonical = {
             "enabled": bool(fuel.get("enabled")),
+            "interval_minutes": int(fuel.get("interval_minutes") or 0),
             "resources": {},
             "paths": {},
         }
@@ -2171,20 +2173,32 @@ class Api:
     def get_fuel_settings(self) -> dict:
         from core.runner_constants import (
             FUEL_AMOUNT_MAX,
+            FUEL_INTERVAL_MINUTES_MAX,
             FUEL_INTERVAL_SECONDS,
             FUEL_PATH_KEYS,
             FUEL_RESOURCES,
             FUEL_RETRY_SECONDS,
+            fuel_interval_override_seconds,
             fuel_refill_interval_seconds,
         )
 
         defaults = self._default_fuel_settings()
         saved = cfg.load().get("fuel_refill") or {}
+        try:
+            interval_minutes = int(saved.get("interval_minutes", defaults["interval_minutes"]))
+        except (TypeError, ValueError):
+            interval_minutes = 0
+        interval_minutes = min(FUEL_INTERVAL_MINUTES_MAX, max(0, interval_minutes))
+        default_interval_seconds = (
+            fuel_interval_override_seconds(interval_minutes)
+            if interval_minutes else FUEL_INTERVAL_SECONDS
+        )
         fuel = {
             "enabled": bool(saved.get("enabled", defaults["enabled"])),
             "resources": {},
             "paths": {},
-            "interval_seconds": FUEL_INTERVAL_SECONDS,
+            "interval_minutes": interval_minutes,
+            "interval_seconds": default_interval_seconds,
             "retry_seconds": FUEL_RETRY_SECONDS,
         }
         saved_resources = saved.get("resources") if isinstance(saved.get("resources"), dict) else {}
@@ -2203,6 +2217,10 @@ class Api:
                     amount = min(FUEL_AMOUNT_MAX, max(1, int(amount)))
                 except (TypeError, ValueError):
                     amount = "max"
+            effective_interval_seconds = (
+                fuel_interval_override_seconds(interval_minutes)
+                if interval_minutes else fuel_refill_interval_seconds(amount)
+            )
             try:
                 last_refilled_at = max(0.0, float(source.get("last_refilled_at") or 0))
             except (TypeError, ValueError):
@@ -2212,7 +2230,7 @@ class Api:
             except (TypeError, ValueError):
                 next_attempt_at = 0.0
             # Legacy development builds used retry_after only for failures.
-            # Derive the quantity-aware attempt once when that older shape is read.
+            # Derive the attempt once using the amount interval or user override.
             if "next_attempt_at" not in saved_source:
                 try:
                     retry_after = max(0.0, float(source.get("retry_after") or 0))
@@ -2220,7 +2238,7 @@ class Api:
                     retry_after = 0.0
                 next_attempt_at = max(
                     (
-                        last_refilled_at + fuel_refill_interval_seconds(amount)
+                        last_refilled_at + effective_interval_seconds
                         if last_refilled_at else 0.0
                     ),
                     retry_after,
@@ -2234,7 +2252,7 @@ class Api:
                 "next_attempt_at": next_attempt_at,
                 "next_due_at": next_attempt_at,
                 "remaining_seconds": max(0, int(next_attempt_at - now + 0.999)),
-                "interval_seconds": fuel_refill_interval_seconds(amount),
+                "interval_seconds": effective_interval_seconds,
                 "due": due,
             }
 
@@ -2259,6 +2277,40 @@ class Api:
         fuel["resources"][resource]["enabled"] = bool(enabled)
         self._save_fuel_settings(fuel)
         return {"ok": True}
+
+    def set_fuel_interval(self, minutes) -> dict:
+        from core.runner_constants import (
+            FUEL_INTERVAL_MINUTES_MAX,
+            FUEL_INTERVAL_MINUTES_MIN,
+            fuel_interval_override_seconds,
+            fuel_refill_interval_seconds,
+        )
+
+        try:
+            interval_minutes = int(minutes)
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "bad_interval"}
+        if interval_minutes != 0:
+            interval_minutes = min(
+                FUEL_INTERVAL_MINUTES_MAX,
+                max(FUEL_INTERVAL_MINUTES_MIN, interval_minutes),
+            )
+        fuel = self.get_fuel_settings()
+        fuel["interval_minutes"] = interval_minutes
+        for resource in fuel["resources"].values():
+            if not resource.get("enabled"):
+                continue
+            last_refilled_at = float(resource.get("last_refilled_at") or 0)
+            if not last_refilled_at:
+                resource["next_attempt_at"] = 0.0
+                continue
+            interval_seconds = (
+                fuel_interval_override_seconds(interval_minutes)
+                if interval_minutes else fuel_refill_interval_seconds(resource.get("amount"))
+            )
+            resource["next_attempt_at"] = last_refilled_at + interval_seconds
+        self._save_fuel_settings(fuel)
+        return {"ok": True, "interval_minutes": interval_minutes}
 
     def set_fuel_resource_amount(self, resource: str, amount) -> dict:
         from core.runner_constants import FUEL_AMOUNT_MAX, FUEL_RESOURCES
@@ -2301,6 +2353,7 @@ class Api:
         from core.runner_constants import (
             FUEL_RESOURCES,
             FUEL_RETRY_SECONDS,
+            fuel_interval_override_seconds,
             fuel_refill_interval_seconds,
         )
 
@@ -2311,8 +2364,11 @@ class Api:
         now = time.time()
         if succeeded:
             state["last_refilled_at"] = now
-            state["next_attempt_at"] = (
-                now + fuel_refill_interval_seconds(state.get("amount")))
+            interval_seconds = (
+                fuel_interval_override_seconds(fuel.get("interval_minutes"))
+                if fuel.get("interval_minutes") else fuel_refill_interval_seconds(state.get("amount"))
+            )
+            state["next_attempt_at"] = now + interval_seconds
         else:
             state["next_attempt_at"] = now + FUEL_RETRY_SECONDS
         self._save_fuel_settings(fuel)
