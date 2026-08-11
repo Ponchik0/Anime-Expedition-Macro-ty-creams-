@@ -51,7 +51,7 @@ def test_reach_event_act_selected_clicks_villian_invasion_between_event_and_game
     runner._cxy = lambda name: (10, 20)
     runner._spam_back_until_gone = lambda hwnd, stop_event: events.append(("back",))
 
-    def click_found_image(hwnd, image_name, timeout, stop_event):
+    def click_found_image(hwnd, image_name, timeout, stop_event, *args, **kwargs):
         events.append(("image", image_name))
         return {"score": 0.99}
 
@@ -68,7 +68,6 @@ def test_reach_event_act_selected_clicks_villian_invasion_between_event_and_game
     assert events == [
         ("image", "nav_event"),
         ("image", "Villian_Invasion"),
-        ("coord", 10, 20),
         ("image", "event_gamemode"),
         ("image", "villian1"),
     ]
@@ -85,7 +84,7 @@ def test_reach_event_act_selected_backs_out_when_villian_invasion_missing(monkey
     runner._log = lambda message: None
     runner._spam_back_until_gone = lambda hwnd, stop_event: backs.append(hwnd)
 
-    def click_found_image(hwnd, image_name, timeout, stop_event):
+    def click_found_image(hwnd, image_name, timeout, stop_event, *args, **kwargs):
         clicked.append(image_name)
         return {"score": 0.99} if image_name == "nav_event" else None
 

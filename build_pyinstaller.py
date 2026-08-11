@@ -23,6 +23,7 @@ Output: dist/Anime Expeditions Macro.exe
 import subprocess
 import sys
 import os
+import importlib.util
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 # Named after the tool, not after a person: this is a fork, and shipping a

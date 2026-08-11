@@ -262,6 +262,7 @@ MACRO_COORD_DEFAULTS = {
     "team_button_x": None, "team_button_y": None,
     "screen_middle_x": 576, "screen_middle_y": 378,
     "unit_info_reset_x": 3, "unit_info_reset_y": 3,
+    "event_gamemode_x": 152, "event_gamemode_y": 253,
 }
 
 # Settings > Debug > "Reward Reader"/"Game Stats": OCR capture regions for
