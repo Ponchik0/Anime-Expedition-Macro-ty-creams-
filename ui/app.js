@@ -243,13 +243,118 @@ function restoreGameIfDashboard() {
 // same pattern as showDocked/showWaiting above), so the actual version/
 // notes/url are fetched here rather than passed in.
 // ---------------------------------------------------------------------------
+// Описание релиза приходит РАЗМЕТКОЙ. С v1.1.2 мы пишем его markdown —
+// «### Установка», «- `новое` **Нормальный установщик**» (см. release-notes в
+// AGENTS.md). Раньше здесь стоял textContent при white-space: pre-wrap, и
+// человек видел решётки, звёздочки и обратные кавычки как есть.
+//
+// Разбирается ТОЛЬКО то подмножество, которым мы реально пользуемся:
+// заголовок ###, пункт «- », **жирный**, `пометка`. Полноценный парсер сюда
+// не нужен и опасен — это текст, пришедший из сети, и чем меньше он умеет,
+// тем меньше с ним проблем. Всё нераспознанное остаётся обычным текстом.
+function escapeUpdateHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function updateInline(s) {
+  return escapeUpdateHtml(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+}
+
+// Пункт = пометка слева + весь остальной текст ОДНИМ блоком, иначе <b> и
+// текст вокруг него станут отдельными flex-элементами и строка разъедется.
+function updateListItem(body) {
+  const m = body.match(/^`([^`]+)`\s*/);
+  const label = m ? m[1] : '';
+  const isNew = /нов|new/i.test(label);
+  const tag = m
+    ? `<span class="upd-tag ${isNew ? 'is-new' : ''}">${escapeUpdateHtml(label)}</span>`
+    : '<span class="upd-tag" style="visibility:hidden"></span>';
+  const rest = m ? body.slice(m[0].length) : body;
+  return `<li>${tag}<span class="upd-li-text">${updateInline(rest)}</span></li>`;
+}
+
+// ПОКАЗЫВАЕМ ТОЛЬКО СУТЬ, а не тело релиза целиком. В описании на GitHub
+// кроме списка изменений лежит вводный абзац, блок «Ставится так», врезка про
+// папку Assets и ссылки — всё это нужно тому, кто ставит приложение ВПЕРВЫЕ, и
+// совершенно лишнее тому, кто уже им пользуется и решает, обновляться ли. Ему
+// нужны разделы и пункты: что нового, что починили.
+//
+// Отбрасываются: абзацы, врезки (> [!IMPORTANT]), разделители, ссылки.
+// Остаются: заголовки ### и пункты «- ».
+//
+// ЗАПАСНОЙ ВАРИАНТ обязателен. Если в описании вообще нет пунктов (старый
+// релиз, написанный сплошным текстом), после фильтра окно оказалось бы
+// ПУСТЫМ — то есть человек не увидел бы ничего вместо «немного лишнего».
+// Тогда показываем всё как есть.
+function renderReleaseNotes(md) {
+  const lines = String(md || '').split('\n').map(s => s.trim());
+  const hasBullets = lines.some(l => l.startsWith('- '));
+
+  const out = [];
+  let inList = false;
+  for (const line of lines) {
+    if (!line || line === '---' || line.startsWith('>')) continue;
+    if (line.startsWith('### ') || line.startsWith('## ')) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push(`<h4>${escapeUpdateHtml(line.replace(/^#+\s*/, ''))}</h4>`);
+    } else if (line.startsWith('- ')) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push(updateListItem(line.slice(2)));
+    } else if (!hasBullets) {
+      // Списка нет вовсе — значит абзацы и есть всё описание.
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push(`<p>${updateInline(line)}</p>`);
+    }
+  }
+  if (inList) out.push('</ul>');
+
+  // Пустой заголовок без пунктов под ним — след отфильтрованного раздела
+  // (например «Установка» с одним абзацем). Убираем, чтобы не висел один.
+  return out.join('').replace(/<h4>[^<]*<\/h4>(?=(<h4>|$))/g, '');
+}
+
+function formatMb(bytes) {
+  return (Number(bytes) / 1048576).toFixed(1) + ' МБ';
+}
+
+// Сигнал в шапке. Держится, пока обновление не поставлено, — в отличие от
+// модалки, которая показывалась один раз за запуск и после «Позже» исчезала
+// бесследно.
+let pendingUpdateBytes = 0;
+
+// Сигнал живёт в ДВУХ местах, и оба должны меняться вместе: бейдж версии в
+// шапке и кнопка «Проверить обновления» в настройках. Человек заходит в
+// настройки специально, чтобы проверить, — и должен там увидеть, что
+// проверять уже нечего, обновление найдено.
+function setUpdateSignal(on, versionLabel) {
+  const badge = document.getElementById('ver-badge');
+  const next = document.getElementById('ver-badge-next');
+  const settingsBtn = document.getElementById('btn-check-updates');
+  if (badge) badge.classList.toggle('has-update', on);
+  if (settingsBtn) settingsBtn.classList.toggle('has-update', on);
+  if (next) next.textContent = on ? '→ ' + versionLabel : '';
+}
+
+function clearUpdateSignal() {
+  setUpdateSignal(false);
+}
+
+function markUpdateAvailable(info) {
+  setUpdateSignal(true, String(info.version || '').replace(/^v/, ''));
+}
+
 async function showUpdateAvailable() {
   try {
     const info = await pywebview.api.get_update_info();
     if (!info || !info.available) return;
+    markUpdateAvailable(info);
+    pendingUpdateBytes = Number(info.size) || 0;
     document.getElementById('update-version').textContent = info.version;
     document.getElementById('update-current-version').textContent = info.current_version || '-';
-    document.getElementById('update-notes').textContent = info.notes || 'No release notes provided.';
+    document.getElementById('update-size').textContent =
+      pendingUpdateBytes ? formatMb(pendingUpdateBytes) : '';
+    document.getElementById('update-notes').innerHTML =
+      renderReleaseNotes(info.notes) || '<p>Описание релиза не приложено.</p>';
     document.getElementById('update-modal').style.display = 'flex';
     // Roblox is docked as a real native child window, not DOM content --
     // it renders on top of this modal regardless of CSS z-index, same
@@ -369,6 +474,13 @@ function reportUpdateCheck(info) {
     text = `Update available: ${current} to ${info.version}`;
     color = 'var(--teal)';
     showUpdateAvailable();
+  } else if (info && info.status === 'up_to_date') {
+    // Проверка вручную сказала «последняя» — снимаем сигнал в шапке. Иначе
+    // колокольчик остался бы висеть после того, как обновление поставили или
+    // релиз отозвали, и звал бы в окно, которому нечего показать.
+    clearUpdateSignal();
+    text = UPDATE_CHECK_TEXT[info.status](current);
+    color = 'var(--text-muted)';
   } else if (info && UPDATE_CHECK_TEXT[info.status]) {
     text = UPDATE_CHECK_TEXT[info.status](current);
     color = info.status === 'up_to_date' || info.status === 'disabled'
@@ -396,6 +508,13 @@ function resetUpdateModalButtons() {
   document.getElementById('update-progress-wrap').style.display = 'none';
   document.getElementById('update-notes').style.display = '';
   document.getElementById('update-actions').style.display = '';
+  // Полосу возвращаем в ноль. Без этого повторная попытка после ошибки
+  // начиналась бы с той отметки, где сорвалась первая, — то есть показывала
+  // бы прогресс, которого нет.
+  const bar = document.getElementById('update-progress-bar');
+  if (bar) bar.style.transform = 'scaleX(0)';
+  const sizeEl = document.getElementById('update-progress-size');
+  if (sizeEl) sizeEl.textContent = '';
 }
 
 // apply_update() kicks off the download/stage/relaunch in a background
@@ -436,7 +555,19 @@ async function applyUpdate() {
       bar.classList.add('update-progress-indeterminate');
     } else {
       bar.classList.remove('update-progress-indeterminate');
-      bar.style.width = `${progress.percent}%`;
+      // scaleX, а не width: ширина заставляет браузер пересчитывать раскладку
+      // на каждом кадре, а кадров здесь сотни за загрузку.
+      bar.style.transform = `scaleX(${Math.max(0, Math.min(100, progress.percent)) / 100})`;
+    }
+
+    // Мегабайты рядом с полосой. Процент отвечает «сколько осталось», но не
+    // отвечает «сколько это в реальности» — на медленном канале разница между
+    // 20% от 5 МБ и 20% от 115 МБ решает, ждать или уйти.
+    const sizeEl = document.getElementById('update-progress-size');
+    if (sizeEl) {
+      sizeEl.textContent = (pendingUpdateBytes && progress.percent != null)
+        ? `${formatMb(pendingUpdateBytes * progress.percent / 100)} из ${formatMb(pendingUpdateBytes)}`
+        : '';
     }
 
     if (progress.phase === 'error') {

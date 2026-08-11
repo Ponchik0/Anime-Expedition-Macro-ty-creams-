@@ -207,6 +207,7 @@ def test_find_next_bounty_rescans_after_a_mythic_reroll(monkeypatch):
 
 def test_failed_objective_click_is_retried_before_runner_moves_on(monkeypatch):
     monkeypatch.setattr(runner_bounty.wm, "activate_window", lambda _hwnd: True)
+    monkeypatch.setattr(runner_bounty.vision, "capture_game_bgr", lambda _hwnd: None)
     runner = _Harness()
 
     assert runner._run_bounties(
@@ -238,6 +239,7 @@ def test_incomplete_map_setup_skips_board_entirely():
 
 def test_missed_click_uses_all_three_attempts_while_board_remains_open(monkeypatch):
     monkeypatch.setattr(runner_bounty.wm, "activate_window", lambda _hwnd: True)
+    monkeypatch.setattr(runner_bounty.vision, "capture_game_bgr", lambda _hwnd: None)
     runner = _Harness()
     runner.board_stays_open = True
 
@@ -609,7 +611,8 @@ def test_claim_completed_bounty_accepts_disabled_claim_after_overlay_is_gone(
     assert any("claim control is now disabled" in line for line in runner.logs)
 
 
-def test_run_bounties_claims_every_visible_card_before_leaving_board():
+def test_run_bounties_claims_every_visible_card_before_leaving_board(monkeypatch):
+    monkeypatch.setattr(runner_bounty.vision, "capture_game_bgr", lambda _hwnd: None)
     runner = _Harness()
     objectives = [
         {"kind": "claim", "cx": 300, "cy": 500},

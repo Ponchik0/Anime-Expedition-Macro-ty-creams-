@@ -47,7 +47,7 @@
         <span class="logo-anime">Anime</span>
         <span class="logo-expeditions brand-font" style="line-height: 1.15;">Expeditions</span>
       </div>
-      <button type="button" id="ver-badge" class="ver-badge-btn flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-medium no-drag" style="color: var(--brand); border-color: var(--border); background: var(--bg-surface); cursor: pointer;" title="Click to check for updates" onclick="manualCheckForUpdate()">
+      <button type="button" id="ver-badge" class="ver-badge-btn flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-medium no-drag" style="cursor: pointer;" title="Click to check for updates" onclick="manualCheckForUpdate()">
         <svg class="w-3 h-3 ver-badge-icon flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
           <path d="M3 21v-5h5"/>
@@ -55,7 +55,11 @@
           <path d="M21 3v5h-5"/>
         </svg>
         <span id="ver-badge-text">v0.0.1</span>
+        <!-- Куда обновит. Пусто, пока обновления нет (см. app.js
+             markUpdateAvailable) — бейдж тогда выглядит как раньше. -->
+        <span id="ver-badge-next" class="ver-badge-next"></span>
       </button>
+
     </div>
 
     <!-- Навигация. Разметка осталась внутри титульной строки, но стилями
@@ -2764,33 +2768,56 @@
        downloads the release source and restarts the app to apply it (see
        main.Api.apply_update) -- Later just dismisses for this launch. -->
   <div id="update-modal" class="modal-overlay" style="display:none;" onmousedown="if(event.target===this) dismissUpdateModal()">
-    <div class="modal-panel" style="max-width: 360px;">
+    <div class="modal-panel upd-panel" style="max-width: 460px;">
       <div class="modal-head">
         <span class="modal-title">Update Available</span>
         <span class="modal-close" onclick="dismissUpdateModal()">&times;</span>
       </div>
-      <div class="modal-body">
-        <div style="margin-bottom: 10px;">
-          <span id="update-version" class="task-chip" style="margin-right: 6px;">-</span>
-          <span class="text-[10px]" style="color: var(--text-muted);">current <span id="update-current-version">-</span></span>
-        </div>
-        <div id="update-notes" style="font-size: 11px; color: var(--text-dim); white-space: pre-wrap; max-height: 160px; overflow-y: auto; margin-bottom: 14px;"></div>
+      <!-- ТРИ ЯРУСА: шапка, прокручиваемая середина, приклеенный низ.
+           Кнопки ВЫНЕСЕНЫ ИЗ ОБЛАСТИ ПРОКРУТКИ, а не приклеены к ней через
+           position: sticky, как было раньше. Sticky здесь оказался хрупким —
+           достаточно любого overflow у предка, и кнопка уезжает вместе с
+           текстом. Отдельный ярус не может уехать в принципе: он просто не
+           внутри того, что прокручивается. -->
 
+      <!-- Куда и откуда, плюс размер. «Доступна 1.1.4» без «у тебя 1.1.3» не
+           отвечает на вопрос «а мне вообще надо?», а размер до нажатия
+           кнопки — это право решить, качать ли 115 МБ прямо сейчас. -->
+      <div class="upd-jump">
+        <span id="update-current-version" class="upd-from">-</span>
+        <span class="upd-arrow">&rarr;</span>
+        <span id="update-version" class="upd-to">-</span>
+        <span id="update-size" class="upd-size"></span>
+      </div>
+
+      <!-- Заметки релиза. НЕ pre-wrap с textContent, как было: описания
+           пишутся markdown (см. release-notes в AGENTS.md), и сырой текст
+           показывал человеку решётки, звёздочки и обратные кавычки. Разбор и
+           отбор только важного — в app.js renderReleaseNotes. -->
+      <div class="upd-scroll">
+        <div id="update-notes" class="upd-notes"></div>
+      </div>
+
+      <div class="upd-foot">
         <!-- Hidden until Update & Restart is clicked -- replaces the
-             notes/buttons with real download progress (see applyUpdate's
-             polling loop in app.js) instead of the button just saying
-             "Updating..." with no other feedback for however long the
-             download takes. -->
-        <div id="update-progress-wrap" style="display:none; margin-bottom: 4px;">
-          <div id="update-progress-track" style="height: 6px; border-radius: 3px; background: var(--bg-surface); overflow: hidden; margin-bottom: 8px;">
-            <div id="update-progress-bar" style="height: 100%; width: 0%; border-radius: 3px; background: var(--brand); transition: width 0.2s ease;"></div>
+             buttons with real download progress (see applyUpdate's polling
+             loop in app.js) instead of the button just saying "Updating..."
+             with no other feedback for however long the download takes. -->
+        <div id="update-progress-wrap" style="display:none;">
+          <div class="upd-track">
+            <!-- transform: scaleX, а не width -- ширина заставляет браузер
+                 пересчитывать раскладку на каждом кадре загрузки. -->
+            <div id="update-progress-bar" class="upd-fill"></div>
           </div>
-          <div id="update-progress-text" class="text-[10px]" style="color: var(--text-muted);">Starting download...</div>
+          <div class="upd-progress-row">
+            <span id="update-progress-text">Starting download...</span>
+            <span id="update-progress-size"></span>
+          </div>
         </div>
 
-        <div id="update-actions" class="flex items-center gap-2" style="justify-content: flex-end;">
+        <div id="update-actions" class="upd-actions">
           <button type="button" class="task-toolbar-btn" onclick="dismissUpdateModal()">Later</button>
-          <button type="button" id="update-apply-btn" class="rp-btn rp-btn-start" style="padding: 6px 14px;" onclick="applyUpdate()">Update &amp; Restart</button>
+          <button type="button" id="update-apply-btn" class="rp-btn rp-btn-start" style="padding: 7px 16px;" onclick="applyUpdate()">Update &amp; Restart</button>
         </div>
       </div>
     </div>

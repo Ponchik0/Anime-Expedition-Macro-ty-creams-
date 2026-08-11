@@ -303,7 +303,7 @@ class CraftingOps:
             if stop_event is not None and stop_event.is_set():
                 return False
             try:
-                if vision.find_image(hwnd, name) is not None:
+                if self._crafting_find(hwnd, name, 0.1, stop_event) is not None:
                     return True
             except vision.TemplateNotFound:
                 return False  # no failsafe image supplied -- treat as "no warning"

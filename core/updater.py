@@ -330,6 +330,11 @@ def check_for_update(timeout: float = 6.0, log=None) -> dict:
         "zip_url": data.get("zipball_url") or f"https://github.com/{RELEASES_REPO}/archive/refs/tags/{tag}.zip",
         "release_zip_url": release_zip_asset["browser_download_url"] if release_zip_asset else
                            f"https://github.com/{RELEASES_REPO}/releases/download/{tag}/{RELEASE_ZIP_NAME}",
+        # Размер архива в байтах, 0 если узнать не вышло. Интерфейс показывает
+        # его ДО нажатия «Обновить»: качать 115 МБ на мобильном интернете —
+        # решение, которое человек имеет право принять заранее, а не узнать
+        # постфактум по счётчику трафика.
+        "size": int(release_zip_asset.get("size") or 0) if release_zip_asset else 0,
         "notes": (data.get("body") or "").strip(),
     }
 

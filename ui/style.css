@@ -337,14 +337,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
   background: var(--bg-surface);
-  color: var(--text-muted) !important;
+  /* Без !important: он стоял здесь, чтобы перебить инлайновые цвета в
+     разметке, но заодно не давал подсветить бейдж при наличии
+     обновления. Инлайн из index.html убран, подпорка не нужна. */
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   transition: color var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease);
 }
 .ver-badge-btn:hover {
-  color: var(--text) !important;
+  color: var(--text);
   border-color: var(--border-strong);
   background: var(--bg-surface);
   box-shadow: none;
@@ -2472,4 +2475,196 @@ body.compact-mode #compact-strip { display: flex; }
 
 @media (prefers-reduced-motion: reduce) {
   .onb-ingame-box { transition: none; }
+}
+
+/* ====================================== ОБНОВЛЕНИЕ: ОКНО, БЕЙДЖ, КОЛОКОЛЬЧИК =
+   Раньше об обновлении сообщалось РОВНО ОДИН РАЗ — модалкой при запуске.
+   Нажал «Позже», и до следующего запуска никакого следа: бейдж версии в
+   шапке выглядел одинаково и когда всё свежее, и когда вышла новая версия.
+   Теперь сигнал живёт в шапке, пока обновление не поставлено.
+   ========================================================================= */
+
+/* Бейдж версии сам становится уведомлением: он и так показывает твою версию,
+   ему и сообщать, что есть новее. Отдельного значка «!» рядом не заводим —
+   версия и новость о версии это одно сообщение, разносить его по двум местам
+   значит занять два места вместо одного. */
+.ver-badge-next {
+  font-family: var(--font-mono);
+  opacity: 0.85;
+}
+/* ЕДИНСТВЕННЫЙ сигнал об обновлении. Колокольчик убран: он занимал место в
+   шапке и дублировал то, что бейдж и так говорит — версию. Теперь бейдж
+   подсвечен акцентом, показывает «→ 1.1.5» и раз в несколько секунд пускает
+   мягкую волну.
+
+   ОРЕОЛ — ОСОЗНАННОЕ ИСКЛЮЧЕНИЕ из запрета цветных свечений в шапке файла.
+   Он приглушённый (акцент на 20%, тень, а не заливка), живёт на одном
+   элементе и только пока обновление не поставлено. Правило существует, чтобы
+   свечения не расползались по интерфейсу как украшение; здесь оно несёт
+   единственный смысл — «вышла новая версия». */
+.ver-badge-btn.has-update {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  animation: ver-badge-pulse 3.2s var(--ease) infinite;
+}
+@keyframes ver-badge-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 20%, transparent); }
+  60%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.ver-badge-btn.has-update:hover { animation-play-state: paused; }
+
+/* Иконка слева от версии крутится, пока обновление не поставлено. Она и так
+   означает «проверить/обновить», поэтому вращение читается сразу и без
+   подписи: что-то пришло.
+
+   3 секунды на оборот, а не 900 мс как у .spinning. Быстрое вращение значит
+   «идёт проверка прямо сейчас, подожди» — оно и занято этим смыслом. Медленное
+   означает «есть что взять» и не торопит: обновление может подождать. */
+@keyframes ver-badge-turn { to { transform: rotate(360deg); } }
+.ver-badge-btn.has-update .ver-badge-icon {
+  animation: ver-badge-turn 3s linear infinite;
+}
+/* Пока идёт настоящая проверка, .spinning главнее — иначе два вращения
+   наложились бы и стало бы непонятно, что происходит. */
+.ver-badge-btn.has-update .ver-badge-icon.spinning {
+  animation: ver-badge-spin 900ms linear infinite;
+}
+.ver-badge-btn.has-update:hover .ver-badge-icon { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .ver-badge-btn.has-update .ver-badge-icon { animation: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Без движения сигналом остаётся подсветка и стрелка «→ версия» —
+     они никуда не делись. */
+  .ver-badge-btn.has-update { animation: none; }
+}
+
+/* --- Окно обновления ----------------------------------------------------- */
+.upd-jump { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s3); }
+.upd-from { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.upd-arrow { color: var(--text-muted); }
+.upd-to {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--accent-line); border-radius: var(--r-sm);
+  padding: 1px var(--s2);
+}
+.upd-size { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+
+/* БЕЗ ПОТОЛКА ПО ВЫСОТЕ. Раньше здесь было окошко на 160 пикселей, в котором
+   из десяти пунктов виднелось полтора — это не «кратко», а «не прочитать».
+   Описание релиза показывается целиком: человек решает, обновляться ли, и
+   решает по тому, что там написано.
+
+   Прокрутка при этом не исчезла, она переехала на всю панель (.upd-panel
+   ниже). Если описание окажется длиннее экрана, прокручивается окно целиком,
+   а не вложенная коробочка внутри окна. */
+.upd-notes { padding-bottom: var(--s4); }
+.upd-notes h4 {
+  margin: var(--s4) 0 var(--s2); font-size: 12px; font-weight: 600;
+  color: var(--text-dim);
+  padding-bottom: 3px; border-bottom: 1px solid var(--border);
+}
+.upd-notes h4:first-child { margin-top: 0; }
+.upd-notes p { margin: 0 0 var(--s3); font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.upd-notes ul { margin: 0; padding: 0; list-style: none; }
+.upd-notes li {
+  display: flex; gap: var(--s2); align-items: baseline;
+  padding: 4px 0; font-size: 12px; color: var(--text-muted); line-height: 1.5;
+}
+.upd-notes li b { color: var(--text); font-weight: 600; }
+/* Текст пункта — ОДИН блок. Иначе <b> и текст вокруг него становятся
+   отдельными flex-элементами, и строка разъезжается: жирное начало
+   переносится само по себе, а хвост прилипает сбоку. */
+.upd-li-text { min-width: 0; }
+/* Пометки «новое» и «фикс» — серые, не зелёная с красной. Эти два цвета в
+   приложении заняты под «работает» и «ошибка»; третий смысл сделал бы
+   нечитаемыми оба. */
+.upd-tag {
+  flex-shrink: 0; min-width: 42px; text-align: center;
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 0 4px;
+}
+.upd-tag.is-new { color: var(--text); border-color: var(--border-strong); }
+
+.upd-track { height: 6px; border-radius: 3px; background: var(--bg-field); overflow: hidden; }
+.upd-fill {
+  height: 100%; border-radius: 3px; background: var(--accent);
+  transform-origin: left; transform: scaleX(0);
+  transition: transform 200ms linear;
+}
+.upd-progress-row {
+  display: flex; justify-content: space-between;
+  margin-top: var(--s2); margin-bottom: var(--s2);
+  font-size: 11px; color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+@media (prefers-reduced-motion: reduce) {
+  .upd-fill { transition: none; }
+}
+
+/* ── Окно обновления: три яруса ─────────────────────────────────────────────
+   Шапка и низ стоят на месте, прокручивается ТОЛЬКО середина с описанием.
+
+   Кнопки вынесены из области прокрутки, а не приклеены к ней через
+   position: sticky. Sticky выглядел проще, но оказался хрупким: достаточно
+   любого overflow у любого предка — и кнопка уезжает вместе с текстом,
+   ровно на это и жаловались. Ярус, который физически не внутри
+   прокручиваемого блока, уехать не может. */
+.upd-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 28px);
+  /* Строка длиннее ~70 знаков читается тяжело, поэтому окно не растягивается
+     во всю ширину, даже когда место есть. */
+  width: min(460px, calc(100vw - 28px));
+}
+.upd-panel .modal-head {
+  flex: 0 0 auto;
+  padding: var(--s4) var(--s5) var(--s3);
+}
+
+.upd-jump {
+  flex: 0 0 auto;
+  display: flex; align-items: baseline; gap: var(--s2);
+  padding: 0 var(--s5) var(--s4);
+}
+
+/* Середина. min-height: 0 обязателен — без него flex-элемент отказывается
+   сжиматься ниже своего содержимого, и прокрутка не включается вовсе. */
+.upd-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--s5);
+  /* Края растворяются, а не обрубаются. Полстроки, срезанные ровной
+     границей, читаются как дефект вёрстки; растворяющаяся строка читается
+     как «дальше есть ещё» — то есть заодно подсказывает, что список
+     прокручивается, без отдельной подписи об этом. */
+  -webkit-mask-image: linear-gradient(to bottom,
+      transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to bottom,
+      transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+.upd-foot {
+  flex: 0 0 auto;
+  padding: var(--s4) var(--s5);
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.upd-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s3); }
+
+/* СИГНАЛ И В НАСТРОЙКАХ. Бейдж в шапке подсвечивается, а кнопка «Проверить
+   обновления» в настройках выглядела одинаково всегда — человек, зашедший
+   туда специально, не понимал, что проверять уже нечего: обновление найдено.
+   Теперь обе точки входа говорят одно и то же. */
+.settings-action-btn.has-update {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-wash);
 }

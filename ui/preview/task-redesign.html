@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Превью: экран «Задачи» — новая вёрстка</title>
+<!-- ПРЕВЬЮ, А НЕ ЧАСТЬ ПРИЛОЖЕНИЯ.
+     Файл никуда не подключён: ui/index.html о нём не знает, app.js его не
+     грузит, приложение работает ровно как раньше. Открывается двойным щелчком
+     в браузере.
+
+     Стили берутся из НАСТОЯЩЕГО ui/style.css, поэтому цвета, отступы,
+     скругления и обе темы здесь те же, что в приложении — иначе превью
+     показывало бы то, чего в продукте не будет.
+
+     Что здесь решается (то, из-за чего элементы вылезали за края):
+     строка пресетов в текущем экране — это СЕМЬ контролов в один ряд
+     (подпись, выпадающий список, «Load», поле имени 150px, «Save»,
+     «Delete», «Folder») внутри левой колонки, которая занимает чуть больше
+     половины окна. При любом сколько-нибудь узком окне они не помещаются и
+     уезжают за границу панели. -->
+<link rel="stylesheet" href="../style.css">
+<style>
+  /* Только каркас страницы-превью. Ничего из этого в приложение не идёт:
+     там роль «окна» играет сам webview. */
+  body {
+    margin: 0; padding: 18px;
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: var(--font-ui, system-ui, sans-serif);
+  }
+  .pv-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .pv-title { font-size: 13px; font-weight: 600; }
+  .pv-note { font-size: 11px; color: var(--text-muted); }
+  .pv-stage {
+    height: 560px; resize: both; overflow: hidden;
+    border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+    padding: 12px; min-width: 420px;
+  }
+  .pv-hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="pv-bar">
+  <span class="pv-title">Экран «Задачи» — предлагаемая вёрстка</span>
+  <span class="pv-note">за правый нижний угол рамки можно тянуть — проверить, что ничего не вылезает</span>
+  <span style="flex:1"></span>
+  <button class="task-toolbar-btn" onclick="setTheme('')">Тёплая</button>
+  <button class="task-toolbar-btn" onclick="setTheme('black')">Чёрная</button>
+  <button class="task-toolbar-btn" onclick="setTheme('cool')">Холодная</button>
+  <button class="task-toolbar-btn" onclick="setTheme('light')">Светлая</button>
+</div>
+
+<div class="pv-stage">
+  <div class="flex min-h-0" style="height:100%; gap:12px;">
+
+    <!-- ================= ОЧЕРЕДЬ ================= -->
+    <div class="flex flex-col min-h-0" style="flex:1.1;">
+      <section class="rp-panel rp-panel-fill">
+        <header class="rp-panel-head">
+          <span class="rp-head-tag" style="--rp-tag: var(--brand);">Macro</span>
+          <span class="rp-head-title">Task Queue</span>
+          <span class="rp-head-rule"></span>
+          <span class="text-[10px] font-semibold flex-shrink-0" style="color: var(--text-muted);">3 tasks</span>
+        </header>
+
+        <!-- ГЛАВНОЕ ДЕЙСТВИЕ ОТДЕЛЕНО ОТ РЕДКИХ.
+             «+ Add Task» жмут постоянно, Import/Export/Clear — раз в месяц.
+             Раньше все четыре стояли в ряд одинаковыми кнопками, и глазу не за
+             что было зацепиться. Теперь редкие уехали под «⋯». -->
+        <div class="tq-bar">
+          <button class="task-toolbar-btn add" style="flex:1; min-width:0;">+ Add Task</button>
+          <div class="tq-menu-wrap">
+            <button class="task-toolbar-btn tq-more" onclick="toggleMenu(this)" title="Ещё">&#8943;</button>
+            <div class="tq-menu">
+              <button class="tq-menu-item">Import&hellip;</button>
+              <button class="tq-menu-item">Export&hellip;</button>
+              <button class="tq-menu-item">Open presets folder</button>
+              <button class="tq-menu-item danger">Clear all tasks</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- СТРОКА ПРЕСЕТОВ — ЗДЕСЬ И БЫЛО ПЕРЕПОЛНЕНИЕ.
+             Было семь контролов в один ряд. Стало: список во всю ширину плюс
+             две иконки, а сохранение под новым именем открывается по «+» —
+             отдельной строкой, которой не видно, пока она не нужна. -->
+        <div class="tq-preset">
+          <span class="tq-preset-tag">PRESET</span>
+          <select class="task-select" style="flex:1; min-width:0;">
+            <option>Ночной фарм — Expedition x3</option>
+            <option>Челлендж + Marjenta</option>
+          </select>
+          <button class="task-toolbar-btn" title="Загрузить выбранный пресет">Load</button>
+          <button class="task-toolbar-btn" title="Сохранить очередь как пресет" onclick="toggleSave()">+</button>
+          <button class="task-toolbar-btn danger" title="Удалить выбранный пресет">&times;</button>
+        </div>
+        <div id="pv-save-row" class="tq-preset" style="display:none;">
+          <input class="task-select" style="flex:1; min-width:0;" placeholder="Название нового пресета">
+          <button class="task-toolbar-btn add">Save</button>
+          <button class="task-toolbar-btn" onclick="toggleSave()">Отмена</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-2" style="min-height:0;">
+
+          <!-- КАРТОЧКА ЗАДАЧИ.
+               Было: ряд голых выпадающих списков, который надо расшифровывать.
+               Стало: строка читается фразой — «1 · Marjenta», под ней режим,
+               этап и сложность отдельными значками, справа число повторов.
+               Кнопки редактирования появляются по наведению, чтобы в покое
+               список оставался списком, а не панелью управления. -->
+          <div class="tq-card is-active">
+            <span class="tq-grip" title="Перетащить">&#8942;&#8942;</span>
+            <span class="tq-num">1</span>
+            <span class="tq-body">
+              <span class="tq-name">Marjenta</span>
+              <span class="tq-tags">
+                <span class="tq-tag mode">Expedition</span>
+                <span class="tq-tag">Act 3</span>
+                <span class="tq-tag">Hard</span>
+                <span class="tq-tag macro">&#9654; exp2</span>
+              </span>
+            </span>
+            <span class="tq-rep" title="Повторов">&times;999</span>
+            <span class="tq-acts">
+              <button class="tq-act" title="Дублировать">&#10697;</button>
+              <button class="tq-act danger" title="Удалить">&#10005;</button>
+            </span>
+          </div>
+
+          <div class="tq-card">
+            <span class="tq-grip">&#8942;&#8942;</span>
+            <span class="tq-num">2</span>
+            <span class="tq-body">
+              <span class="tq-name">Fairy King Forest</span>
+              <span class="tq-tags">
+                <span class="tq-tag mode story">Story</span>
+                <span class="tq-tag">Stage 5</span>
+                <span class="tq-tag">Normal</span>
+                <span class="tq-tag macro">&#9654; Fairy</span>
+              </span>
+            </span>
+            <span class="tq-rep">&times;20</span>
+            <span class="tq-acts">
+              <button class="tq-act">&#10697;</button>
+              <button class="tq-act danger">&#10005;</button>
+            </span>
+          </div>
+
+          <!-- Длинные имена — проверка на переполнение: обрезаются
+               многоточием, а не растягивают карточку. -->
+          <div class="tq-card">
+            <span class="tq-grip">&#8942;&#8942;</span>
+            <span class="tq-num">3</span>
+            <span class="tq-body">
+              <span class="tq-name">Spirit City &mdash; очень длинное название карты для проверки</span>
+              <span class="tq-tags">
+                <span class="tq-tag mode raid">Raid</span>
+                <span class="tq-tag">Act 3</span>
+                <span class="tq-tag warn">нет сценария</span>
+              </span>
+            </span>
+            <span class="tq-rep">&times;1</span>
+            <span class="tq-acts">
+              <button class="tq-act">&#10697;</button>
+              <button class="tq-act danger">&#10005;</button>
+            </span>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+    <!-- ================= РЕДАКТОР ================= -->
+    <div class="flex flex-col min-h-0" style="flex:1;">
+      <section class="rp-panel rp-panel-fill">
+        <header class="rp-panel-head">
+          <span class="rp-head-tag" style="--rp-tag: var(--lilac);">Editor</span>
+          <span class="rp-head-title">Task 1</span>
+          <span class="rp-head-rule"></span>
+          <span class="text-[10px]" style="color: var(--text-muted);">Marjenta</span>
+        </header>
+        <div class="flex-1 overflow-y-auto" style="min-height:0; padding:12px;">
+
+          <!-- Поля в сетке, которая сама переносится: на узкой панели два
+               столбца схлопываются в один, вместо того чтобы уезжать вбок. -->
+          <div class="tq-grid">
+            <label class="rw-field"><span>Mode</span>
+              <select class="task-select"><option>Expedition</option></select></label>
+            <label class="rw-field"><span>Map</span>
+              <select class="task-select"><option>Marjenta</option></select></label>
+            <label class="rw-field"><span>Act</span>
+              <select class="task-select"><option>3</option></select></label>
+            <label class="rw-field"><span>Difficulty</span>
+              <select class="task-select"><option>Hard</option></select></label>
+            <label class="rw-field"><span>Repeat</span>
+              <input class="task-select" type="number" value="999"></label>
+            <label class="rw-field"><span>Play mode</span>
+              <select class="task-select"><option>Solo</option></select></label>
+          </div>
+
+          <div class="tq-sep"></div>
+
+          <div class="tq-grid">
+            <label class="rw-field" style="grid-column: 1 / -1;"><span>Macro Operation</span>
+              <select class="task-select"><option>&#9654; exp2</option></select></label>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+  </div>
+</div>
+
+<div class="pv-hint">
+  Файл ни к чему не подключён — приложение работает как раньше. Стили тянутся
+  из настоящего <code>ui/style.css</code>, поэтому цвета и темы совпадают.
+  Новые классы (<code>.tq-*</code>) объявлены ниже прямо в этом файле, в
+  <code>style.css</code> они пока не добавлены.
+</div>
+
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+   ПРЕДЛАГАЕМЫЕ КЛАССЫ. Живут пока здесь: в ui/style.css не добавлены, чтобы
+   существующий экран не сдвинулся ни на пиксель. Если вёрстка нравится —
+   переезжают в style.css одним куском.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Панель действий: главное растягивается, редкое сжимается в «⋯». */
+.tq-bar {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tq-menu-wrap { position: relative; flex-shrink: 0; }
+.tq-more { padding-left: var(--s2); padding-right: var(--s2); line-height: 1; }
+.tq-menu {
+  display: none;
+  position: absolute; right: 0; top: calc(100% + 4px);
+  min-width: 190px; z-index: 20;
+  padding: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.tq-menu.open { display: block; }
+.tq-menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 6px var(--s2);
+  border-radius: var(--r-sm);
+  font-size: 12px; color: var(--text-dim);
+  background: none; border: 0; cursor: pointer;
+}
+.tq-menu-item:hover { background: var(--bg-field); color: var(--text); }
+.tq-menu-item.danger { color: var(--rose); }
+
+/* Строка пресетов. flex-wrap — страховка: даже на совсем узкой панели
+   контролы переносятся, а не уезжают за край. Именно этого не хватало. */
+.tq-preset {
+  display: flex; align-items: center; gap: var(--s2);
+  flex-wrap: wrap;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tq-preset-tag {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--text-muted); flex-shrink: 0;
+}
+
+/* Карточка задачи. */
+.tq-card {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s2);
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  transition: border-color var(--t-hover) var(--ease), background var(--t-hover) var(--ease);
+}
+.tq-card:hover { border-color: var(--border-strong); }
+/* Первая в очереди подсвечена: с неё начнётся прогон, и это стоит видеть
+   сразу — тот же вопрос, на который отвечает блок «что сделает Старт». */
+.tq-card.is-active {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-surface));
+}
+.tq-grip {
+  color: var(--text-muted); cursor: grab; flex-shrink: 0;
+  font-size: 10px; letter-spacing: -2px; user-select: none;
+}
+.tq-num {
+  flex-shrink: 0; width: 20px; text-align: center;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+}
+/* min-width:0 — то, без чего длинное имя распирает карточку наружу. */
+.tq-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tq-name {
+  font-size: 12px; font-weight: 500; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tq-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.tq-tag {
+  padding: 1px 6px; border-radius: var(--r-sm);
+  font-size: 10px; font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+/* Режим — единственный значок, окрашенный по смыслу: по нему очередь и
+   читают. Остальные намеренно нейтральные, иначе строка рябит. */
+.tq-tag.mode  { color: var(--teal);  border-color: color-mix(in srgb, var(--teal) 40%, var(--border)); }
+.tq-tag.story { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--border)); }
+.tq-tag.raid  { color: var(--lilac); border-color: color-mix(in srgb, var(--lilac) 40%, var(--border)); }
+.tq-tag.macro { color: var(--text-dim); }
+.tq-tag.warn  { color: var(--rose);  border-color: color-mix(in srgb, var(--rose) 45%, var(--border)); }
+.tq-rep {
+  flex-shrink: 0;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+}
+/* Кнопки проявляются по наведению: в покое список остаётся списком. */
+.tq-acts { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity var(--t-hover) var(--ease); }
+.tq-card:hover .tq-acts, .tq-card:focus-within .tq-acts { opacity: 1; }
+.tq-act {
+  width: 22px; height: 22px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 11px; cursor: pointer;
+}
+.tq-act:hover { color: var(--text); border-color: var(--border-strong); }
+.tq-act.danger:hover { color: var(--rose); border-color: color-mix(in srgb, var(--rose) 50%, var(--border)); }
+
+/* Сетка полей редактора: сама схлопывается в один столбец на узкой панели. */
+.tq-grid {
+  display: grid; gap: var(--s2);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.tq-sep { height: 1px; background: var(--border); margin: 14px 0; }
+</style>
+
+<script>
+  function setTheme(base) {
+    if (base) document.documentElement.setAttribute('data-theme-base', base);
+    else document.documentElement.removeAttribute('data-theme-base');
+  }
+  function toggleMenu(btn) {
+    btn.parentElement.querySelector('.tq-menu').classList.toggle('open');
+  }
+  function toggleSave() {
+    const row = document.getElementById('pv-save-row');
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('.tq-menu-wrap')) return;
+    document.querySelectorAll('.tq-menu.open').forEach(m => m.classList.remove('open'));
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Превью: подключение Roblox — поиск, запуск, встраивание</title>
+<!-- ПРЕВЬЮ, А НЕ ЧАСТЬ ПРИЛОЖЕНИЯ.
+     Файл никуда не подключён: ui/index.html о нём не знает, app.js его не
+     грузит, приложение работает ровно как раньше. Открывается двойным щелчком.
+
+     Стили берутся из НАСТОЯЩЕГО ui/style.css, поэтому цвета, отступы и
+     скругления здесь те же, что в продукте.
+
+     ЧТО ЗДЕСЬ ПОКАЗАНО. Сейчас ожидание Roblox — ОТДЕЛЬНЫЙ экран: пока игры
+     нет, интерфейса нет вообще, а в момент подключения одна картинка резко
+     сменяется другой. Здесь ожидание живёт ВНУТРИ той самой области, куда
+     игра и приедет. Тогда подключение перестаёт быть сменой экрана: заглушка
+     заменяется игрой на своём месте, панель справа всё это время на виду и
+     никуда не прыгает.
+
+     ПРО АНИМАЦИЮ. Анимируется ровно один момент — прилёт окна в рамку. Он
+     единственный несёт смысл: показывает, ЧТО именно сейчас произошло с
+     окном. Всё остальное движение — развёртка луча во время поиска (макрос
+     буквально сканирует экран) и переключение галочек. Никаких пульсаций,
+     свечений и частиц: их из ui/style.css убрали осознанно, тащить обратно в
+     превью нечестно.
+
+     Движется только transform и opacity — ширину и высоту не анимируем,
+     иначе браузер пересчитывает раскладку на каждом кадре. При
+     prefers-reduced-motion развёртка гаснет, а прилёт становится
+     проявлением. -->
+<link rel="stylesheet" href="../style.css">
+<style>
+  /* --- Каркас страницы превью. В приложение не идёт. --- */
+  body {
+    margin: 0; padding: 20px;
+    background: var(--bg-deep); color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+  }
+  .pv-bar { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s4); }
+  .pv-title { font-size: 13px; font-weight: 600; }
+  .pv-note { color: var(--text-muted); font-size: 12px; }
+  .pv-btn {
+    padding: var(--s1) var(--s3);
+    border-radius: var(--r-md);
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-dim);
+    font: inherit; font-weight: 500;
+    cursor: pointer;
+    transition: border-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+  }
+  .pv-btn:hover { border-color: var(--border-strong); color: var(--text); }
+  .pv-btn.is-on { border-color: var(--accent); color: var(--accent); }
+  .pv-state { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+
+  /* --- Макет окна приложения --- */
+  .win {
+    width: 100%; max-width: 980px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--bg-deep);
+    overflow: hidden;
+  }
+  .win-bar {
+    display: flex; align-items: center; gap: var(--s2);
+    padding: var(--s2) var(--s3);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    font-size: 12px; font-weight: 600;
+  }
+  .win-bar .dim { color: var(--text-muted); font-weight: 400; }
+  .win-body { display: flex; align-items: stretch; }
+
+  /* Игровая область. Пропорции настоящие: 1152×756. */
+  .stage {
+    position: relative;
+    flex: 1 1 auto;
+    aspect-ratio: 1152 / 756;
+    margin: var(--s3);
+    display: grid; place-items: center;
+    overflow: hidden;
+  }
+  /* Рамка будущего места игры. Пунктир, пока пусто; сплошная, когда занято.
+     Она же объясняет жёсткий размер окна ровно тогда, когда это важно. */
+  .stage-frame {
+    position: absolute; inset: 0;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-md);
+    transition: border-color var(--t-tab) var(--ease);
+  }
+  .stage.is-docked .stage-frame { border-style: solid; border-color: var(--border); }
+
+  .stage-size {
+    position: absolute; top: var(--s2); left: var(--s2);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-muted);
+    transition: opacity var(--t-tab) var(--ease);
+  }
+  .stage.is-docked .stage-size { opacity: 0; }
+
+  /* Развёртка: одна тонкая линия ходит сверху вниз, пока идёт поиск.
+     Только transform, поэтому раскладка не пересчитывается. */
+  .scan {
+    position: absolute; left: 0; right: 0; top: 0; height: 1px;
+    background: var(--accent);
+    opacity: 0.5;
+    animation: scan 2.4s var(--ease) infinite;
+  }
+  @keyframes scan {
+    0%   { transform: translateY(0);      opacity: 0; }
+    12%  {                                opacity: 0.5; }
+    88%  {                                opacity: 0.5; }
+    100% { transform: translateY(var(--scan-h, 300px)); opacity: 0; }
+  }
+  .stage:not(.is-searching) .scan { display: none; }
+
+  /* Само окно игры. Стоит на месте, а «прилёт» делается transform-ом
+     от смещённого и уменьшенного состояния к нулевому. */
+  .game {
+    position: absolute; inset: 0;
+    border-radius: var(--r-md);
+    background: var(--bg-card);
+    display: grid; place-items: center;
+    color: var(--text-muted);
+    font-family: var(--font-mono); font-size: 12px;
+    opacity: 0;
+    transform: translate(18%, 14%) scale(0.55);
+    transition: transform 340ms var(--ease), opacity 200ms var(--ease);
+    pointer-events: none;
+  }
+  .stage.is-docking .game,
+  .stage.is-docked  .game { opacity: 1; transform: translate(0, 0) scale(1); }
+
+  /* Блок состояния поверх пустой области. Уходит, как только игра приехала. */
+  .status {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center;
+    transition: opacity 200ms var(--ease);
+  }
+  .stage.is-docking .status,
+  .stage.is-docked  .status { opacity: 0; pointer-events: none; }
+
+  .status-mark { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .status-hint { color: var(--text-muted); font-size: 12px; margin-top: var(--s2); min-height: 1.4em; }
+  .status-actions { display: flex; gap: var(--s2); margin-top: var(--s4); }
+
+  /* Панель справа — только чтобы было видно: она на месте с первой секунды
+     и при подключении не дёргается. Содержимое условное. */
+  .side {
+    width: 210px; flex: 0 0 auto;
+    margin: var(--s3) var(--s3) var(--s3) 0;
+    display: flex; flex-direction: column; gap: var(--s2);
+  }
+  .side-card {
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-card);
+    padding: var(--s3);
+  }
+  .side-card h4 { margin: 0 0 var(--s2); font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .side-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); padding: 3px 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scan { animation: none; opacity: 0; }
+    .game { transition: opacity 160ms linear; transform: none; }
+    .stage.is-docking .game, .stage.is-docked .game { transform: none; }
+    .stage-frame, .stage-size, .status { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="pv-bar">
+  <span class="pv-title">Подключение Roblox — поиск, запуск, встраивание</span>
+  <button class="pv-btn" id="btn-play">Проиграть заново</button>
+  <button class="pv-btn" id="btn-step">Шаг вперёд</button>
+  <button class="pv-btn" id="btn-slow">Медленно</button>
+  <span class="pv-state" id="pv-state">ищу окно</span>
+</div>
+
+<div class="win">
+  <div class="win-bar">
+    Anime Expeditions <span class="dim">· v1.1.2</span>
+  </div>
+
+  <div class="win-body">
+    <div class="stage is-searching" id="stage">
+      <div class="stage-frame"></div>
+      <div class="stage-size">1152 × 756</div>
+      <div class="scan"></div>
+
+      <div class="game">Здесь окно Roblox</div>
+
+      <div class="status">
+        <div class="status-mark">Anime Expeditions</div>
+
+        <div class="dock-steps">
+          <div class="dock-step is-active" id="s1">
+            <span class="dock-step-mark"></span><span>Roblox запущен</span>
+          </div>
+          <div class="dock-step" id="s2">
+            <span class="dock-step-mark"></span><span>Окно встроено</span>
+          </div>
+        </div>
+
+        <div class="status-hint" id="hint">Запусти Roblox — окно встроится само</div>
+
+        <div class="status-actions">
+          <button class="pv-btn is-on">▶ Запустить Roblox</button>
+          <button class="pv-btn">Пропустить »</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="side-card">
+        <h4>Состояние</h4>
+        <div class="side-row"><span>Действие</span><span>Ожидание</span></div>
+        <div class="side-row"><span>Задача</span><span>—</span></div>
+        <div class="side-row"><span>Карта</span><span>—</span></div>
+      </div>
+      <div class="side-card">
+        <h4>Счёт</h4>
+        <div class="side-row"><span>Победы</span><span>0</span></div>
+        <div class="side-row"><span>Поражения</span><span>0</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Четыре состояния — те же, что были бы в приложении. Прототип просто гоняет
+// их по кругу, чтобы можно было посмотреть переход, не запуская Roblox.
+const STATES = [
+  { key: 'searching', cls: 'is-searching', s1: 'is-active', s2: '',
+    hint: 'Запусти Roblox — окно встроится само', label: 'ищу окно' },
+  { key: 'stalled',   cls: 'is-searching', s1: 'is-active', s2: '',
+    hint: 'Roblox пока не отвечает — проверь, запущен ли он', label: 'молчит 12 секунд' },
+  { key: 'found',     cls: 'is-searching', s1: 'is-done',   s2: 'is-active',
+    hint: 'Roblox найден, встраиваю окно', label: 'окно найдено' },
+  { key: 'docking',   cls: 'is-docking',   s1: 'is-done',   s2: 'is-active',
+    hint: 'Roblox найден, встраиваю окно', label: 'встраивается' },
+  { key: 'docked',    cls: 'is-docked',    s1: 'is-done',   s2: 'is-done',
+    hint: '', label: 'готово' },
+];
+
+const stage = document.getElementById('stage');
+const s1 = document.getElementById('s1'), s2 = document.getElementById('s2');
+const hint = document.getElementById('hint'), label = document.getElementById('pv-state');
+let i = 0, timer = null, slow = false;
+
+function render() {
+  const st = STATES[i];
+  stage.className = 'stage ' + st.cls;
+  s1.className = 'dock-step ' + st.s1;
+  s2.className = 'dock-step ' + st.s2;
+  hint.textContent = st.hint;
+  label.textContent = st.label;
+}
+
+// Высота развёртки берётся из реального размера области: keyframes не умеют
+// читать её сами, а зашивать пиксели значило бы сломать луч при другом окне.
+function sizeScan() {
+  stage.style.setProperty('--scan-h', stage.clientHeight + 'px');
+}
+addEventListener('resize', sizeScan);
+
+function step() {
+  i = (i + 1) % STATES.length;
+  render();
+}
+
+function play() {
+  clearInterval(timer);
+  i = 0; render();
+  const pause = slow ? 2600 : 1300;
+  timer = setInterval(() => {
+    if (i === STATES.length - 1) { clearInterval(timer); return; }
+    step();
+  }, pause);
+}
+
+document.getElementById('btn-play').onclick = play;
+document.getElementById('btn-step').onclick = () => { clearInterval(timer); step(); };
+document.getElementById('btn-slow').onclick = (e) => {
+  slow = !slow;
+  e.currentTarget.classList.toggle('is-on', slow);
+  play();
+};
+
+sizeScan();
+render();
+play();
+</script>
+</body>
+</html>

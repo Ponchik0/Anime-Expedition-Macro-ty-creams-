@@ -101,6 +101,19 @@ GUI_HEIGHT_COMPACT = TITLEBAR_H + 380  # tall enough for the waiting screen's fu
 # expanding ping rings + tag + title + status + Skip + version badge) -- 280 clipped the emblem's
 # animation and the bottom rows
 
+# ОКНО ДО ТОГО, КАК ИГРА ВСТРОЕНА. Отдельные размеры, а не GUI_*_COMPACT,
+# потому что у тех значений есть ВТОРАЯ роль: GUI_WIDTH_COMPACT — это ещё и
+# ширина боковой панели рядом с игрой на macOS (см. needed_w ниже), и раздув
+# его тут заставил бы приложение требовать от mac-экрана лишние сотни точек
+# ни за что.
+#
+# Прежние 400×424 были подобраны ровно под экран ожидания и больше ни подо
+# что. В это окно перестало помещаться то, что в нём показывается: окно
+# обновления шириной 460 просто не влезало, а описание релиза с разделами
+# читалось в щель. Плюс экран первого запуска — две колонки чек-листа.
+GUI_WIDTH_WAITING = 620
+GUI_HEIGHT_WAITING = TITLEBAR_H + 560
+
 # F7 compact view: trim the window to EXACTLY the docked game plus the bottom
 # control strip, dropping the empty side-panel column and the log gap. Width
 # is the game's own width and height is titlebar + game + strip, so the game
@@ -5543,7 +5556,7 @@ def _launch_ui():
         # (e.g. a 13" panel left at its default 1280x800 scaled resolution) don't have that much
         # logical width even though the physical panel is plenty big -- Roblox ends up parked
         # partly or fully off-screen with no error, which just looks like "the game is too big".
-        needed_w = GUI_WIDTH_COMPACT + MAC_GAP + config.FIXED_WIN_W
+        needed_w = PANEL_WIDTH + MAC_GAP + config.FIXED_WIN_W
         if screen_w < needed_w or screen_h < config.FIXED_WIN_H:
             api.push_log(
                 f"[Macro] Your display's logical resolution ({screen_w}x{screen_h}pt) is smaller than "
@@ -5551,7 +5564,7 @@ def _launch_ui():
                 f"placed partly or fully off-screen. Fix: System Settings > Displays > select a scaled "
                 f"resolution with \"More Space\" (a higher point resolution, not necessarily higher "
                 f"physical res) so it's at least that wide.")
-    start_w, start_h = GUI_WIDTH_COMPACT, GUI_HEIGHT_COMPACT
+    start_w, start_h = GUI_WIDTH_WAITING, GUI_HEIGHT_WAITING
     start_x = (screen_w - start_w) // 2
     start_y = (screen_h - start_h) // 2
 
