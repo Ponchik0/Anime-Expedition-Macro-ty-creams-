@@ -35,8 +35,8 @@ import pytest
 
 from core import runner as runner_module
 from core import vision
-from core.runner_constants import (EXP_STUCK_START_GAME_CLICKS, MATCH_END_BUTTON_NAME,
-                                    RESULT_UNKNOWN)
+from core.runner_constants import (EXTRACT_CONFIRM_SETTLE, EXP_STUCK_START_GAME_CLICKS,
+                                    MATCH_END_BUTTON_NAME, RESULT_UNKNOWN)
 
 HWND = 777
 
@@ -200,3 +200,48 @@ def test_reaching_a_checkpoint_clears_the_stuck_counter(rig, monkeypatch):
 
     rig._check_expedition_wave_result(HWND, stop)
     assert rig._exp_start_game_reclicks == 0, "чекпойнт обязан сбросить счётчик"
+
+
+def test_extract_waits_for_the_reward_transition_before_calling_it_a_failed_click(rig, monkeypatch):
+    """Confirm исчезает раньше, чем сама игра убирает нижний чекпойнт.
+
+    Раньше цветной путь ждал лишь 0.8 с, видел ещё живую кнопку Continue и
+    переходил к следующему чекпойнту, хотя эвакуация могла уже загружаться.
+    Здесь фиксируем общий интервал ожидания шаблонной и цветной веток.
+    """
+    from core import runner_expedition
+
+    waits = []
+    calls = {"confirm": 0, "checkpoint": 0}
+
+    def find_color_run(hwnd, band, color, minimum):
+        if band == runner_expedition.EXP_COLOR_CONTINUE_BAND and color == runner_expedition._exp_red:
+            return {"cx": 513, "cy": 588}      # исходный Extract
+        if band == runner_expedition.EXP_COLOR_CONFIRM_BAND and color == runner_expedition._exp_red:
+            calls["confirm"] += 1
+            return {"cx": 576, "cy": 540} if calls["confirm"] == 1 else None
+        if band == runner_expedition.EXP_COLOR_CONTINUE_BAND and color == runner_expedition._exp_green:
+            calls["checkpoint"] += 1
+            return {"cx": 637, "cy": 406}      # переход ещё не дорисовался
+        return None
+
+    monkeypatch.setattr(runner_expedition.vision, "find_color_run", find_color_run)
+    monkeypatch.setattr(runner_expedition.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(rig, "_interruptible_sleep", lambda seconds, stop: waits.append(seconds))
+    # Одной полной попытки достаточно для проверки ожидания; следующую не
+    # запускаем, потому что она не относится к этой регрессии.
+    checkpoint_calls = {"count": 0}
+
+    def checkpoint_after_first_attempt(stop):
+        checkpoint_calls["count"] += 1
+        # Внутри первой попытки _checkpoint вызывается дважды: перед кликом
+        # Extract и в поиске confirm. Третья проверка — уже начало второй
+        # попытки, её и используем для остановки тестовой заглушки.
+        return checkpoint_calls["count"] >= 3
+
+    monkeypatch.setattr(rig, "_checkpoint", checkpoint_after_first_attempt)
+
+    assert rig._extract_via_mirrored_button(HWND, threading.Event(), 0, 0, 576,
+                                            {"cx": 637, "cy": 406}) is False
+    assert waits == [EXTRACT_CONFIRM_SETTLE]
+    assert calls["checkpoint"] == 1

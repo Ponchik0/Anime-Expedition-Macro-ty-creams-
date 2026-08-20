@@ -287,6 +287,116 @@ def test_place_unit_with_no_position_keeps_shift_when_the_chain_continues():
     assert runner._quick_place_shift_down is True
 
 
+class _ConfiguredPlacementRunner(BlockOps):
+    """Minimal runner for the early configurable-verify branch.
+
+    The branch delegates before it needs real Roblox input, so a narrow
+    double makes the contract (configured options and Pre Start queueing)
+    explicit without coupling this test to screen recognition.
+    """
+    def __init__(self):
+        self.logs = []
+        self._quick_place_shift_down = False
+        self._place_unit_retrying = MagicMock(return_value=False)
+        self._remember_pending_placement = MagicMock()
+        self._remember_phantom_placement = MagicMock()
+
+    def _log(self, msg):
+        self.logs.append(msg)
+
+    def _set_status(self, **kw):
+        pass
+
+
+def test_verify_placement_uses_block_limits_and_queues_failed_prestart_unit():
+    runner = _ConfiguredPlacementRunner()
+    block = {
+        "type": "place_unit", "hotkey": "1",
+        "verifyPlacement": True, "verifyRetries": 4, "verifyDelay": 1.5,
+        "params": {"name": "Archer", "x": 100, "y": 200},
+    }
+
+    result = runner._run_place_unit_block(
+        1, MagicMock(is_set=lambda: False), 0, 0, block,
+        index=7, macro_name="Expedition", unit_ordinal=2,
+        verify=False, pending_ok=True,
+    )
+
+    assert result is False
+    assert runner._place_unit_retrying.call_args.kwargs == {
+        "max_attempts": 4, "retry_delay": 1.5, "retry_label": "Verify placement",
+    }
+    runner._remember_pending_placement.assert_called_once_with(
+        block, 7, "Expedition", 2, "Archer")
+
+
+def test_legacy_keep_placing_keeps_its_static_options_and_does_not_queue():
+    runner = _ConfiguredPlacementRunner()
+    block = {
+        "type": "place_unit", "hotkey": "1", "retryUntilPlaced": True,
+        "params": {"name": "Archer", "x": 100, "y": 200},
+    }
+
+    runner._run_place_unit_block(
+        1, MagicMock(is_set=lambda: False), 0, 0, block,
+        index=7, macro_name="Expedition", unit_ordinal=2,
+        verify=False, pending_ok=True,
+    )
+
+    assert runner._place_unit_retrying.call_args.kwargs == {
+        "max_attempts": None, "retry_delay": 0.0, "retry_label": "Keep Placing",
+    }
+    runner._remember_pending_placement.assert_not_called()
+
+
+def test_recover_phantom_watches_only_a_successfully_placed_prestart_unit():
+    runner = _ConfiguredPlacementRunner()
+    runner._place_unit_retrying.return_value = True
+    block = {
+        "type": "place_unit", "hotkey": "1", "verifyPlacement": True,
+        "recoverPhantom": True, "params": {"name": "Archer", "x": 100, "y": 200},
+    }
+
+    result = runner._run_place_unit_block(
+        1, MagicMock(is_set=lambda: False), 0, 0, block,
+        index=7, macro_name="Expedition", unit_ordinal=2,
+        verify=False, pending_ok=True,
+    )
+
+    assert result is True
+    runner._remember_phantom_placement.assert_called_once_with(
+        block, 7, "Expedition", 2, "Archer")
+    runner._remember_pending_placement.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ({}, (2, 1.0)),
+        ({"verifyRetries": 4, "verifyDelay": 1.5}, (4, 1.5)),
+        ({"verifyRetries": 0, "verifyDelay": 0}, (1, 0.5)),
+        ({"verifyRetries": 99, "verifyDelay": 99}, (5, 5.0)),
+        ({"verifyRetries": "bad", "verifyDelay": "bad"}, (2, 1.0)),
+    ],
+)
+def test_verify_placement_options_are_normalized_and_bounded(raw, expected):
+    assert BlockOps._placement_verify_options(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ({}, (4, 12.0)),
+        ({"phantomCheckAttempts": 3, "phantomCheckDelay": 20}, (3, 20.0)),
+        ({"phantomCheckAttempts": 0, "phantomCheckDelay": 0}, (1, 5.0)),
+        ({"phantomCheckAttempts": 99, "phantomCheckDelay": 99}, (5, 60.0)),
+        ({"phantomCheckAttempts": "bad", "phantomCheckDelay": "bad"}, (4, 12.0)),
+    ],
+)
+def test_phantom_recovery_options_are_normalized_and_bounded(raw, expected):
+    assert BlockOps._phantom_recovery_options(raw) == expected
+
+
 def test_run_target_priority_tick():
     from core.runner_blocks import BlockOps
     from unittest.mock import MagicMock

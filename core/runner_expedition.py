@@ -478,15 +478,17 @@ class ExpeditionOps:
                     time.sleep(0.45)
                     if vision.find_color_run(hwnd, EXP_COLOR_CONFIRM_BAND, _exp_red,
                                               EXP_COLOR_CONFIRM_MIN_RUN) is None:
-                        # Second check, a beat later: the confirm vanishing
-                        # only proves the DIALOG closed -- an extract that
-                        # didn't actually register leaves the checkpoint's
-                        # own Continue/Extract still sitting in the bottom
-                        # band (and the confirm can even come back). Only
-                        # both being clear counts as extracted; anything
-                        # else restarts the attempt instead of reporting a
-                        # win that never happened.
-                        time.sleep(0.8)
+                        # Исчезновение confirm доказывает только закрытие
+                        # диалога. В Expedition переход к экрану наград может
+                        # отрисовываться заметно дольше прежних 0.8 с; из-за
+                        # этого мы успевали увидеть старый чекпойнт и сами
+                        # отменяли уже принятую игрой эвакуацию. Используем
+                        # тот же интервал, что и шаблонный путь Extract, и
+                        # спим прерываемо: Stop не должен ждать анимацию.
+                        self._interruptible_sleep(EXTRACT_CONFIRM_SETTLE, stop_event)
+                        # После ожидания обе полосы обязаны очиститься. Иначе
+                        # диалог закрылся, но Extract правда не зарегистрирован
+                        # и нужно начать полную попытку с первого клика.
                         checkpoint_up = vision.find_color_run(hwnd, EXP_COLOR_CONTINUE_BAND, _exp_green,
                                                                EXP_COLOR_CONTINUE_MIN_RUN)
                         confirm_back = vision.find_color_run(hwnd, EXP_COLOR_CONFIRM_BAND, _exp_red,

@@ -1387,6 +1387,100 @@ class BlockOps:
         self._log(f'[Macro] Place Unit "{name}": ставлю в очередь на доставку в бою — '
                    f'скорее всего не хватило денег, попробую ещё раз, когда накопятся.')
 
+    @staticmethod
+    def _phantom_recovery_options(block: dict) -> tuple[int, float]:
+        """Возвращает безопасные лимиты для опциональной проверки фантома."""
+        try:
+            checks = int(block.get("phantomCheckAttempts", 4))
+        except (TypeError, ValueError):
+            checks = 4
+        try:
+            delay = float(block.get("phantomCheckDelay", 12.0))
+        except (TypeError, ValueError):
+            delay = 12.0
+        return max(1, min(5, checks)), max(5.0, min(60.0, delay))
+
+    def _remember_phantom_placement(self, block: dict, index: int, macro_name: str,
+                                     unit_ordinal, name: str) -> None:
+        """Запоминает успешно нажатую Pre Start-расстановку для проверки в бою.
+
+        Фантом не повторяется вслепую: позже сначала кликается его сохранённая
+        точка и ищется панель настоящего юнита через ``unit_exist``. Повторная
+        постановка разрешается только если такого юнита больше нет.
+        """
+        if self._pending_placements is None:
+            self._pending_placements = []
+        if any(p.get("kind") == "phantom_watch" and p.get("ordinal") == unit_ordinal
+               for p in self._pending_placements):
+            return
+        checks, delay = self._phantom_recovery_options(block)
+        self._pending_placements.append({
+            "kind": "phantom_watch", "block": block, "index": index,
+            "macro_name": macro_name, "ordinal": unit_ordinal, "name": name,
+            "tries": 0, "max_tries": checks, "delay": delay, "next_at": None,
+        })
+        self._log(f'[Macro] Place Unit "{name}": слежу за фантомом — через {delay:g}с '
+                   'проверю, остался ли настоящий юнит.')
+
+    def _placed_unit_still_exists(self, hwnd, stop_event: threading.Event, left: int, top: int,
+                                   x: int, y: int, name: str):
+        """Проверяет через ``unit_exist`` наличие реального юнита в точке.
+
+        Возвращает None, если опционального шаблона нет: наблюдение отключается,
+        чтобы никогда не делать повторные клики на основании отсутствующей
+        диагностики.
+        """
+        if self._checkpoint(stop_event):
+            return None
+        self._keyboard.tap(ord("Z"))
+        time.sleep(0.1)
+        self._mouse.click(left + x, top + y)
+        time.sleep(0.3)
+        try:
+            exists_match = vision.wait_for_image(hwnd, "unit_exist", timeout=PLACE_UNIT_VERIFY_TIMEOUT)
+        except vision.TemplateNotFound:
+            self._reset_unit_info_panel(hwnd)
+            self._log(f'[Macro] Phantom check "{name}": нет Assets/ui/unit_exist.png — отключаю проверку.')
+            return None
+        self._reset_unit_info_panel(hwnd)
+        if exists_match is not None:
+            self._log(f'[Macro] Phantom check "{name}": настоящий юнит есть на ({x}, {y}) '
+                      f'(score {exists_match["score"]:.2f}).')
+            return True
+        self._log(f'[Macro] Phantom check "{name}": юнит исчез с ({x}, {y}).')
+        return False
+
+    def _retry_phantom_placement(self, hwnd, stop_event: threading.Event, pending: dict,
+                                  now: float) -> None:
+        """Проверяет один фантом и восстанавливает его только после исчезновения."""
+        if pending["next_at"] is None:
+            pending["next_at"] = self._pending_placements_battle_start + pending["delay"]
+        if now < pending["next_at"]:
+            return
+        pending["tries"] += 1
+        name, tries, maximum = pending["name"], pending["tries"], pending["max_tries"]
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
+        params = pending["block"].get("params") or {}
+        x, y = int(params.get("x") or 0), int(params.get("y") or 0)
+        self._log(f'[Macro] Phantom check "{name}": проверка {tries}/{maximum}.')
+        exists = self._placed_unit_still_exists(hwnd, stop_event, left, top, x, y, name)
+        if exists is None or exists:
+            self._pending_placements.remove(pending)
+            return
+        self._log(f'[Macro] Phantom check "{name}": повторяю расстановку после исчезновения.')
+        landed = self._run_place_unit_block(
+            hwnd, stop_event, left, top, pending["block"], pending["index"],
+            pending["macro_name"], pending["ordinal"], next_is_same_unit=False,
+            verify=True, pending_ok=False)
+        if landed:
+            self._log(f'[Macro] Phantom check "{name}": юнит восстановлен.')
+            self._pending_placements.remove(pending)
+        elif tries >= maximum:
+            self._log(f'[Macro] Phantom check "{name}": не удалось восстановить юнит за {tries} проверок.')
+            self._pending_placements.remove(pending)
+        else:
+            pending["next_at"] = now + pending["delay"]
+
     def _retry_pending_placements(self, hwnd, stop_event: threading.Event) -> None:
         """Доставляет ОДИН юнит из очереди за вызов. Зовётся раз в опрос из
         _wait_for_match_result, между тиками Battle-блоков.
@@ -1404,6 +1498,12 @@ class BlockOps:
         if started is None:
             return  # бой ещё не начался
         now = time.time()
+        # Проверка фантома не конкурирует с обычной очередью: один визуальный
+        # шаг на тик, сначала только проверка уже занятой точки.
+        for pending in list(self._pending_placements):
+            if pending.get("kind") == "phantom_watch":
+                self._retry_phantom_placement(hwnd, stop_event, pending, now)
+                return
         if now - started < PLACE_PENDING_FIRST_WAIT_S:
             return  # дать волне начаться и деньгам капнуть
         if now - started > PLACE_PENDING_DEADLINE_S:
@@ -1610,15 +1710,28 @@ class BlockOps:
         # по подсветке клетки (_click_place_spot) работает и здесь.
         skip_verify = is_quick_place or not verify
 
-        # "Keep Placing" (block toggle): keep re-doing the whole placement
-        # until unit_exist confirms it landed, up to a cap. Handled by its
-        # own self-contained method -- it always verifies (even in Pre Start,
-        # which normally skips verification for speed) since it needs that
-        # signal to know when to stop, and it never applies to a quick-place
-        # chain (those can't verify mid-run).
-        if bool(block.get("retryUntilPlaced")) and not is_quick_place:
-            return self._place_unit_retrying(hwnd, stop_event, left, top, name, hotkey,
-                                              orig_x, orig_y, block, unit_ordinal)
+        # "Keep Placing" is the legacy block toggle. "Verify placement" is
+        # its configurable counterpart: it performs the same full
+        # select -> place -> unit_exist verification loop even during Pre
+        # Start, but lets a scenario choose the number of full placement
+        # attempts and the pause between them. Old scenarios never carry
+        # verifyPlacement, so their timing and static retry cap stay exactly
+        # as before.
+        verify_placement = bool(block.get("verifyPlacement"))
+        if (bool(block.get("retryUntilPlaced")) or verify_placement) and not is_quick_place:
+            max_attempts, retry_delay = self._placement_verify_options(block) if verify_placement else (None, 0.0)
+            placed = self._place_unit_retrying(
+                hwnd, stop_event, left, top, name, hotkey, orig_x, orig_y, block, unit_ordinal,
+                max_attempts=max_attempts, retry_delay=retry_delay,
+                retry_label="Verify placement" if verify_placement else "Keep Placing")
+            # Only the new opt-in verification queues a still-unplaced Pre
+            # Start unit for a later battle retry. The legacy Keep Placing
+            # path intentionally keeps its historical return behaviour.
+            if not placed and verify_placement and pending_ok:
+                self._remember_pending_placement(block, index, macro_name, unit_ordinal, name)
+            elif placed and block.get("recoverPhantom") and pending_ok:
+                self._remember_phantom_placement(block, index, macro_name, unit_ordinal, name)
+            return placed
 
         if self._quick_place_shift_down:
             self._log(f'[Macro] Place Unit "{name}": quick-placing (Shift held, same unit as last).')
@@ -1721,6 +1834,8 @@ class BlockOps:
                 self._note_placement(name, True)
                 if unit_ordinal is not None:
                     self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
+                if block.get("recoverPhantom") and pending_ok:
+                    self._remember_phantom_placement(block, index, macro_name, unit_ordinal, name)
             else:
                 self._log(f'[Macro] Place Unit "{name}": НЕ ВСТАЛ на ({cur_x}, {cur_y}) ({reason}) — '
                            f'подсветка клетки не погасла, клик не зарегистрировался.')
@@ -1780,17 +1895,41 @@ class BlockOps:
         self._note_placement(name, True)
         if unit_ordinal is not None:
             self._placed_unit_positions[unit_ordinal] = (cur_x, cur_y)
+        if block.get("recoverPhantom") and pending_ok:
+            self._remember_phantom_placement(block, index, macro_name, unit_ordinal, name)
         return True
+
+    @staticmethod
+    def _placement_verify_options(block: dict) -> tuple[int, float]:
+        """Return safe user-configured limits for Verify placement.
+
+        The first placement counts as an attempt. Values are clamped here as
+        well as in the editor because a scenario can also be imported or
+        edited by hand. This helper is used only when verifyPlacement is on,
+        preserving the unchanged static defaults for legacy Keep Placing.
+        """
+        try:
+            attempts = int(block.get("verifyRetries", 2))
+        except (TypeError, ValueError):
+            attempts = 2
+        try:
+            delay = float(block.get("verifyDelay", 1.0))
+        except (TypeError, ValueError):
+            delay = 1.0
+        return max(1, min(5, attempts)), max(0.5, min(5.0, delay))
 
     def _place_unit_retrying(self, hwnd, stop_event: threading.Event, left: int, top: int,
                                name: str, hotkey, orig_x: int, orig_y: int, block: dict,
-                               unit_ordinal: int) -> bool:
+                               unit_ordinal: int, max_attempts: int = None,
+                               retry_delay: float = 0.0, retry_label: str = "Keep Placing") -> bool:
         """Place Unit with "Keep Placing" on: run the full select -> find
         spot -> click -> verify sequence and, if unit_exist doesn't confirm
         the unit landed, do the WHOLE thing again (re-select the unit, find
-        a valid tile, click, re-verify) up to PLACE_RETRY_UNTIL_PLACED_
-        ATTEMPTS times. Never a quick-place chain member (see the caller),
-        so no Shift is ever held here.
+        a valid tile, click, re-verify). The legacy Keep Placing call uses
+        PLACE_RETRY_UNTIL_PLACED_ATTEMPTS; configurable Verify placement
+        supplies its own capped attempt count and retry delay. Never a
+        quick-place chain member (see the caller), so no Shift is ever held
+        here.
 
         Возвращает, встал ли юнит -- как и _run_place_unit_block, который этот
         результат прокидывает наружу."""
@@ -1804,10 +1943,18 @@ class BlockOps:
             self._note_placement_skipped(name)
             return False
 
-        n = PLACE_RETRY_UNTIL_PLACED_ATTEMPTS
+        n = PLACE_RETRY_UNTIL_PLACED_ATTEMPTS if max_attempts is None else max_attempts
         for attempt in range(1, n + 1):
             if self._checkpoint(stop_event):
                 return False
+            if attempt > 1 and retry_delay:
+                self._log(f'[Macro] Place Unit "{name}": {retry_label} waits {retry_delay:g}s '
+                           f'before attempt {attempt}/{n}.')
+                deadline = time.time() + retry_delay
+                while time.time() < deadline:
+                    if self._checkpoint(stop_event):
+                        return False
+                    time.sleep(min(0.1, deadline - time.time()))
             # Select the unit fresh each attempt (Z-deselect first, as every
             # placement does).
             self._keyboard.tap(ord("Z"))

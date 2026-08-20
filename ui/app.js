@@ -4844,7 +4844,18 @@ function addBlock(type, key, atIndex) {
   const block = { id: newBlockId(), type, params, once: false };
   enteringBlockIds.add(block.id);
   if (type === 'setting_change') { block.kind = 'toggle'; block.value = 'off'; }
-  if (type === 'place_unit') { block.hotkey = ''; }
+  if (type === 'place_unit') {
+    block.hotkey = '';
+    // The opt-in verifier is deliberately off by default. A freshly created
+    // or an old saved scenario keeps Pre Start's existing fast behaviour
+    // unless the user explicitly enables this safety check.
+    block.verifyPlacement = false;
+    block.verifyRetries = 2;
+    block.verifyDelay = 1;
+    block.recoverPhantom = false;
+    block.phantomCheckAttempts = 4;
+    block.phantomCheckDelay = 12;
+  }
   if (type === 'walk') { block.params.path = ''; }
   if (type === 'walk_path') { block.mode = 'auto'; block.pathName = ''; }
   if (type === 'send_key') { block.key = ''; }
@@ -4964,6 +4975,50 @@ function toggleRetryUntilPlaced(id) {
   const block = loc.container[loc.idx];
   block.retryUntilPlaced = !block.retryUntilPlaced;
   renderPhases();
+}
+
+// Verify placement is a configurable Pre Start safety check. Unlike the
+// legacy Keep Placing switch, its full placement attempts and retry pause are
+// stored on the scenario block itself.
+function toggleVerifyPlacement(id) {
+  const loc = findBlockLocation(id);
+  if (!loc) return;
+  const block = loc.container[loc.idx];
+  block.verifyPlacement = !block.verifyPlacement;
+  renderPhases();
+}
+
+function updateVerifyPlacementOption(id, key, value) {
+  const loc = findBlockLocation(id);
+  if (!loc) return;
+  const block = loc.container[loc.idx];
+  if (key === 'verifyRetries') {
+    block.verifyRetries = Math.max(1, Math.min(5, Math.floor(Number(value) || 2)));
+  } else if (key === 'verifyDelay') {
+    block.verifyDelay = Math.max(0.5, Math.min(5, Number(value) || 1));
+  }
+}
+
+// Recover Phantom checks a successfully placed Pre Start unit later in battle.
+// It first verifies that the saved tile is empty via unit_exist, and only then
+// attempts to place the unit again.
+function toggleRecoverPhantom(id) {
+  const loc = findBlockLocation(id);
+  if (!loc) return;
+  const block = loc.container[loc.idx];
+  block.recoverPhantom = !block.recoverPhantom;
+  renderPhases();
+}
+
+function updatePhantomRecoveryOption(id, key, value) {
+  const loc = findBlockLocation(id);
+  if (!loc) return;
+  const block = loc.container[loc.idx];
+  if (key === 'phantomCheckAttempts') {
+    block.phantomCheckAttempts = Math.max(1, Math.min(5, Math.floor(Number(value) || 4)));
+  } else if (key === 'phantomCheckDelay') {
+    block.phantomCheckDelay = Math.max(5, Math.min(60, Number(value) || 12));
+  }
 }
 
 function togglePhaseCollapsed(phase) {
@@ -5489,8 +5544,18 @@ function renderPlaceUnitControls(b) {
   const hasPos = b.params.x || b.params.y;
   const set = field('Position', `<button type="button" class="pu-set-btn ${hasPos ? 'has-pos' : ''} tooltip-side" data-tooltip="Pick position on a map" onclick="openPlaceUnitModal('${b.id}')">${hasPos ? 'Set &#10003;' : 'Set'}</button>`);
   const ignoreHighlight = `<button type="button" class="block-mod-btn ${b.ignoreHighlight ? 'on' : ''} tooltip-side" data-tooltip="Skip the white-tile search and click the saved X/Y directly" onclick="toggleIgnoreHighlight('${b.id}')">Ignore Highlight</button>`;
-  const retryUntilPlaced = `<button type="button" class="block-mod-btn ${b.retryUntilPlaced ? 'on' : ''} tooltip-side" data-tooltip="Keep re-placing until the unit is confirmed placed (needs Assets/ui/unit_exist.png)" onclick="toggleRetryUntilPlaced('${b.id}')">Keep Placing</button>`;
-  return idx + name + x + y + hotkey + set + ignoreHighlight + retryUntilPlaced;
+  const retryUntilPlaced = `<button type="button" class="block-mod-btn ${b.retryUntilPlaced ? 'on' : ''} tooltip-side" data-tooltip="Legacy retry mode: keeps re-placing until the unit is confirmed (needs Assets/ui/unit_exist.png)" onclick="toggleRetryUntilPlaced('${b.id}')">Keep Placing</button>`;
+  const verifyPlacement = `<button type="button" class="block-mod-btn ${b.verifyPlacement ? 'on' : ''} tooltip-side" data-tooltip="In Pre Start, confirm the unit with Assets/ui/unit_exist.png and repeat the full placement if confirmation fails" onclick="toggleVerifyPlacement('${b.id}')">Verify Placement</button>`;
+  const recoverPhantom = `<button type="button" class="block-mod-btn ${b.recoverPhantom ? 'on' : ''} tooltip-side" data-tooltip="After battle begins, check whether the projected unit stayed on its tile. If it disappeared, place it again; needs Assets/ui/unit_exist.png" onclick="toggleRecoverPhantom('${b.id}')">Recover Phantom</button>`;
+  const verifyOptions = b.verifyPlacement
+    ? field('Max attempts', `<input class="block-input" style="width:62px;" type="number" min="1" max="5" step="1" value="${b.verifyRetries ?? 2}" oninput="updateVerifyPlacementOption('${b.id}', 'verifyRetries', this.value)" title="Includes the first placement attempt">`)
+      + field('Retry delay (s)', `<input class="block-input" style="width:72px;" type="number" min="0.5" max="5" step="0.5" value="${b.verifyDelay ?? 1}" oninput="updateVerifyPlacementOption('${b.id}', 'verifyDelay', this.value)" title="Pause before every additional placement attempt">`)
+    : '';
+  const phantomOptions = b.recoverPhantom
+    ? field('Checks', `<input class="block-input" style="width:62px;" type="number" min="1" max="5" step="1" value="${b.phantomCheckAttempts ?? 4}" oninput="updatePhantomRecoveryOption('${b.id}', 'phantomCheckAttempts', this.value)" title="Maximum checks after the battle begins">`)
+      + field('Check every (s)', `<input class="block-input" style="width:72px;" type="number" min="5" max="60" step="1" value="${b.phantomCheckDelay ?? 12}" oninput="updatePhantomRecoveryOption('${b.id}', 'phantomCheckDelay', this.value)" title="Seconds before the first check and between failed recovery checks">`)
+    : '';
+  return idx + name + x + y + hotkey + set + ignoreHighlight + retryUntilPlaced + verifyPlacement + verifyOptions + recoverPhantom + phantomOptions;
 }
 
 // Click block: X/Y plus the same Set/position-picker button Place Unit has
@@ -7694,6 +7759,7 @@ function serializeBlock(b) {
   const out = {
     type: b.type, params: b.params, once: b.once, kind: b.kind, value: b.value, hotkey: b.hotkey,
     mode: b.mode, pathName: b.pathName, ignoreHighlight: b.ignoreHighlight, retryUntilPlaced: b.retryUntilPlaced,
+    verifyPlacement: b.verifyPlacement, verifyRetries: b.verifyRetries, verifyDelay: b.verifyDelay,
     sprint: b.sprint, key: b.key,
   };
   if (b.type === 'detect') {
@@ -7892,6 +7958,14 @@ function blockFromSaved(b) {
     block.hotkey = b.hotkey || '';
     block.ignoreHighlight = !!b.ignoreHighlight;
     block.retryUntilPlaced = !!b.retryUntilPlaced;
+    // New fields are normalized only for the editor state. The false default
+    // means old files still follow their original fast Pre Start path.
+    block.verifyPlacement = !!b.verifyPlacement;
+    block.verifyRetries = Math.max(1, Math.min(5, Math.floor(Number(b.verifyRetries) || 2)));
+    block.verifyDelay = Math.max(0.5, Math.min(5, Number(b.verifyDelay) || 1));
+    block.recoverPhantom = !!b.recoverPhantom;
+    block.phantomCheckAttempts = Math.max(1, Math.min(5, Math.floor(Number(b.phantomCheckAttempts) || 4)));
+    block.phantomCheckDelay = Math.max(5, Math.min(60, Number(b.phantomCheckDelay) || 12));
   }
   if (b.type === 'walk_path') {
     block.mode = b.mode === 'custom' ? 'custom' : 'auto';
