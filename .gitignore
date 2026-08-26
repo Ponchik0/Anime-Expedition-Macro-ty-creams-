@@ -53,3 +53,10 @@ dist/
 
 # Записи режима «Повтор» — личные, как и настройки.
 Recordings/
+
+# Local PDF reports and scratch notes
+*.pdf
+todo.md
+ui/concept-command/
+Задачи/
+ыва.txt

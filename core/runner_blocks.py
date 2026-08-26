@@ -908,19 +908,11 @@ class BlockOps:
                         return
                     idx += 1 if found else block.get("_else_offset", 1)
                     continue
-                if block.get("once") and not first_repeat:
-                    # "Once" (see the block's Once chip in Creation) means only
-                    # the task's FIRST entry into this stage runs it -- e.g. a
-                    # starter placement that shouldn't be re-placed (and would
-                    # just get rejected as a duplicate/waste a click) on every
-                    # repeat of the same stage.
-                    #
-                    # Skipping it also breaks any quick-place chain it was part
-                    # of. The finally: below guarantees Shift never escapes this
-                    # function, but that fires after the whole list -- far too
-                    # late for the next Place Unit block, which would otherwise
-                    # run with Shift still down and place the PREVIOUS unit on
-                    # its tile. Release it here, where the chain actually breaks.
+                if block.get("once") and not first_repeat and btype != "place_unit":
+                    # "Once" (см. плашку "Once" в Редакторе) применяется только
+                    # для неповторяемых действий первого захода (например, ходьба
+                    # walk_path). Стартовые юниты Place Unit в Pre Start ОБЯЗАНЫ
+                    # ставиться в каждом матче, так как между матчами поле очищается.
                     self._release_quick_place_shift()
                     self._log(f'[Macro] Skipping block #{step} -- marked "Once" and this isn\'t the first repeat.')
                     idx += 1
@@ -1778,6 +1770,14 @@ class BlockOps:
             spot = (orig_x, orig_y)
         else:
             spot = self._find_valid_place_spot(hwnd, stop_event, left, top, orig_x, orig_y, name)
+            if spot is None and not is_quick_place and hotkey and not self._checkpoint(stop_event):
+                # Повторная попытка: микролаг хоткея или движение камеры могли
+                # помешать первой попытке. Сбрасываем Z и пробуем ещё раз.
+                self._keyboard.tap(ord("Z"))
+                time.sleep(0.08)
+                self._keyboard.tap(vk)
+                time.sleep(PLACE_HOTKEY_SETTLE)
+                spot = self._find_valid_place_spot(hwnd, stop_event, left, top, orig_x, orig_y, name)
         if self._checkpoint(stop_event):
             self._release_quick_place_shift()
             return False
@@ -1785,9 +1785,8 @@ class BlockOps:
             self._log(f'[Macro] Place Unit "{name}": no valid (white) tile found at ({orig_x}, {orig_y}) '
                        f'or within {PLACE_SPIRAL_RADII[-1]}px around it -- giving up on this block.')
             self._note_placement(name, False)
-            # В очередь на доставку НЕ кладём: клетки не нашлось вообще, а это
-            # не про деньги -- это либо не та точка, либо камера смотрит не
-            # туда, и в бою повторится один в один.
+            if pending_ok:
+                self._remember_pending_placement(block, index, macro_name, unit_ordinal, name)
             if not next_is_same_unit:
                 self._release_quick_place_shift()
             return False

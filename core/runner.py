@@ -2934,43 +2934,35 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
     def _run_prestart(self, hwnd, stop_event: threading.Event, task: dict, default_walk_paths: dict,
                         first_repeat: bool = True) -> bool:
-        # Camera setup runs ONCE per fresh entry into a stage (same
-        # first_repeat gate as Team Loadout and the Walk Path block below)
-        # -- it used to re-run on every repeat as a "per-match reset", but
-        # the camera actually holds its angle across a repeat's
-        # re-teleport, so re-running just re-dragged an already-correct
-        # camera off its spot every loop.
+        # НАСТРОЙКА КАМЕРЫ ВЫПОЛНЯЕТСЯ ПЕРЕД КАЖДЫМ МАТЧЕМ/ПОВТОРОМ.
+        # При каждом респавне и перезаходе (включая Repeat Stage, ре-телепорт
+        # или повторный заход) Roblox сбрасывает ракурс камеры на стандартный
+        # горизонтальный вид. Если не повернуть и не наклонить камеру,
+        # координаты расстановки попадут мимо поля и юниты не встанут.
         #
-        # Expedition gets its own sequence: the standard drag-down + O
-        # zoom-hold doesn't frame Expedition maps right, so it uses the
-        # drag-down + Left-arrow rotate instead (the same sequence Settings
-        # > Debug > Camera Setup 3 tests) -- 730ms rotate, then a short O
-        # tap for a small zoom step (duration user-tunable: Settings >
-        # Debug > "Expedition Camera Zoom", 100ms default).
-        if first_repeat:
-            self._log("[Macro] Pre Start: setting up the camera...")
-            self._set_status(action="Setting up camera...")
-            # nav_unitmanager (just confirmed by _wait_teleport_in) is a HUD
-            # element and can render a beat before the character/camera
-            # controller has actually finished attaching to the freshly-
-            # spawned avatar -- this blind right-click-drag has no visual
-            # confirmation of its own to wait on, so a short settle here is
-            # what catches that rare case instead of dragging on a camera
-            # that isn't ready to receive it yet.
-            self._interruptible_sleep(CAMERA_SETUP_SETTLE, stop_event)
-            if self._checkpoint(stop_event):
-                return False
-            try:
-                if task.get("mode") == "expedition":
-                    camera.run_camera_drag_hold(self._mouse, self._keyboard, hwnd, hold_ms=730,
-                                                 o_tap_ms=self._expedition_camera_o_ms)
-                else:
-                    camera.run_camera_setup(self._mouse, self._keyboard, hwnd)
-                self._log("[Macro] Camera setup done.")
-            except Exception as exc:
-                self._log(f"[Macro] Camera setup failed: {exc}")
-        else:
-            self._log("[Macro] Repeat of the same stage -- skipping camera setup (already set on entry).")
+        # Expedition получает свою последовательность: наклон вниз + поворот
+        # влево стрелкой (730 мс) + короткое нажатие O для масштаба.
+        self._log("[Macro] Pre Start: setting up the camera...")
+        self._set_status(action="Setting up camera...")
+        # nav_unitmanager (just confirmed by _wait_teleport_in) is a HUD
+        # element and can render a beat before the character/camera
+        # controller has actually finished attaching to the freshly-
+        # spawned avatar -- this blind right-click-drag has no visual
+        # confirmation of its own to wait on, so a short settle here is
+        # what catches that rare case instead of dragging on a camera
+        # that isn't ready to receive it yet.
+        self._interruptible_sleep(CAMERA_SETUP_SETTLE, stop_event)
+        if self._checkpoint(stop_event):
+            return False
+        try:
+            if task.get("mode") == "expedition":
+                camera.run_camera_drag_hold(self._mouse, self._keyboard, hwnd, hold_ms=730,
+                                             o_tap_ms=self._expedition_camera_o_ms)
+            else:
+                camera.run_camera_setup(self._mouse, self._keyboard, hwnd)
+            self._log("[Macro] Camera setup done.")
+        except Exception as exc:
+            self._log(f"[Macro] Camera setup failed: {exc}")
         if self._checkpoint(stop_event):
             return False
 

@@ -27,6 +27,8 @@ from core import settings as cfg
 # Проверяем мягко: задача — отсечь явный мусор (пустая строка, «привет»),
 # а не изображать валидатор URL. Ошибётся человек в коде сервера — это
 # видно сразу по тому, куда его закинуло.
+from urllib.parse import parse_qs, urlparse
+
 _HTTP = re.compile(r"^https?://(www\.)?roblox\.com/", re.I)
 _PROTO = re.compile(r"^roblox://", re.I)
 
@@ -40,6 +42,40 @@ def looks_valid(link: str) -> bool:
     if not link:
         return False
     return bool(_HTTP.match(link) or _PROTO.match(link))
+
+
+def to_roblox_protocol(link: str) -> str:
+    """Преобразует веб-ссылку https://www.roblox.com/... в прямой протокол roblox://.
+
+    ПОЧЕМУ ЭТО КРИТИЧНО: если открывать https:// ссылку через os.startfile / браузер,
+    Windows открывает окно браузера (Edge/Chrome), которое перекрывает макрос,
+    ворует фокус и ломает всё управление. Протокол roblox:// запускает Roblox Player
+    напрямую, без единого окна браузера.
+    """
+    link = normalize(link)
+    if not link:
+        from core.runner_constants import REJOIN_DEEPLINK
+        return REJOIN_DEEPLINK
+    if link.lower().startswith("roblox://"):
+        return link
+    try:
+        parsed = urlparse(link)
+        qs = parse_qs(parsed.query)
+        match_games = re.search(r"/games/(\d+)", parsed.path)
+        if match_games:
+            place_id = match_games.group(1)
+            link_code = (qs.get("privateServerLinkCode") or qs.get("linkCode") or [None])[0]
+            if link_code:
+                return f"roblox://experiences/start?placeId={place_id}&linkCode={link_code}"
+            return f"roblox://experiences/start?placeId={place_id}"
+        if "share" in parsed.path:
+            code = (qs.get("code") or [None])[0]
+            share_type = (qs.get("type") or ["Server"])[0]
+            if code:
+                return f"roblox://navigation/share_links?code={code}&type={share_type}"
+    except Exception:
+        pass
+    return link
 
 
 def describe(link: str) -> dict:
@@ -62,11 +98,15 @@ def get_join_link() -> str:
     Пусто или мусор в настройке -> прежнее поведение движка (общее лобби).
     Мусор намеренно НЕ роняет запуск: лучше зайти в публичную игру, чем не
     зайти никуда, — макрос всё равно доберётся до боя через меню.
+    Всегда возвращает URI протокола roblox://, чтобы не открывать браузер.
     """
     from core.runner_constants import REJOIN_DEEPLINK
     link = normalize(cfg.load().get("private_server_link", ""))
-    return link if looks_valid(link) else REJOIN_DEEPLINK
+    if looks_valid(link):
+        return to_roblox_protocol(link)
+    return REJOIN_DEEPLINK
 
 
 def is_private() -> bool:
     return looks_valid(cfg.load().get("private_server_link", ""))
+

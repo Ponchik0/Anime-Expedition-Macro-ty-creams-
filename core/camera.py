@@ -19,6 +19,7 @@ def tilt_camera_top_down(mouse, hwnd) -> None:
     consumes raw mouse deltas while the right button is held and recenters the
     hidden cursor every frame.
     """
+    wm.activate_window(hwnd)
     left, top, right, bottom = wm.get_window_rect_screen(hwnd)
     cx, cy = (left + right) // 2, (top + bottom) // 2
     mouse.move_to(cx, cy)

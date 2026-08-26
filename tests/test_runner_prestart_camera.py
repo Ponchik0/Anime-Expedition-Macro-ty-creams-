@@ -48,3 +48,20 @@ def test_stop_during_camera_settle_skips_the_drag_immediately(monkeypatch):
 
     assert runner._run_prestart(123, stop_event, {"mode": "story"}, {}) is False
     assert calls == [], "camera setup must not run once Stop has already landed"
+
+
+def test_camera_setup_runs_on_repeats(monkeypatch):
+    """Camera setup must run on every repeat (first_repeat=False) because Roblox
+    resets player camera pitch and yaw on every respawn / round restart."""
+    calls = []
+    monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        runner_module.camera, "run_camera_setup",
+        lambda *_a, **_kw: calls.append("camera"))
+
+    runner = _runner()
+    runner._interruptible_sleep = lambda _sec, _stop=None: True
+
+    assert runner._run_prestart(123, threading.Event(), {"mode": "story"}, {}, first_repeat=False) is True
+    assert calls == ["camera"], "camera setup must run on subsequent repeats"
+

@@ -318,7 +318,7 @@ CHALLENGE_SCREEN_TIMEOUT = 10.0  # how long to wait for challenge_loaded after c
 CHALLENGE_MAP_DETECT_TIMEOUT = 20.0  # how long to poll for a recognizable map after teleporting in
 
 EXPEDITION_DIFFICULTY_CLICK = (441, 524)
-EXPEDITION_DIFFICULTY_CLICK_DELAY = 0.1  # lets each increment register before the next click
+EXPEDITION_DIFFICULTY_CLICK_DELAY = 0.35  # lets each increment register before the next click
 
 # Clicking the stage row (or the map, for Expedition) fires an animation on
 # the difficulty picker that immediately clicking it can outrun -- the click

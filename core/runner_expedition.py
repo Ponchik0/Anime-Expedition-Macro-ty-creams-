@@ -142,6 +142,17 @@ class ExpeditionOps:
         # (and a real failure then falls back to the old slow
         # timeout-and-recover path).
         try:
+            victory_match = vision.find_image(hwnd, "victory")
+        except Exception:
+            victory_match = None
+        if victory_match is not None:
+            debug_path = self._debug_save(hwnd, "victory", victory_match)
+            suffix = f" Debug: {debug_path}" if debug_path else ""
+            self._log(f"[Macro] Expedition run finished -- Victory screen found "
+                       f"(score {victory_match['score']:.2f}).{suffix}")
+            return "win"
+
+        try:
             defeat_match = vision.find_image(hwnd, "defeat")
         except vision.TemplateNotFound:
             defeat_match = None
@@ -394,10 +405,8 @@ class ExpeditionOps:
                     return "win"
                 if stop_event is not None and stop_event.is_set():
                     return None
-                # Never stall on a failed extract: continuing costs one more
-                # wave and another (immediate -- count already past
-                # accept-at) extract chance at the next checkpoint.
-                self._log("[Macro] Extract confirm never registered -- continuing this checkpoint instead.")
+                self._log("[Macro] Extract confirm not registered yet -- will retry extracting on next poll.")
+                return None
             else:
                 self._log('[Macro] Not the configured sighting yet -- declining (continuing).')
         else:
@@ -476,6 +485,15 @@ class ExpeditionOps:
                 if confirm is not None:
                     self._mouse.click(left + confirm["cx"], top + confirm["cy"])
                     time.sleep(0.45)
+                    try:
+                        second_confirm = vision.find_image(hwnd, "extract_confirm")
+                    except Exception:
+                        second_confirm = None
+                    if second_confirm is not None:
+                        self._log(f'[Macro] Found "extract_confirm" (score {second_confirm["score"]:.2f}) -- clicking it.')
+                        vision.shuffle_click_match(self._mouse, hwnd, second_confirm)
+                        self._interruptible_sleep(1.0, stop_event)
+
                     if vision.find_color_run(hwnd, EXP_COLOR_CONFIRM_BAND, _exp_red,
                                               EXP_COLOR_CONFIRM_MIN_RUN) is None:
                         # Исчезновение confirm доказывает только закрытие
@@ -486,17 +504,16 @@ class ExpeditionOps:
                         # тот же интервал, что и шаблонный путь Extract, и
                         # спим прерываемо: Stop не должен ждать анимацию.
                         self._interruptible_sleep(EXTRACT_CONFIRM_SETTLE, stop_event)
-                        # После ожидания обе полосы обязаны очиститься. Иначе
-                        # диалог закрылся, но Extract правда не зарегистрирован
-                        # и нужно начать полную попытку с первого клика.
                         checkpoint_up = vision.find_color_run(hwnd, EXP_COLOR_CONTINUE_BAND, _exp_green,
                                                                EXP_COLOR_CONTINUE_MIN_RUN)
                         confirm_back = vision.find_color_run(hwnd, EXP_COLOR_CONFIRM_BAND, _exp_red,
                                                               EXP_COLOR_CONFIRM_MIN_RUN)
-                        if checkpoint_up is None and confirm_back is None:
+                        extract_still_up = vision.find_color_run(hwnd, EXP_COLOR_CONTINUE_BAND, _exp_red,
+                                                                  EXP_COLOR_CONTINUE_MIN_RUN)
+                        if confirm_back is None and (extract_still_up is None or checkpoint_up is None):
                             self._log("[Macro] Extracted -- on the reward screen.")
                             return True
-                        self._log("[Macro] Confirm closed but the checkpoint is still up -- "
+                        self._log("[Macro] Confirm closed but extract button is still up -- "
                                    "the extract didn't register, retrying.")
                     break  # restart from the Extract click
                 time.sleep(0.12)
