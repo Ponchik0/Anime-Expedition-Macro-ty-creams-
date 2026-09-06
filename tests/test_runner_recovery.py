@@ -299,7 +299,7 @@ def test_failed_rejoin_stays_pending_and_does_not_launch_again(monkeypatch):
     monkeypatch.setattr(runner_module.wm, "list_roblox_windows", lambda: [])
     monkeypatch.setattr(runner_module.wm, "is_window", lambda _hwnd: True)
     def find_lobby_after_existing_launch(*_args, **_kwargs):
-        if clock.now >= 6.0:
+        if clock.now >= 7.0:
             return ({"score": 1.0}, "nav_play")
         return (None, None)
 

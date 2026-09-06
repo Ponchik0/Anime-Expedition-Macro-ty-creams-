@@ -96,6 +96,88 @@ PLAY_CLICK_RETRY_ATTEMPTS = 3
 START_GAME_CLICK_RETRY_ATTEMPTS = 3
 START_GAME_CLICK_VERIFY_SETTLE = 1.0  # after clicking, how long to wait before checking it's actually gone
 START_GAME_BUTTON_WAIT_TIMEOUT = 5.0  # how long to poll for Start Game right after Pre Start hands off
+# ── Native Expedition encounter handling (_handle_expedition_encounter).
+# An encounter node parks the client somewhere a match result can never come
+# from. Recovering means: reset position, walk to that map's NPC, talk to it.
+# All coordinates are in the 1152x756 reference space, measured on a real
+# client -- the same kind of constant as STORY_CLICK. Where an image exists for
+# a step it is used instead (nav_settings / nav_closeui are already shipped),
+# because an image survives a layout shift and a coordinate does not.
+ENCOUNTER_REGION = (414, 58, 41, 45)      # the encounter marker's HUD slot
+# How long to look for the encounter's own Continue button before giving up
+# on it. It is the same green face the wave checkpoints use, so the colour
+# engine finds it with one pixel scan and no reference image -- which makes
+# it the only part of encounter handling that needs nothing map-specific.
+ENCOUNTER_CONTINUE_TIMEOUT = 4.0
+ENCOUNTER_TELEPORT_SPAWN_CLICK = (621, 443)  # "teleport to spawn" inside Settings
+# Dialogue advance clicks, in order. The prompt is opened with E; these step
+# through the exchange that follows.
+# Fallback only. The exchange is driven by image search now (see
+# _run_encounter_dialogue) because the option buttons move and recolour --
+# they are green one encounter and red or pink the next, and the menu is
+# four options (Discuss / Barter / Engage / Leave), so a fixed position is a
+# one-in-four guess that fails silently. These are kept for setups with none
+# of the dialogue_* crops installed, so nothing regresses for them.
+ENCOUNTER_DIALOGUE_CLICKS = ((403, 663), (581, 577), (667, 665), (581, 577))
+# The dialogue box itself -- clicked to advance the text, and to answer the
+# "click anywhere" prompts the roll puts up. Measured with the Image
+# Manager's region tool: the box is 391x64 at (392, 559), so this is its
+# centre. A whole panel is a far more forgiving target than a button, which
+# is why this one step stays a coordinate.
+ENCOUNTER_DIALOGUE_ADVANCE_CLICK = (587, 591)
+# How long to wait for each dialogue button to render. The panel animates
+# in, so a one-shot search right after the previous click misses it.
+ENCOUNTER_DIALOGUE_OPTION_TIMEOUT = 5.0
+# The d20 roll animation. Clicking through it early does nothing, and the
+# result banner only accepts a click once it has settled.
+ENCOUNTER_DICE_ROLL_SETTLE = 4.5
+ENCOUNTER_STEP_SETTLE = 0.3        # between UI steps, so each registers
+ENCOUNTER_ARRIVE_SETTLE = 1.5      # after the walk, before looking for the prompt
+ENCOUNTER_SPEAK_TIMEOUT = 4.0      # how long to wait for the interact prompt
+# Opening Settings is the step most likely to be blocked: a level-up "Select an
+# upgrade!" modal renders over the gear, so the search legitimately fails while
+# one is up. Longer than the others, and the modal is cleared first.
+ENCOUNTER_SETTINGS_TIMEOUT = 6.0
+# A level-up "Select an upgrade!" modal covers the settings gear, and several
+# can queue up back to back after a wave. Clearing one and pressing on is not
+# enough -- the next is already rendering. Wait until none is left, up to this
+# long, dismissing each as it appears. Bounded rather than a flat sleep, so a
+# run with nothing blocking pays nothing.
+ENCOUNTER_MODAL_CLEAR_TIMEOUT = 12.0
+ENCOUNTER_MODAL_POLL = 0.4
+# Closing Settings took more than one click in practice: observed closing on
+# the second attempt roughly as often as the first.
+ENCOUNTER_CLOSE_ATTEMPTS = 3
+# The dialogue is several boxes, not one. Firing the click sequence once and
+# moving on left the run standing in an open box, so it repeats until the
+# interact prompt is gone -- bounded, because a dialogue that never clears is
+# a different problem and should not loop forever.
+ENCOUNTER_DIALOGUE_ROUNDS = 3
+# One second between dialogue clicks, matching the spacing the template version
+# actually ran at: each Click block there advances on its own battle tick, and
+# MATCH_RESULT_POLL_INTERVAL is 1.0s. Firing them back to back instead landed
+# clicks on a box that had not advanced yet -- same coordinates, wrong pace.
+ENCOUNTER_DIALOGUE_CLICK_GAP = 1.0
+# Two separate pauses, because they wait on different things.
+#
+# The first is before ANY of the menu work: the encounter has just appeared,
+# the wave that triggered it is still resolving, and level-up cards are still
+# queueing. Reaching for Settings into that is what produced the alternating
+# "nav_settings not found" / "Settings is still open" failures.
+#
+# DEFERRED, never slept: the handler returns and lets the caller's poll loop
+# carry on picking upgrade cards and clicking wave Continues, and only starts
+# the menu once this much has passed since the icon first appeared. A blocking
+# wait here froze the whole run -- reward cards auto-selected untouched.
+ENCOUNTER_PRE_MENU_SETTLE = 20.0
+# The second is after the teleport, before replaying the route: the world is
+# reloading around the player and keys pressed through that are lost, so the
+# route would start part-way in and land short of the NPC. Short, because the
+# 20s above has already absorbed the encounter settling.
+ENCOUNTER_TELEPORT_SETTLE = 3.0
+# Do not re-enter while the marker is still fading, and never twice in a row
+# for one encounter.
+ENCOUNTER_COOLDOWN = 20.0
 EXPEDITION_WAVE_TIMEOUT = 8.0  # how long to wait for Continue_2/extract after clicking exp_continue/exp_extract
 # A level-up "Select an upgrade!" reward modal can be on screen at the exact
 # same moment as the extract/continue choice (confirmed via a real capture:
@@ -108,6 +190,34 @@ EXPEDITION_WAVE_TIMEOUT = 8.0  # how long to wait for Continue_2/extract after c
 EXPEDITION_EXTRACT_CONFIRM_TIMEOUT = 16.0
 EXTRACT_CONFIRM_SETTLE = 5.0  # settle after clicking "extract" -- reported as a click that can visually land without registering
 EXPEDITION_CONTINUE_COOLDOWN = 5.0  # settle after exp_continue/continue_2 -- a lingering banner right after the
+
+# After this many checkpoints where extraction was attempted and did not
+# take, stop asking and just play the run out: decline each checkpoint and
+# let it end on its own. Losing the early exit is a far smaller cost than
+# stalling every checkpoint from here to the end.
+EXPEDITION_EXTRACT_ATTEMPTS_BEFORE_PLAYING_ON = 3
+# How long to wait for the result screen before believing an extract worked.
+EXPEDITION_RESULT_CONFIRM_TIMEOUT = 6.0
+
+# How long a checkpoint may stay up, being re-found and re-clicked on every
+# poll, before the run is treated as stalled rather than progressing. Every
+# individual step of the checkpoint chain is already bounded, but nothing
+# noticed the WHOLE chain repeating: a Continue that never clears is
+# re-clicked every poll, and the only escape was MATCH_RESULT_TIMEOUT half
+# an hour later. A healthy run cannot trip this -- waves are minutes apart,
+# so the polls between two checkpoints find no Continue at all and reset
+# the clock. Only a checkpoint that never clears keeps it running.
+# Measured in elapsed time rather than poll count so it means the same
+# thing regardless of how long each retry cycle happens to take.
+EXPEDITION_STALL_TIMEOUT = 300.0
+# A Start Game popup or a level-up reward card is handled BEFORE the
+# checkpoint is looked at, and that poll returns early -- so those polls see
+# no checkpoint either way. They must not age the stall clock above (the
+# checkpoint may have cleared while they were in the way, unobserved), but a
+# run that never gets past them is not progressing either, so they get their
+# own cap rather than resetting anything. Kept separate so the log can say
+# which of the two actually happened.
+EXPEDITION_INTERCEPT_TIMEOUT = 300.0
 
 # ── Color-based Expedition checkpoint detection (the default engine --
 # Settings > Debug > "Expedition Color Detection" toggles back to the
@@ -378,6 +488,14 @@ RECONNECT_IMAGE_NAMES = ("reconnect",)
 # restricted to the right-side cards panel (x: 440..1152) to exclude the left 3D viewport
 # where player silhouettes and party [+] invite buttons render.
 GAMEMODE_CARD_REGION = (440, 0, 712, 756)
+# ...but only as the FIRST attempt. The box assumes a fixed card layout, and
+# the menu keeps gaining cards (Tower and Event in v0.19.0), so a mode can end
+# up rendering outside it -- reported as the run repeatedly clicking Play and
+# then "Expedition never showed up". A boxed miss now retries against the whole
+# window for this long before the task is failed (see _find_gamemode_card).
+# Shorter than the boxed attempt: by this point the menu is known to be open,
+# so the card is either visible or genuinely absent.
+GAMEMODE_CARD_WIDE_TIMEOUT = 5.0
 
 NAV_PLAY_IMAGE_NAMES = ("nav_play",)
 EXPEDITION_IMAGE_NAMES = ("expedition",)
@@ -387,6 +505,36 @@ STORY_IMAGE_NAMES = ("story",)
 NAV_START_IMAGE_NAMES = ("nav_start",)
 NAV_DISBAND_IMAGE_NAMES = ("nav_disband",)
 PARTY_OVERLAY_IMAGE_NAMES = NAV_DISBAND_IMAGE_NAMES + ("invite_players_open",)
+# Modals that cover the LOBBY rather than the gamemode menu -- the Update Log
+# shown after a game update or a fresh login is the common one. Play renders
+# behind it and still matches, so the click is found and lands on the modal
+# instead: observed as three "nav_back not found -- still on the lobby,
+# re-clicking Play" retries in a row while the patch notes sat on screen.
+# Optional like nav_disband: no image means the check does nothing.
+LOBBY_OVERLAY_CLOSE_IMAGE_NAMES = ("update_log_close",)
+# The same "are we actually on the lobby" question during a teleport wait, but
+# that loop can run for five minutes on matchmaking and polls fast, so the
+# check runs every Nth poll rather than every one -- a full-window search per
+# tick would be real cost for a state that does not change that quickly.
+LOBBY_RESYNC_CONFIRMATIONS = 2
+LOBBY_CHECK_EVERY_N_POLLS = 6
+
+# AFK Chamber: an Expedition encounter node can drop the client in here, and
+# nothing about it reads as a disconnect or a lobby -- so the runner sat
+# polling for a result that could never come until MATCH_RESULT_TIMEOUT, once
+# per encounter node, for the rest of the run. Recovering is one click on the
+# exit button, checked alongside the reconnect prompt on every result poll.
+# The banner is a fixed HUD title, so it is searched in a band rather than the
+# whole window -- a full-window sweep every second is not worth it for a title
+# that does not move.
+AFK_CHAMBER_REGION = (416, 230, 320, 70)
+# Rate-limit the exit click: the banner stays up for a beat while the exit
+# animates, so clicking every poll would fight the transition it just started.
+AFK_CHAMBER_CLICK_COOLDOWN = 5.0
+# The exit button ("Leave") on the AFK Chamber HUD. Measured in the 1152x756
+# reference space.
+AFK_CHAMBER_EXIT_CLICK = (576, 520)
+REPEAT_ENTRY_SETTLE = 5.0
 # 10 visual variants on file, all inside Assets/ui/priority_upgrade/ --
 # every one tried per search, same folder-variant mechanism as above.
 PRIORITY_UPGRADE_IMAGE_NAMES = ("priority_upgrade",)
@@ -572,6 +720,12 @@ TEAM_LOADOUT_SCROLL_SETTLE = 0.5
 # Wait for Wave (see _run_wait_wave_tick) -- the "<current> / <max> wave"
 # HUD badge, in the docked game window's own client coordinates.
 WAVE_REGION = (467, 21, 104, 61)
+# Measured on a live Expedition frame with the Image Manager's region tool.
+# Only Expedition is changed; the shared box above is left exactly as it is,
+# since it is what Story/Raid/Infinite have been reading correctly.
+EXPEDITION_WAVE_REGION = (417, 16, 110, 33)
+WAIT_WAVE_NO_COUNTER_SETTLE = 20.0
+WAIT_WAVE_UNREADABLE_CEILING = 30.0
 # OCR here is several real Tesseract subprocess spawns (see core.wave/
 # core.ocr's multi-mask sweep) -- checked on this cadence, not every single
 # Battle-tick poll, so a long wait for a distant wave doesn't spend most of

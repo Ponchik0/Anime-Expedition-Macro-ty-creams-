@@ -254,6 +254,32 @@ def is_foreground(window_id: int) -> bool:
         return False
 
 
+def close_roblox_process(window_id: int) -> None:
+    """Terminate the Roblox client owning ``window_id``.
+
+    Same role as window_win.close_roblox_process: the rejoin path closes a
+    client wedged on the Reconnect/Retry prompt outright (crash-equivalent
+    end state) so the deep link boots a fresh one. Tries the graceful
+    AppKit terminate first; a wedged client can ignore that, so it then
+    SIGKILLs after a short grace period. The launcher app is left alone --
+    it answers the roblox:// deep link that spawns the fresh client."""
+    pid = get_window_pid(window_id)
+    if not pid:
+        return
+    try:
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is not None:
+            app.terminate()
+    except Exception as exc:
+        _log(f"app.terminate raised: {exc}")
+    time.sleep(0.5)
+    try:
+        import signal
+        os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 # ── Visibility: macOS can't hide another app's window the way ShowWindow
 # (SW_HIDE) does. On Windows hide/show exist purely because the DOCKED
 # child would paint over the app's own non-game screens -- on mac the game

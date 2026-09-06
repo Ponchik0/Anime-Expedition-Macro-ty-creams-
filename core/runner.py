@@ -175,6 +175,18 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # Expedition camera's O-zoom hold (Settings > Debug).
         self._expedition_color_buttons = True
         self._exp_last_sighting_at = 0.0
+        # Consecutive polls that found a checkpoint Continue, and when that
+        # run of them started. See EXPEDITION_STALL_TIMEOUT -- a checkpoint
+        # that never clears would otherwise be re-clicked all the way to
+        # MATCH_RESULT_TIMEOUT.
+        self._exp_checkpoint_streak = 0
+        self._exp_checkpoint_since = 0.0
+        # Polls a popup/reward card took before the checkpoint could be read.
+        # See EXPEDITION_INTERCEPT_TIMEOUT. _exp_clock_marked_at is what lets
+        # the checkpoint clock be HELD across those polls rather than aged.
+        self._exp_intercept_streak = 0
+        self._exp_intercept_since = 0.0
+        self._exp_clock_marked_at = 0.0
         self._expedition_camera_o_ms = 100.0
         # Wrapped to remember the most recent action text locally: the
         # stop path (_checkpoint) reports "Stopped. (was: <action>)" so a
@@ -2265,6 +2277,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
         portal_offer_last_check = 0.0
         portal_offer_selected = False
+        afk_clicked_at = 0.0  # last time the AFK Chamber exit was clicked
+        # {"handled_at", "seen_at"} -- the settle is deferred, not slept, so the
+        # poll loop keeps picking upgrade cards and clicking Continues meanwhile.
+        encounter_state = {"handled_at": 0.0, "seen_at": 0.0}
         while deadline is None or time.time() < deadline:
             if self._checkpoint(stop_event):
                 return None
@@ -2351,13 +2367,40 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     self._handle_disconnect(hwnd, stop_event, webhook, task)
                     return None
 
+            afk_clicked_at = self._dismiss_afk_chamber(hwnd, afk_clicked_at)
+
             if watch_close_popup:
                 self._click_close_popup_if_found(hwnd)
 
             if mode == "expedition":
+                # An encounter node parks the client where no result can come
+                # from. Checked before the wave result, since the wave check
+                # cannot resolve while one is up.
+                encounter_state = self._handle_expedition_encounter(
+                    hwnd, stop_event, encounter_state)
                 result = self._check_expedition_wave_result(hwnd, stop_event)
                 if result is not None:
                     return result
+                stall_detail = None
+                if self._expedition_checkpoint_stalled():
+                    stall_detail = (
+                        f"the same checkpoint has been up for {self._exp_checkpoint_streak} "
+                        f"polls without ever clearing (an encounter node waiting on an NPC, "
+                        f"or a click that lands visually without registering)")
+                elif self._expedition_intercepts_stalled():
+                    stall_detail = (
+                        f"a popup or reward card has taken every one of the last "
+                        f"{self._exp_intercept_streak} polls, so the checkpoint has not been "
+                        f"readable that whole time")
+                if stall_detail is not None:
+                    self._log(
+                        f"[Macro] Expedition run hasn't progressed in "
+                        f"{EXPEDITION_STALL_TIMEOUT / 60:.0f} min -- {stall_detail}. Abandoning "
+                        f"it rather than waiting out the {MATCH_RESULT_TIMEOUT / 60:.0f} min "
+                        f"timeout; the task re-enters from the lobby.")
+                    self._save_debug_screenshot_unconditional(hwnd, "expedition_no_progress")
+                    self._note_checkpoint_cleared()
+                    return None
                 if self._exp_stuck:
                     # Забег застрял на экране, который макрос не понимает (см.
                     # EXP_STUCK_START_GAME_CLICKS). Кончаем ожидание здесь, а
@@ -3093,7 +3136,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
     def _run_prestart(self, hwnd, stop_event: threading.Event, task: dict, default_walk_paths: dict,
                         first_repeat: bool = True) -> bool:
-        plays_with_autoplay = (task.get("auto_play") == "autoplay")
+        plays_with_autoplay = (
+            task.get("auto_play") == "autoplay"
+            or task.get("auto_play") is True
+            or task.get("autoplay") is True
+            or task.get("plays_the_map") == "autoplay"
+        )
         if plays_with_autoplay:
             self._log("[Macro] Pre Start: Auto Play is playing this map -- leaving the camera alone.")
             self._interruptible_sleep(CAMERA_SETUP_SETTLE, stop_event)
@@ -3496,6 +3544,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if result == "disconnected":
             self._handle_disconnect(hwnd, stop_event, webhook, task)
             return False
+        if result == "lobby":
+            # Back on the lobby with no teleport coming. Reported as a failed
+            # setup so _run_task recovers and retries the task from the top,
+            # rather than sitting out the remaining timeout.
+            self._log("[Macro] Still on the lobby -- no teleport is coming (matchmaking left or never "
+                       "started). Retrying this task from the lobby.")
+            self._set_status(action="Back on the lobby -- retrying the task...")
+            return False
         if result == "timeout" and not stop_event.is_set():
             screenshot_path = self._save_debug_screenshot_unconditional(hwnd, "teleport_timeout")
             suffix = f" Debug: {screenshot_path}" if screenshot_path else ""
@@ -3511,8 +3567,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         ``teleportstuck`` is only Roblox's ordinary black loading screen, not
         a distinct error state. Normal loading gets the caller's full timeout;
         only the Reconnect/Retry prompt is an immediate failure. Returns
-        "ok", "disconnected", "stopped", or "timeout"."""
+        "ok", "disconnected", "lobby", "stopped", or "timeout"."""
         deadline = time.time() + timeout
+        lobby_sightings = 0     # consecutive checks that found the lobby's Play button
+        polls = 0
         while time.time() < deadline:
             if stop_event.is_set():
                 return "stopped"
@@ -3531,6 +3589,32 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     continue  # that particular crop hasn't been added -- try the next one
                 if reconnect_match is not None:
                     return "disconnected"
+
+            # Still on the lobby. Matchmaking was left, cancelled, or never
+            # took -- either way no teleport is coming, and waiting out the
+            # full timeout (5 minutes for matchmaking) achieves nothing. Play
+            # only renders on the lobby, which is what makes it safe to read
+            # here: during a real teleport the lobby is already gone.
+            # Confirmed over consecutive checks, since the lobby is briefly
+            # still drawn as a teleport begins.
+            #
+            # Rate-limited: this loop polls fast and can run for minutes, so a
+            # full-window search every tick would be real cost for a state that
+            # does not change that quickly.
+            polls += 1
+            if polls % LOBBY_CHECK_EVERY_N_POLLS:
+                time.sleep(TELEPORT_POLL_INTERVAL)
+                continue
+            try:
+                lobby_match = vision.find_image(hwnd, "nav_play")
+            except vision.TemplateNotFound:
+                lobby_match = None
+            if lobby_match is None:
+                lobby_sightings = 0
+            else:
+                lobby_sightings += 1
+                if lobby_sightings >= LOBBY_RESYNC_CONFIRMATIONS:
+                    return "lobby"
 
             time.sleep(TELEPORT_POLL_INTERVAL)
         return "timeout"
@@ -3697,7 +3781,19 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                            "would close them. Continuing without launching another instance.")
                 return False
 
-            self._set_status(action="Disconnected -- rejoining...")
+            self._set_status(action="Disconnected -- restarting Roblox...")
+            # Зависший при дисконнекте клиент застревает на экране Reconnect/Retry;
+            # deep link сам по себе его не восстановит — Roblox не реагирует.
+            # Закрываем зависший процесс начисто (как при краше), чтобы deep link
+            # запустил свежий сеанс Roblox.
+            try:
+                if _cur and wm.is_window(_cur):
+                    wm.close_roblox_process(_cur)
+                    self._log("[Macro] Closed the disconnected Roblox client -- launching a fresh one.")
+                    # Даём процессу завершиться, чтобы deep link не встретил полуживой процесс
+                    time.sleep(1.0)
+            except Exception as exc:
+                self._log(f"[Macro] Couldn't close the disconnected Roblox client: {exc}")
             # A rejoin creates a fresh game session; the previous team's visual
             # state cannot be assumed to survive it.
             self._last_applied_team_loadout = None
@@ -4519,6 +4615,28 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._log(f'[Macro] "nav_play" not found within {LOBBY_CHECK_TIMEOUT:.0f}s -- not on the lobby '
                    f'(likely a silent disconnect), attempting a rejoin via deep link.')
         return self._attempt_rejoin(hwnd, stop_event)
+
+    def _dismiss_lobby_overlay(self, hwnd) -> bool:
+        """Close a modal covering the lobby, e.g. the Update Log after a game
+        update or a fresh login.
+
+        Play renders behind such a modal and still matches, so the click is
+        found and then lands on the overlay -- seen as Play being re-clicked
+        until PLAY_CLICK_RETRY_ATTEMPTS runs out while patch notes sit on
+        screen. Optional, like the party overlay: no image, no check.
+
+        Returns True if something was closed.
+        """
+        try:
+            match, name = vision.find_image_any(hwnd, LOBBY_OVERLAY_CLOSE_IMAGE_NAMES)
+        except vision.TemplateNotFound:
+            return False
+        if match is None:
+            return False
+        self._log(f'[Macro] A lobby overlay ("{name}") is covering Play -- closing it first.')
+        vision.click_match(self._mouse, hwnd, match)
+        time.sleep(GAMEMODE_OVERLAY_CHECK_DELAY)
+        return True
 
     def _click_play(self, hwnd, stop_event: threading.Event) -> bool:
         self._set_status(action="Clicking Play...")
@@ -5521,6 +5639,69 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._log(f"[Macro] Couldn't click {label} without reopening a party overlay -- stopping.")
         return False
 
+    def _dismiss_afk_chamber(self, hwnd, last_clicked_at: float) -> float:
+        """Click out of the AFK Chamber if the run has been parked in it.
+
+        An Expedition encounter node can drop the client into the AFK Chamber.
+        Nothing about that looks like a disconnect or a lobby, so the runner
+        used to keep polling a screen where Victory/Defeat can never appear
+        until MATCH_RESULT_TIMEOUT, once per node, for the rest of the run.
+
+        Optional, like nav_disband/max_placement_reached: no afk_chamber.png
+        means the check silently does nothing rather than failing a run.
+
+        Returns the timestamp to carry into the next poll. Rate-limited,
+        because the banner stays up for a moment after the exit is clicked and
+        re-clicking every poll would fight the transition it just started.
+        """
+        if time.time() - last_clicked_at < AFK_CHAMBER_CLICK_COOLDOWN:
+            return last_clicked_at
+        try:
+            match = vision.find_image(hwnd, "afk_chamber", region=AFK_CHAMBER_REGION)
+        except vision.TemplateNotFound:
+            return last_clicked_at
+        if match is None:
+            return last_clicked_at
+
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
+        self._log(f'[Macro] In the AFK Chamber (score {match["score"]:.2f}) -- clicking out of it.')
+        self._set_status(action="Leaving the AFK Chamber...")
+        self._mouse.click(left + AFK_CHAMBER_EXIT_CLICK[0], top + AFK_CHAMBER_EXIT_CLICK[1])
+        return time.time()
+
+    def _find_gamemode_card(self, hwnd, stop_event: threading.Event, names, label: str):
+        """Locate a gamemode card, widening the search before giving up.
+
+        The cards panel is normally boxed to GAMEMODE_CARD_REGION so the left
+        3D viewport (player silhouettes, party [+] buttons) can't false-match.
+        That box assumes a fixed layout, and the menu keeps growing -- Tower
+        and Event cards landed in v0.19.0 -- so a card can now render outside
+        it and the whole task fails with "never showed up".
+
+        A boxed miss falls back to the full window instead. Template matching
+        still only accepts a match by score (vision.DEFAULT_THRESHOLD), so the
+        wider scan costs a few seconds, not accuracy -- the same reasoning
+        that moved nav_play off its own fixed region.
+        """
+        try:
+            match, name = vision.wait_for_image_any(
+                hwnd, names, region=GAMEMODE_CARD_REGION,
+                timeout=GAMEMODE_CLICK_TIMEOUT, stop_event=stop_event)
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Macro] Can't find {label}: {exc}")
+            return None, None
+        if match is not None or stop_event.is_set():
+            return match, name
+
+        self._log(f'[Macro] {label} not in the cards panel within '
+                   f'{GAMEMODE_CLICK_TIMEOUT:.0f}s -- widening to the whole window.')
+        try:
+            return vision.wait_for_image_any(
+                hwnd, names, timeout=GAMEMODE_CARD_WIDE_TIMEOUT, stop_event=stop_event)
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Macro] Can't find {label}: {exc}")
+            return None, None
+
     def _click_gamemode(self, hwnd, stop_event: threading.Event, mode: str, wait_for_menu: bool = True) -> bool:
         # Story's card position doesn't move once the menu is open, so it's
         # just a fixed coordinate (see STORY_CLICK's comment). Raid's isn't
@@ -5552,6 +5733,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     # never actually registered (see PLAY_CLICK_RETRY_ATTEMPTS'
                     # comment). Re-clicking is retriable in a way waiting
                     # even longer for a click that already failed isn't.
+                    #
+                    # This is also the first moment there is EVIDENCE that
+                    # something is covering the lobby: Play matched, was
+                    # clicked, and the menu still did not open. Clearing an
+                    # overlay here rather than before every Play click means
+                    # the normal path is untouched and only a demonstrably
+                    # failed click pays for the extra search.
+                    self._dismiss_lobby_overlay(hwnd)
                     if not self._click_play(hwnd, stop_event):
                         return False
             if match is None:
@@ -5569,12 +5758,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if mode == "expedition":
             self._log("[Macro] Menu open -- searching for Expedition...")
             self._set_status(action="Clicking Expedition...")
-            try:
-                match, name = vision.wait_for_image_any(
-                    hwnd, EXPEDITION_IMAGE_NAMES, region=GAMEMODE_CARD_REGION, timeout=GAMEMODE_CLICK_TIMEOUT, stop_event=stop_event)
-            except vision.TemplateNotFound as exc:
-                self._log(f"[Macro] Can't find Expedition: {exc}")
-                return False
+            match, name = self._find_gamemode_card(
+                hwnd, stop_event, EXPEDITION_IMAGE_NAMES, "Expedition")
             if match is None:
                 if not stop_event.is_set():
                     self._log(f'[Macro] "expedition" not found within {GAMEMODE_CLICK_TIMEOUT:.0f}s -- the '
@@ -5589,12 +5774,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if mode == "challenge":
             self._log("[Macro] Menu open -- searching for Challenge...")
             self._set_status(action="Clicking Challenge...")
-            try:
-                match, name = vision.wait_for_image_any(
-                    hwnd, CHALLENGE_IMAGE_NAMES, region=GAMEMODE_CARD_REGION, timeout=GAMEMODE_CLICK_TIMEOUT, stop_event=stop_event)
-            except vision.TemplateNotFound as exc:
-                self._log(f"[Macro] Can't find Challenge: {exc}")
-                return False
+            match, name = self._find_gamemode_card(
+                hwnd, stop_event, CHALLENGE_IMAGE_NAMES, "Challenge")
             if match is None:
                 if not stop_event.is_set():
                     self._log(f'[Macro] "challenge" not found within {GAMEMODE_CLICK_TIMEOUT:.0f}s -- the '
@@ -5609,12 +5790,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if mode == "raid":
             self._log("[Macro] Menu open -- searching for Raid...")
             self._set_status(action="Clicking Raid...")
-            try:
-                match, name = vision.wait_for_image_any(
-                    hwnd, RAID_IMAGE_NAMES, region=GAMEMODE_CARD_REGION, timeout=GAMEMODE_CLICK_TIMEOUT, stop_event=stop_event)
-            except vision.TemplateNotFound as exc:
-                self._log(f"[Macro] Can't find Raid: {exc}")
-                return False
+            match, name = self._find_gamemode_card(
+                hwnd, stop_event, RAID_IMAGE_NAMES, "Raid")
             if match is None:
                 if not stop_event.is_set():
                     self._log(f'[Macro] "raid" not found within {GAMEMODE_CLICK_TIMEOUT:.0f}s -- the '
@@ -5634,11 +5811,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # fixed coordinate.
         self._log("[Macro] Menu open -- searching for Story...")
         self._set_status(action="Clicking Story...")
-        try:
-            match, name = vision.wait_for_image_any(
-                hwnd, STORY_IMAGE_NAMES, region=GAMEMODE_CARD_REGION, timeout=GAMEMODE_CLICK_TIMEOUT, stop_event=stop_event)
-        except vision.TemplateNotFound:
-            match, name = None, None
+        match, name = self._find_gamemode_card(hwnd, stop_event, STORY_IMAGE_NAMES, "Story")
         if match is not None:
             debug_path = self._debug_save(hwnd, name, match)
             suffix = f" Debug: {debug_path}" if debug_path else ""
