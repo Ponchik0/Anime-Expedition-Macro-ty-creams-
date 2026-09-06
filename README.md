@@ -4,154 +4,115 @@
 
 # Anime Expeditions
 
-**Макрос автофарма для Anime Expeditions в Roblox**
+**Auto-farm macro for Anime Expeditions on Roblox**
 
-Работает через зрение: снимает экран и ищет картинки.<br>
-Никаких инъекций в процесс, никакого чтения памяти.<br>
-Roblox встраивается прямо внутрь окна макроса — весь цикл фарма идёт сам.
+<p align="center">
+  <b>English</b> • <a href="README.ru.md">Русский</a>
+</p>
+
+Works via computer vision: captures the screen and detects images.<br>
+No process injection, no memory reading.<br>
+Roblox docks directly inside the macro window — full farming automation.
 
 <br>
 
 <a href="https://github.com/Ponchik0/ae/releases/latest">
-  <img src="https://img.shields.io/github/v/release/Ponchik0/ae?style=for-the-badge&color=c9a227&labelColor=1c1c1c&label=версия" alt="Последняя версия">
+  <img src="https://img.shields.io/github/v/release/Ponchik0/ae?style=for-the-badge&color=c9a227&labelColor=1c1c1c&label=version" alt="Latest Version">
 </a>
 <a href="https://github.com/Ponchik0/ae/releases">
-  <img src="https://img.shields.io/github/downloads/Ponchik0/ae/total?style=for-the-badge&color=c9a227&labelColor=1c1c1c&label=скачиваний" alt="Скачиваний">
+  <img src="https://img.shields.io/github/downloads/Ponchik0/ae/total?style=for-the-badge&color=c9a227&labelColor=1c1c1c&label=downloads" alt="Downloads">
 </a>
-<img src="https://img.shields.io/badge/платформа-Windows-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="Windows">
+<img src="https://img.shields.io/badge/platform-Windows-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="Windows">
 <img src="https://img.shields.io/badge/python-3.10+-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="Python 3.10+">
 <a href="LICENSE">
-  <img src="https://img.shields.io/badge/лицензия-MIT-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="MIT">
+  <img src="https://img.shields.io/badge/license-MIT-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="MIT">
 </a>
 
 <br><br>
 
-[Возможности](#возможности) · [Установка](#установка) · [Первый запуск](#первый-запуск) · [Обновления](#обновления) · [Документация](#документация) · [Авторство](#авторство)
+[Features](#features) · [Installation](#installation) · [First Launch](#first-launch) · [Updates](#updates) · [Documentation](#documentation) · [Credits](#credits)
 
 </div>
 
 ---
 
-## Что это
+## About
 
-Личная сборка макроса для Anime Expeditions — форк
-[Cream's Macro](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro).
+A custom build and feature-rich fork of [Cream's Macro](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro) for Anime Expeditions on Roblox.
 
-Сразу и честно: **движок не мой.** Поиск картинок, прохождение боя, работа с
-окном Roblox, OCR, вебхуки, сборка — это написал
-[Cweamy](https://github.com/Cweamy), и обновления автора я регулярно вливаю к
-себе (сейчас влито до v0.18.0). Моя часть — интерфейс, русский язык и
-надстройки поверх его движка. Что именно — перечислено в разделе
-[Авторство](#авторство).
+**Core engine credit goes to [Cweamy](https://github.com/Cweamy)**: image detection, stage progression, Roblox window docking, OCR, webhooks, and installer packaging were designed by him, with upstream improvements regularly ported over.
 
-Раньше это был макрос на AutoHotkey. Всё ценное из него — координаты,
-привязки юнитов, пороги проверок, наблюдения за интерфейсом игры — перенесено
-в [`docs/from_ahk.md`](docs/from_ahk.md).
+**This fork adds**:
+- A completely overhauled, clean dark/neutral user interface with bilingual English & Russian support (`ui/i18n.js`).
+- Full **Portals mode** automation: lobby inventory entry, continuous chain-farming directly through the chooser without lobby re-entry, and in-round 3-portal offer card selection.
+- **In-Game Auto Play** integration: seamless toggle between macro unit placement and native Roblox Auto Play, with camera drag bypass and persistent state preservation across portal runs.
+- **Auto Shop Meat**: added Food/Meat auto-purchasing (up to 200 stock) with aligned purchase grids.
+- **Action Recorder (Replay Mode)**: TinyTask-style mouse & keyboard recorder/replayer that faithfully preserves in-match wait times using high-precision timers (`time.perf_counter()`).
+- Auto-reconnect via `roblox://` deep links on disconnects, template verification tool, customizable theme engine, and PDF run reports.
 
-## Возможности
+Historical AutoHotkey coordinates, thresholds, and observations are documented in [`docs/from_ahk.md`](docs/from_ahk.md).
 
-|  |  |
+## Features
+
+| Feature | Description |
 |:--|:--|
-| **Roblox внутри окна** | Игра встраивается как дочернее окно, а не управляется снаружи. Клики и клавиши попадают ровно туда, куда нужно, даже если сверху лежит другое окно |
-| **Очередь задач** | Карта, этап, сложность, соло или матчмейкинг, число повторов — макрос проходит список по порядку |
-| **Конструктор Pre Start** | Расстановка юнитов с проверкой клика, переключение настроек хоткеем, блок «один раз» для первого захода |
-| **Запись действий** | F8 пишет мышь и клавиатуру. Ожидание внутри матча пишется вместе со всем остальным и выжидается при повторе |
-| **Восстановление** | Завис бой, промахнулся клик, чёрный экран — макрос возвращается в лобби сам, а не роняет ночную сессию |
-| **Отчёты в Discord** | Скриншот результата, карточка матча, сводка по часам |
-| **Своя тема** | Шесть фонов, шесть акцентов, плотность, скругления — все сочетания проверены на контраст |
-| **Свои эталоны** | Кнопка упорно не находится — положи свой кроп в `Assets`, пересборка не нужна |
+| **Docked Roblox Window** | The game embeds directly inside the macro window (`SetParent`). Keystrokes and clicks land accurately even when other windows overlap |
+| **Multi-Mode Task Queue** | Story, Expedition, Raid, Tower, Challenge, and Portals. Set map, stage, difficulty, solo/matchmaking, and repeats |
+| **Portals Automation** | Opens portals from inventory or chains them directly through the result chooser; picks the middle portal card during matches |
+| **In-Game Auto Play** | Let the game play itself when desired — automatically toggles Auto Play and skips unnecessary camera manipulation |
+| **Pre Start Builder** | Set up starter units with placement checks, toggle settings via hotkeys, and run "Once" blocks on first repeats only |
+| **Action Recorder (Replay)** | F8 starts/stops recording input; F9 opens the recordings overlay. In-match idle time is preserved and accurately replayed |
+| **Smart Recovery** | Automatically returns to lobby on stalled matches, failed clicks, or black screens; restarts Roblox on 25m stalls |
+| **Discord Notifications** | Result screenshots, generated win/loss status cards, hourly summaries, and PDF reports |
+| **Theme Customization** | Six backgrounds, six accent colors, adjustable UI density, and border radius |
+| **Custom Templates & Crops** | Missing a specific button crop? Drop your own PNG into `Assets/` without needing to recompile |
 
 <details>
-<summary><b>Прохождение и автоматизация</b> — полный список</summary>
+<summary><b>Detailed Automation Features</b> — click to expand</summary>
 
 <br>
 
-- **Roblox внутри окна.** Игра встраивается как дочернее окно, а не управляется
-  снаружи. Клики и клавиши попадают ровно туда, куда нужно, даже если сверху
-  лежит другое окно.
-- **Очередь задач.** Собираешь список — карта, этап, сложность, соло или
-  матчмейкинг, число повторов — и макрос проходит его по порядку.
-- **Повторы с восстановлением.** Один этап фармится N раз без повторного выбора
-  карты. Если бой завис или клик промахнулся, макрос сам возвращается в лобби и
-  пробует снова, а не ломает всю ночную сессию.
-- **Конструктор Pre Start.** Редактор того, что происходит до начала боя:
-  расстановка юнитов с проверкой клика и сдвигом, если точка не принялась;
-  переключение настроек игры хоткеем; блок «один раз» — сработает только при
-  первом заходе на этап, а не на каждом повторе.
-- **Запись маршрута.** Путь на WASD записывается один раз на карту и
-  воспроизводится как часть Pre Start.
-- **Победа и поражение.** Экран результата распознаётся сам, идёт в счёт побед
-  и в историю запусков. С настроенным вебхуком — отчёт в Discord: скриншот
-  результата плюс карточка. Чтение статистики боя и наград (время, йены, урон)
-  включается отдельно в «Настройки → Отладка».
-- **Статистика.** Победы и поражения за сессию и за всё время, процент побед,
-  история последних запусков — всё на Дашборде.
-- **Горячие клавиши.** Старт, стоп, пауза без мыши.
-- **Regular Challenge.** Отдельная вкладка: три слота включаются независимо,
-  на каждую карту назначается свой сценарий, счётчик дневного лимита. Идёт
-  перед очередью задач при каждом старте.
-- **Поиск картинок в нескольких масштабах.** Если точный размер не совпал,
-  шаблон пробуется в нескольких масштабах — интерфейс, который на чужой машине
-  рисуется чуть крупнее, всё равно находится.
-- **Свои эталоны.** Если кнопка упорно не находится, положи свой скриншот с тем
-  же именем в папку Assets — пересборка не нужна.
+- **Embedded Roblox Window**: Game embeds as a native child window. Clicks and inputs stay contained even if you work in another application.
+- **Portals Mode**: Full support for Portal farming — opens from inventory, joins lobbies, auto-picks the middle card during the round, and chains into the next portal from the chooser window without extra lobby loads.
+- **In-Game Auto Play**: Switch between macro-controlled unit placement and Roblox's built-in Auto Play. Prevents unnecessary camera drags and preserves Auto Play state across portal chains.
+- **Task Queue & Repeat Recovery**: Runs a queued sequence of tasks. If a match stalls or a click misses, the macro safely returns to the lobby and restarts rather than breaking an overnight session.
+- **Pre Start Unit Placement**: Validates tile availability, retries if a position shifts, adjusts placement offset, and runs one-time setup on the initial repeat.
+- **Recorded Movement Paths**: Walk paths recorded on WASD run automatically during Pre Start.
+- **Multi-Scale Image Search**: Templates are tested across multiple scale steps, reliably matching even when Windows display scaling differs.
+- **Auto Shop**: Automatically sweeps the shop on schedule, buying tickets, traits, and meat.
 
 </details>
 
 <details>
-<summary><b>Что добавлено в форке</b> — полный список, это моя часть работы</summary>
+<summary><b>Fork Enhancements</b> — additions created for this build</summary>
 
 <br>
 
-- **Полностью переделанный интерфейс.** Тёмная нейтральная тема, один акцент,
-  красный только для ошибок, зелёный только для работы. Плотная сетка, ровные
-  отступы, честные состояния наведения и фокуса.
-- **Русский язык.** Переключатель RU/EN в шапке, выбор запоминается. Журнал
-  намеренно остаётся как есть — это вывод макроса с именами юнитов и
-  координатами, переводить его вредно.
-- **Кастомизация.** Раздел в настройках: шесть фонов (от чёрного до светлого),
-  шесть акцентов, плотность интерфейса, скругления. Все сочетания проверены на
-  контраст.
-- **Приватный сервер.** Своя ссылка вместо общего входа в игру. Хранится
-  только локально, в репозиторий не попадает.
-- **Запись действий.** Режим в духе TinyTask: F8 начинает и заканчивает запись
-  мыши и клавиатуры, F9 открывает окно со списком записей по центру экрана.
-  Выбрал строку — окно закрылось и запись пошла; нажал «Начать запись» — окно
-  ушло само и вернуло игру. Свои же хоткеи в запись не попадают, а пока Roblox
-  не на экране или не в фокусе — не пишется вообще ничего, и время отлучки в
-  запись не идёт. Записи можно переименовывать. На Дашборде живая панель —
-  видно, что пишется прямо сейчас.
-- **Ожидание — часть записи.** Записывают обычно так: в начале матча расставил
-  юнитов, а дальше сидишь и ждёшь конца. Это ожидание пишется вместе со всем
-  остальным, и повтор его выжидает, а не уходит на второй заход посреди
-  идущего боя. В списке видно отдельной строкой: «38 действий · 3:35 · ждёт
-  2:52».
-- **Проверка шаблонов.** Один снимок экрана прогоняется по всем эталонам и
-  показывает, что найдено уверенно, что на грани, а что не находится вообще.
-  Ничего не нажимает — только смотрит.
-- **Таймер задач.** У задачи можно задать лимит времени и следующую задачу.
-  Дожидается конца текущего боя и переходит — не рвёт матч на середине.
-- **Перезапуск при зависании.** Если прогресса нет 25 минут или игра ушла в
-  чёрный экран, Roblox закрывается и запускается заново по твоей ссылке.
-- **Ожидание уплывающих позиций.** Если точка установки юнита уехала дальше
-  допустимого, макрос ждёт и пробует то же место снова, а не ставит юнита
-  куда попало.
-- **Обновления из своего репозитория.** Проверка идёт по релизам этого
-  репозитория, а не авторского.
+- **Redesigned Interface**: Neutral dark theme, high-contrast palette, dense layout, consistent margins, and responsive hover/focus states.
+- **Bilingual Interface**: Seamless EN/RU toggle in the header with persistent language preference. The run log stays in English to avoid breaking unit coordinate parsing.
+- **UI Customization**: Six background tones (from OLED black to light dark), six accents, compact/comfortable density, and customizable border radius.
+- **Private Server Support**: Deep-link launch directly into your private server without opening extra browser tabs.
+- **Action Recorder (Replay Mode)**: TinyTask-style F8/F9 recording. Tracks mouse and keyboard input only while Roblox is active and in focus. Includes full wait time so mid-match idle phases are preserved.
+- **Template Checker**: One-click scanner that checks all reference images against your current game screen, highlighting verified, borderline, and missing templates.
+- **Task Timers**: Set duration limits on tasks to transition cleanly after the current match ends.
+- **Stall & Disconnect Watchdog**: Detects 25-minute stalls or black screens, cleanly relaunches Roblox, and resumes the task queue.
+- **Self-Updater**: Checks releases directly against `Ponchik0/ae` and seamlessly updates the executable while preserving custom assets and settings.
 
 </details>
 
-## Требования
+## Requirements
 
-| Что | Зачем |
+| Requirement | Details |
 |:--|:--|
-| **Windows 10 или 11** | Единственная целевая платформа |
-| **[Roblox](https://www.roblox.com/)** с Anime Expeditions | Собственно игра |
-| **Python 3.10+** | Запуск из исходников |
-| **[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)** | Окно приложения. На большинстве систем уже стоит |
-| **[Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)** | Только для чтения статистики и наград. Через pip не ставится, нужен установщик по ссылке. Без него работает всё остальное |
+| **Windows 10 or 11** | Primary supported platform |
+| **[Roblox](https://www.roblox.com/)** | Anime Expeditions game |
+| **Python 3.10+** | For running from source |
+| **[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)** | UI renderer (installed by default on most modern Windows systems) |
+| **[Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)** / **RapidOCR** | Optional: for reading reward item names and in-depth stats |
 
-## Установка
+## Installation
+
+### From Source
 
 ```bash
 git clone https://github.com/Ponchik0/ae.git
@@ -159,159 +120,104 @@ cd ae
 pip install -r requirements.txt
 ```
 
-Запуск:
+Launch:
 
 ```bash
 python main.py
 ```
 
-Или двойным щелчком по `run.bat`.
+Or double-click `run.bat`.
 
 > [!TIP]
-> **На новой машине** (например на RDP) не забудь `pip install -r requirements.txt` —
-> без него будет `ModuleNotFoundError: No module named 'requests'`.
+> On a new machine (or RDP), ensure you run `pip install -r requirements.txt` to avoid `ModuleNotFoundError`.
 
-Диагностика без интерфейса:
+Headless diagnostics:
 
 ```bash
 python main.py --test
 ```
 
-## Первый запуск
+### Binary Release
 
-1. Запусти Roblox и зайди в Anime Expeditions — макрос сам найдёт окно и
-   встроит его в себя.
-2. **Задачи** — собери очередь: карта, этап, сложность, число повторов.
-3. **Сценарии** — собери routine до начала боя: расстановка юнитов,
-   настройки, маршрут — и сохрани как шаблон.
-4. **Дашборд** — назначь шаблон задаче и жми Старт.
-5. **Настройки** — хоткеи, вебхук Discord, приватный сервер, внешний вид,
-   отладка.
+Download `Anime Expeditions Macro Setup.exe` from [Releases](https://github.com/Ponchik0/ae/releases/latest) and run the installer.
 
-Если что-то не находится на экране — открой **Настройки → Проверка шаблонов**.
-Она покажет, какие эталоны не совпадают именно на твоём разрешении. Дальше
-через **Менеджер изображений** снимаешь свой кроп прямо с экрана игры.
+## First Launch
+
+1. Start Roblox and enter Anime Expeditions — the macro will automatically detect and dock the game window.
+2. **Tasks** — build your queue: game mode (Story, Expedition, Portals, Tower, etc.), stage, difficulty, repeats, and auto-play preference.
+3. **Creation (Macro Manager)** — configure your Pre Start routines: unit placements, settings toggles, walk paths, and save as a template.
+4. **Dashboard** — assign templates to tasks and press **Start**.
+5. **Settings** — configure hotkeys, Discord webhook, private server link, UI theme, and calibrated coordinates.
+
+If an element fails detection, open **Settings → Template Check** to see match scores on your resolution, then capture a custom crop via **Image Manager**.
 
 > [!IMPORTANT]
-> Эталоны кнопок обрезай **по тексту**, без фона. У кнопок в этой игре фон
-> анимированный — если захватить его, совпадение будет плавать.
+> When cropping button templates, crop closely around the text without extra background, as background animations in the game can alter matching scores.
 
-## Обновления
+## Updates
 
-Макрос сверяет файл `VERSION` с последним релизом на GitHub. При запуске
-проверяет сам, вручную — клик по номеру версии в шапке.
+The macro compares the local `VERSION` file against the latest GitHub Release on startup, or manually when clicking the version badge in the header.
 
-**Как выпустить новую версию:**
+Updating never touches `settings.json`, custom templates, paths, or existing images in `Assets` — only new files are added.
 
-```bash
-# 1. подними номер
-echo 1.1.2 > VERSION
-git add -A && git commit -m "описание изменений"
-git push
+## Documentation
 
-# 2. поставь тег с тем же номером и понятным описанием
-git tag -a v1.1.2 -m "что изменилось"
-git push origin v1.1.2
-```
-
-Тег запускает сборку на GitHub Actions — она собирает exe, кладёт рядом
-папку `Assets` и публикует релиз. После этого копии на других машинах увидят
-обновление. Текст тега становится описанием релиза, поэтому писать его стоит
-для людей.
-
-> [!WARNING]
-> **Одного пуша мало — нужен именно тег.** И номер в `VERSION` обязан совпадать
-> с тегом без буквы `v`. Тег НИЖЕ версии в `VERSION` не выпустит ничего:
-> проверка ответит «у тебя уже новее» и промолчит. Название релиза на
-> сравнение не влияет вообще — оно просто текст.
-
-Обновление никогда не трогает `settings.json`, шаблоны, маршруты и твои
-картинки в `Assets` — оно только добавляет то, чего у тебя ещё нет.
-
-> [!NOTE]
-> На машине, где ты разрабатываешь, обновление не появится никогда: файлы
-> здесь и есть последняя версия. Уведомление увидят другие копии — например
-> на RDP.
-
-## Документация
-
-| Файл | О чём |
+| Document | Purpose |
 |:--|:--|
-| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Руководство пользователя |
-| [`docs/architecture.md`](docs/architecture.md) | Карта модулей |
-| [`docs/from_ahk.md`](docs/from_ahk.md) | Всё ценное из старого макроса на AutoHotkey — не архив, а справочник |
-| [`AGENTS.md`](AGENTS.md) | Соглашения разработки, мёрж с апстримом, выпуск релиза |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Comprehensive user manual |
+| [`docs/architecture.md`](docs/architecture.md) | Codebase and module architecture overview |
+| [`docs/from_ahk.md`](docs/from_ahk.md) | Coordinate references and lessons learned from the legacy AHK macro |
+| [`AGENTS.md`](AGENTS.md) | Contributor guidelines, testing standards, and release workflow |
 
 <details>
-<summary><b>Структура проекта</b></summary>
+<summary><b>Project Structure</b></summary>
 
 <br>
 
 ```
-main.py            точка входа, мост между интерфейсом и Python
-core/              движок: поиск картинок, прохождение боя, OCR, вебхук,
-                   встраивание окна, ввод, запись маршрутов, обновления
-core/replay.py     запись и воспроизведение действий (режим TinyTask)
-core/joinlink.py   ссылка входа в игру, включая приватный сервер
-core/template_check.py  проверка эталонов без единого клика
-ui/                интерфейс: HTML, CSS, JS
-ui/i18n.js         перевод интерфейса на русский
-Assets/ui/         эталонные скриншоты, папка на каждое имя.
-                   Свои варианты можно докладывать
-Assets/maps/       названия карт для выбора карты
-Paths/defaults/    готовые маршруты передвижения
-docs/from_ahk.md   всё ценное из старого макроса на AutoHotkey
-docs/architecture.md  карта модулей
-tests/             тесты, запуск: python -m pytest tests/
+main.py                 Entry point; pywebview API bridge between UI and Python
+core/                   Core engine: vision, runner, blocks, OCR, webhooks, dock
+core/replay.py          Player input recorder & playback (Replay mode)
+core/joinlink.py        Roblox join links & private server handling
+core/template_check.py  Template validation utility
+ui/                     Frontend: HTML, CSS, JS
+ui/i18n.js              Russian translation dictionary
+Assets/ui/              Reference button & UI crops
+Assets/portals/         Portal reference crops
+Assets/cards/           Upgrade card reference crops
+Paths/defaults/         Default movement paths for Pre Start
+tests/                  Pytest suite (no GUI / no Windows dependencies)
 ```
 
 </details>
 
-## Тесты
+## Testing
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/
+python -m pytest tests/ -q
+node --check ui/app.js
+node --check ui/i18n.js
 ```
 
-## Авторство
+## Credits
 
-**Основа — [Cream's Macro | Anime Expeditions](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro)**
-авторства [Cweamy](https://github.com/Cweamy)
-([YouTube](https://www.youtube.com/@Cweamya)). Ему принадлежит всё, на чём этот
-макрос вообще держится: движок компьютерного зрения, логика прохождения боя,
-встраивание окна Roblox, OCR, вебхуки, сборка релизов. Лицензия MIT,
-обновления автора вливаются в форк по мере выхода — сейчас до v0.18.0.
+**Upstream Engine — [Cream's Macro | Anime Expeditions](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro)** by [Cweamy](https://github.com/Cweamy) ([YouTube](https://www.youtube.com/@Cweamya)). The underlying computer vision architecture, stage navigation routines, window docking, OCR, webhooks, and core logic originate from his project (licensed under MIT).
 
-**Что в этом форке сделал я** ([@Ponchik0](https://github.com/Ponchik0)):
+**Fork Contributions** ([@Ponchik0](https://github.com/Ponchik0)):
+- Redesigned user interface with custom themes, density controls, and bilingual RU/EN support.
+- Portals mode automation and in-game Auto Play integration.
+- Precision action recorder (Replay mode) with accurate in-match wait tracking.
+- Template checking utility, deep-link rejoining, auto-reconnect recovery, and PDF reporting.
+- Shop meat purchasing and community asset expansions.
 
-| | |
-|:--|:--|
-| **Интерфейс** | Переписан целиком: тёмная нейтральная тема, один акцент, плотная сетка, честные состояния наведения и фокуса |
-| **Русский язык** | Переключатель RU/EN, свой словарь `ui/i18n.js` |
-| **Кастомизация** | Шесть фонов, шесть акцентов, плотность, скругления — все сочетания проверены на контраст |
-| **Запись действий** | Режим в духе TinyTask: F8/F9, панель записей, переименование, запись только при активной игре |
-| **Ожидание в записи** | Пауза внутри матча пишется и выжидается при повторе, а не проматывается |
-| **Проверка шаблонов** | Прогон всех эталонов по одному снимку: что найдено уверенно, что на грани, что не находится |
-| **Таймер задач** | Лимит времени и переход на следующую задачу без разрыва идущего матча |
-| **Перезапуск при зависании** | Нет прогресса 25 минут или чёрный экран — Roblox перезапускается сам |
-| **Ожидание позиций** | Уехавшую точку установки юнита макрос ждёт, а не ставит юнита куда попало |
-| **Приватный сервер** | Своя ссылка входа, хранится только локально |
-| **Статистика и отчёты** | Отчёт по повтору, сводка в Discord по часам, счёт нераспознанных исходов |
-| **Обновления** | Проверка по релизам этого репозитория — с внятным ответом, чем именно она кончилась |
+## Disclaimer
 
-Всё, что не перечислено выше, — заслуга автора движка.
-
-## Отказ от ответственности
-
-> Фанатский инструмент. Не связан с Roblox Corporation и с разработчиками
-> Anime Expeditions, не одобрен ими. Автоматизация игры может нарушать правила
-> игры или Roblox — используешь на свой страх и риск. Все игровые материалы
-> принадлежат их владельцам, лицензией репозитория покрыт только код макроса.
+> This is a fan-made automation tool. It is not affiliated with, endorsed by, or associated with Roblox Corporation or the developers of Anime Expeditions. Automating gameplay may violate game or platform terms of service — use at your own discretion. All game trademarks and assets belong to their respective owners.
 
 <div align="center">
 <br>
 
-Лицензия [MIT](LICENSE) · Форк [Cweamy/Anime-Expeditions-Creams-Macro](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro)
+Licensed under [MIT](LICENSE) · Fork of [Cweamy/Anime-Expeditions-Creams-Macro](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro)
 
 </div>
