@@ -39,7 +39,7 @@
        waiting screen shows (see showWaiting()/showDocked() in app.js) so the
        loading state reads as just the spinner, not a half-built app shell. -->
   <div id="titlebar" class="pywebview-drag-region flex items-center justify-between px-4 border-b flex-shrink-0"
-       style="height: 44px; background: var(--bg-card); border-color: var(--border); display: none;">
+       style="height: 44px; background: var(--bg-card); border-color: var(--border);">
     <!-- Название игры в углу. Бренд оригинального движка из интерфейса убран
          (атрибуция автора остаётся в README и LICENSE — этого требует MIT). -->
     <div class="flex items-center gap-3">
@@ -162,71 +162,52 @@
          Without this, the compact window showed nothing at all: the two-column
          layout below is 1552px wide and only renders correctly once the window
          has actually expanded to full size, so it stays hidden until then. -->
-    <!-- Shown while the window is still compact and Roblox hasn't been found/docked yet.
-         Uses the exact 1152 × 756 stage proportions with animated scanline and frame. -->
-    <div id="waiting-screen" class="loading-screen flex-1 flex flex-col items-center justify-center p-3">
+    <!-- Waiting screen kept hidden, all waiting UI now lives inside #game-slot-stage on the Dashboard -->
+    <div id="waiting-screen" class="loading-screen flex-1 flex flex-col items-center justify-center p-3" style="display: none;">
       <div class="stage is-searching" id="stage">
         <div class="stage-frame"></div>
         <div class="stage-size">1152 × 756</div>
         <div class="scan"></div>
-
         <div class="game" id="stage-game">Roblox Window</div>
-
         <div class="status">
           <div class="status-mark brand-font">Anime Expeditions</div>
-
-          <div class="dock-steps" id="dock-steps">
-            <div class="dock-step" id="dock-step-running">
-              <span class="dock-step-mark"></span><span>Roblox is running</span>
-            </div>
-            <div class="dock-step" id="dock-step-docked">
-              <span class="dock-step-mark"></span><span>Window docked</span>
-            </div>
-          </div>
-
-          <div class="status-hint text-xs font-medium" id="dock-hint" style="color: var(--text-muted); margin-top: 10px;">Launch Roblox, it'll dock in automatically</div>
-
-          <div class="status-actions flex items-center gap-2" style="margin-top: 16px;">
-            <button onclick="launchRoblox()" class="loading-skip-btn flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full border transition"
-                    style="color: var(--brand); border-color: var(--brand); background: rgba(255, 255, 255, 0.05);"
-                    onmouseover="this.style.background='var(--brand)'; this.style.color='#000';"
-                    onmouseout="this.style.background='rgba(255, 255, 255, 0.05)'; this.style.color='var(--brand)';">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-              Launch Roblox
-            </button>
-
-            <button onclick="skipWaiting()" class="loading-skip-btn flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full border transition"
-                    style="color: var(--text-dim); border-color: var(--border); background: var(--bg-surface);"
-                    onmouseover="this.style.borderColor='var(--brand)'; this.style.color='var(--text)';"
-                    onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-dim)';">
-              Skip
-              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 5l7 7-7 7M15 5l7 7-7 7"/>
-              </svg>
-            </button>
-          </div>
-
           <div id="ver-badge-loading" class="text-[10px] font-semibold" style="color: var(--text-muted); margin-top: 14px; letter-spacing: 0.04em;"></div>
         </div>
       </div>
     </div>
 
-    <div id="main-layout" class="flex-1 flex min-h-0" style="display: none;">
-      <!-- Left column: game-slot is empty on purpose, Roblox is docked here as a
-           native child window, directly beneath this DOM (not inside it). Logs
-           sit below it, using the width Roblox doesn't need for its own height. -->
+    <div id="main-layout" class="flex-1 flex min-h-0">
+      <!-- Left column: game-slot has #game-slot-stage when Roblox is not yet docked.
+           When Roblox docks, the stage is hidden and the native Roblox window is placed here. -->
       <div class="flex flex-col flex-shrink-0" style="width: 1152px;">
         <div id="game-slot" style="height: 756px; flex-shrink: 0; position: relative;">
-          <div class="stage is-searching" id="game-slot-stage" style="display: none; width: 100%; height: 100%; max-width: 1152px; margin: 0;">
+          <div class="stage is-searching" id="game-slot-stage" style="display: grid; width: 100%; height: 100%; max-width: 1152px; margin: 0;">
             <div class="stage-frame"></div>
             <div class="stage-size">1152 × 756</div>
             <div class="scan"></div>
             <div class="game">Roblox Window</div>
             <div class="status">
-              <div class="status-mark brand-font">Anime Expeditions</div>
-              <div class="status-hint text-xs font-medium" style="color: var(--text-muted); margin-top: 8px;">Waiting for Roblox window...</div>
+              <div class="status-mark brand-font" style="font-size: 26px; margin-bottom: 6px;">Anime Expeditions</div>
+              <div class="dock-steps" id="dock-steps" style="margin-top: 10px; margin-bottom: 10px;">
+                <div class="dock-step" id="dock-step-running">
+                  <span class="dock-step-mark"></span><span>Roblox is running</span>
+                </div>
+                <div class="dock-step" id="dock-step-docked">
+                  <span class="dock-step-mark"></span><span>Window docked</span>
+                </div>
+              </div>
+              <div class="status-hint text-xs font-medium" id="dock-hint" style="color: var(--text-muted); margin-bottom: 16px;">Launch Roblox, it'll dock in automatically</div>
+              <div class="status-actions flex items-center gap-2">
+                <button onclick="launchRoblox()" class="loading-skip-btn flex items-center gap-2 text-sm font-semibold px-6 py-2.5 rounded-full border transition"
+                        style="color: var(--brand); border-color: var(--brand); background: rgba(255, 255, 255, 0.06);"
+                        onmouseover="this.style.background='var(--brand)'; this.style.color='#000';"
+                        onmouseout="this.style.background='rgba(255, 255, 255, 0.06)'; this.style.color='var(--brand)';">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                  Launch Roblox
+                </button>
+              </div>
             </div>
           </div>
         </div>

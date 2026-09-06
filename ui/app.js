@@ -659,13 +659,9 @@ function updateDockHint(running) {
 }
 
 function sizeScan() {
-  const stage = document.getElementById('stage');
+  const stage = document.getElementById('game-slot-stage') || document.getElementById('stage');
   if (stage) {
-    stage.style.setProperty('--scan-h', (stage.clientHeight || 360) + 'px');
-  }
-  const slotStage = document.getElementById('game-slot-stage');
-  if (slotStage) {
-    slotStage.style.setProperty('--scan-h', (slotStage.clientHeight || 756) + 'px');
+    stage.style.setProperty('--scan-h', (stage.clientHeight || 756) + 'px');
   }
 }
 window.addEventListener('resize', sizeScan);
@@ -680,7 +676,7 @@ async function pollDockState() {
   }
   setDockStep('dock-step-running', running ? 'done' : 'active');
   setDockStep('dock-step-docked', running ? 'active' : null);
-  const stage = document.getElementById('stage');
+  const stage = document.getElementById('game-slot-stage') || document.getElementById('stage');
   if (stage) {
     if (running) {
       stage.classList.remove('is-searching');
@@ -698,14 +694,15 @@ function stopDockPoll() {
 }
 
 function showWaiting() {
-  if (skipped) return;  // user chose to use the panel before Roblox docks, don't yank it away
-  document.getElementById('main-layout').style.display = 'none';
-  document.getElementById('waiting-screen').style.display = 'flex';
-  document.getElementById('titlebar').style.display = 'none';
+  // Приложение сразу открывается в полноценном окне Панели.
+  // Заглушка ожидания живёт внутри слота игры (#game-slot-stage).
+  document.getElementById('waiting-screen').style.display = 'none';
+  document.getElementById('main-layout').style.display = 'flex';
+  document.getElementById('titlebar').style.display = 'flex';
 
-  const stage = document.getElementById('stage');
-  if (stage) {
-    stage.className = 'stage is-searching';
+  const slotStage = document.getElementById('game-slot-stage');
+  if (slotStage) {
+    slotStage.style.display = 'grid';
   }
   sizeScan();
 

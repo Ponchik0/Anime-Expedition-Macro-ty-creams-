@@ -5631,9 +5631,9 @@ def _launch_ui():
                 f"placed partly or fully off-screen. Fix: System Settings > Displays > select a scaled "
                 f"resolution with \"More Space\" (a higher point resolution, not necessarily higher "
                 f"physical res) so it's at least that wide.")
-    start_w, start_h = GUI_WIDTH_WAITING, GUI_HEIGHT_WAITING
-    start_x = (screen_w - start_w) // 2
-    start_y = (screen_h - start_h) // 2
+    start_w, start_h = GUI_WIDTH_FULL, GUI_HEIGHT_FULL
+    start_x = 0
+    start_y = 0
 
     window = webview.create_window(
         GUI_TITLE,
