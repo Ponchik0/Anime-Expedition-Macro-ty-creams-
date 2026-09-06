@@ -97,6 +97,7 @@
     'Fuel': 'Топливо',
     'Auto Fuel': 'Авто-топливо',
     'Tower': 'Башня',
+    'Portals': 'Порталы',
     'East Town': 'Восточный город',
     'Start': 'Старт',
     'Pause': 'Пауза',
@@ -137,6 +138,25 @@
     'Hard': 'Сложная',
     'Infinite': 'Бесконечная',
     'Mastery': 'Мастерство',
+    'Portals Then Exit': 'Порталов до выхода',
+    'Portal in lobby': 'Портал в лобби',
+    'Portal in chooser': 'Портал после забега',
+    'Plays The Map': 'Кто проходит карту',
+    'Auto Play': 'Автоигра',
+    'Choose game mode': 'Выберите режим игры',
+    'Select game mode: Story, Raid, Expedition, Event, Tournament, Tower, or Portals':
+      'Выберите режим игры: Сюжет, Рейд, Экспедиция, Событие, Турнир, Башня или Порталы',
+    'Number of times to run this task': 'Сколько раз выполнить эту задачу',
+    'How many portals to run before exiting to the lobby -- 0 keeps going until you stop the task (maximum 9999)':
+      'Сколько порталов пройти до выхода в лобби — 0 крутит до ручной остановки (максимум 9999)',
+    'Required. The portal to click in Items > Portals, used when starting or re-entering from the lobby.':
+      'Обязательно. Портал в панели Предметы → Порталы при старте из лобби.',
+    'Required. The portal to click on the post-run chooser, used to go straight into the next run.':
+      'Обязательно. Портал на экране выбора после забега для прямого перехода в следующий забег.',
+    "Macro: the template's blocks play the round (Auto Play is switched off). Auto Play: the game plays it -- your Macro Operation still runs alongside.":
+      'Макрос: блоки сценария играют раунд (автоигра выключена). Автоигра: играет сама игра — блоки сценария работают параллельно.',
+    "Macro: the template's blocks play the round. Auto Play: the game's Auto Play button is switched on -- your Macro Operation still runs alongside it.":
+      'Макрос: блоки сценария играют раунд. Автоигра: кнопка автоигры включена — блоки сценария работают параллельно.',
     'Import Settings': 'Импорт настроек',
     'Export Settings': 'Экспорт настроек',
     'Import File': 'Импорт из файла',
@@ -374,6 +394,32 @@
     'Read Game Stats': 'Прочитать статистику',
     'Preview Region': 'Показать область',
     'Enter Matchmaking Region': 'Область кнопки матчмейкинга',
+    'Portal: Portals Sub-Tab': 'Портал: вкладка «Порталы»',
+    'Click point on the Portals sub-tab inside the Items panel.': 'Точка клика по вкладке «Порталы» в панели предметов.',
+    'Portal: Activate Button': 'Портал: кнопка активации',
+    'Click point on the Activate portal button on the confirmation screen.': 'Точка клика по кнопке «Активировать» на экране подтверждения портала.',
+    'Portal: Start Run': 'Портал: старт забега',
+    'Click point on the green Start button on the party screen Activate opens. Nothing teleports until this is pressed. Normally found by image; this is the fallback. Default (681, 519).':
+      'Точка клика по зелёной кнопке старта на экране группы. Игра не телепортирует, пока кнопка не нажата. Обычно находится по картинке; это запасная точка. По умолчанию (681, 519).',
+    'Portal: Select Next Portal': 'Портал: выбор следующего портала',
+    'Click point on the gold Select button on the post-run portal chooser. Fires while the counter is below its limit (continues the loop).':
+      'Точка клика по кнопке выбора на экране порталов после забега. Срабатывает, пока счётчик не достиг лимита.',
+    'Portal: Exit to Lobby': 'Портал: выход в лобби',
+    'Click point on the Exit to Lobby button on the post-run screen. Fires once the counter has run its configured N portals (or the single-portal template\'s one).':
+      'Точка клика по кнопке выхода в лобби после забега. Срабатывает, когда отработано заданное число порталов.',
+    'Auto Play Button': 'Кнопка автоигры',
+    'Click point on the in-match Auto Play button, used by a task\'s "Plays The Map" setting. Normally found by image (both states ship art); this is the fallback. Default (1123, 485).':
+      'Точка клика по кнопке автоигры в бою для параметра «Кто проходит карту». Обычно находится по картинке; это запасная точка. По умолчанию (1123, 485).',
+    'Portal: Close Panel (top-left)': 'Портал: закрыть панель (вверху слева)',
+    'Click point on the lobby\'s close button, top-left. Not part of the route: it is clicked before a retry to shut an Items/Portals panel a failed attempt left open, so the retry starts from a clean lobby. Default (3, 3).':
+      'Точка клика по кнопке закрытия в лобби (вверху слева). Нажимается перед повторной попыткой, чтобы закрыть открытую панель предметов/порталов. По умолчанию (3, 3).',
+    'Capture the Roblox screen and click the Portals sub-tab': 'Захватить экран Roblox и кликнуть по вкладке «Порталы»',
+    'Capture the Roblox screen and click the Activate button': 'Захватить экран Roblox и кликнуть по кнопке «Активировать»',
+    "Capture the Roblox screen and click the party screen's Start button": 'Захватить экран Roblox и кликнуть по кнопке Start на экране группы',
+    'Capture the Roblox screen and click the Select button': 'Захватить экран Roblox и кликнуть по кнопке Select',
+    'Capture the Roblox screen and click the Exit to Lobby button': 'Захватить экран Roblox и кликнуть по кнопке Exit to Lobby',
+    'Capture the Roblox screen and click the Auto Play button': 'Захватить экран Roblox и кликнуть по кнопке Auto Play',
+    "Capture the Roblox screen and click the lobby's close button": 'Захватить экран Roblox и кликнуть по кнопке закрытия в лобби',
     'Roblox Window': 'Окно Roblox',
     'Select Roblox Window': 'Выбрать окно Roblox',
     'Attach Selected Roblox': 'Прикрепить выбранное окно',
@@ -601,6 +647,7 @@
     'Click': 'Клик',
     'Send Key': 'Нажать клавишу',
     'Detect': 'Если увидит картинку',
+    'Counter Detect': 'Детект счётчика',
     'Walk Path': 'Путь ходьбы',
     'Auto': 'Авто',
     'Custom': 'Свой',

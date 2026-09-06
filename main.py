@@ -263,6 +263,16 @@ MACRO_COORD_DEFAULTS = {
     "screen_middle_x": 576, "screen_middle_y": 378,
     "unit_info_reset_x": 3, "unit_info_reset_y": 3,
     "event_gamemode_x": 152, "event_gamemode_y": 253,
+    "daily_challenge_tab_x": 250, "daily_challenge_tab_y": 315,
+    "daily_challenge_stage_x": 650, "daily_challenge_stage_y": 360,
+    "nav_items_x": 114, "nav_items_y": 335,
+    "portal_tab_x": 227, "portal_tab_y": 246,
+    "portal_activate_x": 834, "portal_activate_y": 591,
+    "portal_start_x": 681, "portal_start_y": 519,
+    "portal_select_x": 292, "portal_select_y": 581,
+    "portal_exit_x": 701, "portal_exit_y": 581,
+    "autoplay_x": 1123, "autoplay_y": 485,
+    "portal_panel_close_x": 3, "portal_panel_close_y": 3,
 }
 
 # Settings > Debug > "Reward Reader"/"Game Stats": OCR capture regions for

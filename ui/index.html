@@ -2233,7 +2233,7 @@
             </div>
           </div>
 
-          <div class="setting-row" style="padding: 14px; border-bottom: none;">
+          <div class="setting-row" style="padding: 14px;">
             <div>
               <div class="setting-label">Enter Matchmaking Region</div>
               <div class="setting-desc">Search region (x y w h) the Enter Matchmaking button is found in.</div>
@@ -2244,6 +2244,90 @@
               <input id="coord-matchmaking_region_w" class="block-input" style="width: 52px;" type="number" onchange="setMacroCoord('matchmaking_region_w', this.value)">
               <input id="coord-matchmaking_region_h" class="block-input" style="width: 52px;" type="number" onchange="setMacroCoord('matchmaking_region_h', this.value)">
               <button onclick="saveMatchmakingRegionDebug(this)" class="text-xs font-semibold px-3 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);">Capture</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px;">
+            <div>
+              <div class="setting-label">Portal: Portals Sub-Tab</div>
+              <div class="setting-desc">Click point on the Portals sub-tab inside the Items panel.</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-portal_tab_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_tab_x', this.value)">
+              <input id="coord-portal_tab_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_tab_y', this.value)">
+              <button onclick="openCoordPicker('portal_tab')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the Portals sub-tab">Pick</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px;">
+            <div>
+              <div class="setting-label">Portal: Activate Button</div>
+              <div class="setting-desc">Click point on the Activate portal button on the confirmation screen.</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-portal_activate_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_activate_x', this.value)">
+              <input id="coord-portal_activate_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_activate_y', this.value)">
+              <button onclick="openCoordPicker('portal_activate')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the Activate button">Pick</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px;">
+            <div>
+              <div class="setting-label">Portal: Start Run</div>
+              <div class="setting-desc">Click point on the green Start button on the party screen Activate opens. Nothing teleports until this is pressed. Normally found by image; this is the fallback. Default (681, 519).</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-portal_start_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_start_x', this.value)">
+              <input id="coord-portal_start_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_start_y', this.value)">
+              <button onclick="openCoordPicker('portal_start')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the party screen's Start button">Pick</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px;">
+            <div>
+              <div class="setting-label">Portal: Select Next Portal</div>
+              <div class="setting-desc">Click point on the gold Select button on the post-run portal chooser. Fires while the counter is below its limit (continues the loop).</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-portal_select_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_select_x', this.value)">
+              <input id="coord-portal_select_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_select_y', this.value)">
+              <button onclick="openCoordPicker('portal_select')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the Select button">Pick</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px;">
+            <div>
+              <div class="setting-label">Portal: Exit to Lobby</div>
+              <div class="setting-desc">Click point on the Exit to Lobby button on the post-run screen. Fires once the counter has run its configured N portals (or the single-portal template's one).</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-portal_exit_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_exit_x', this.value)">
+              <input id="coord-portal_exit_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_exit_y', this.value)">
+              <button onclick="openCoordPicker('portal_exit')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the Exit to Lobby button">Pick</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px;">
+            <div>
+              <div class="setting-label">Auto Play Button</div>
+              <div class="setting-desc">Click point on the in-match Auto Play button, used by a task's "Plays The Map" setting. Normally found by image (both states ship art); this is the fallback. Default (1123, 485).</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-autoplay_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('autoplay_x', this.value)">
+              <input id="coord-autoplay_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('autoplay_y', this.value)">
+              <button onclick="openCoordPicker('autoplay')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the Auto Play button">Pick</button>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding: 14px; border-bottom: none;">
+            <div>
+              <div class="setting-label">Portal: Close Panel (top-left)</div>
+              <div class="setting-desc">Click point on the lobby's close button, top-left. Not part of the route: it is clicked before a retry to shut an Items/Portals panel a failed attempt left open, so the retry starts from a clean lobby. Default (3, 3).</div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <input id="coord-portal_panel_close_x" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_panel_close_x', this.value)">
+              <input id="coord-portal_panel_close_y" class="block-input" style="width: 56px;" type="number" onchange="setMacroCoord('portal_panel_close_y', this.value)">
+              <button onclick="openCoordPicker('portal_panel_close')" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn" style="color: var(--slate); border-color: var(--border);" title="Capture the Roblox screen and click the lobby's close button">Pick</button>
             </div>
           </div>
         </section>

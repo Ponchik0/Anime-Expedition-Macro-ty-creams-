@@ -305,6 +305,32 @@ def clear_template_cache() -> None:
     _template_cache.clear()
 
 
+_OVERSIZED_TEMPLATES: dict = {}
+
+
+def _note_if_oversized(path: str, gray) -> None:
+    h, w = gray.shape[:2]
+    if w <= config.FIXED_WIN_W and h <= config.FIXED_WIN_H:
+        return
+    if path in _OVERSIZED_TEMPLATES:
+        return
+    _OVERSIZED_TEMPLATES[path] = (w, h)
+    sys.stderr.write(
+        f"[Vision] Reference image {path} is {w}x{h}, larger than the "
+        f"{config.FIXED_WIN_W}x{config.FIXED_WIN_H} capture space -- it can never match and is "
+        f"being ignored. Re-crop it from a frame in debug/ (already normalised) "
+        f"and keep it to the element itself.\n"
+    )
+
+
+def oversized_template_report() -> dict:
+    """Every reference image loaded so far that is too big to ever match,
+    as {path: (width, height)}. Empty is the healthy state. Surfaced for
+    diagnostics so this class of dead art is findable without reading the
+    Assets folder by hand."""
+    return dict(_OVERSIZED_TEMPLATES)
+
+
 def _load_gray_from_path(path: str):
     """Loads + caches one reference image file as (grayscale, mask). Cached
     per file path because the runner hits this on every poll of
@@ -336,6 +362,7 @@ def _load_gray_from_path(path: str):
         gray = cv2.cvtColor(raw[:, :, :3], cv2.COLOR_BGR2GRAY)
     else:
         gray = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY) if raw.ndim == 3 else raw
+    _note_if_oversized(path, gray)
     entry = (gray, None)
     _template_cache[cache_key] = entry
     return entry
@@ -1144,6 +1171,41 @@ def find_upgrade_state(hwnd: int):
     green = upgrade_button_green_fraction(hwnd, match)
     match["green_fraction"] = green
     return ("upgradeable" if green >= UPGRADE_GREEN_MIN_FRACTION else "not_upgradeable"), match
+
+
+PORTAL_TAB_BLUE_MIN_FRACTION = 0.25
+
+
+def portal_tab_blue_fraction(hwnd: int, match: dict) -> float:
+    """Fraction of pixels at `match` that are dominantly blue and saturated."""
+    bgr = capture_game_bgr(hwnd, (match['x'], match['y'], match['w'], match['h']))
+    if bgr is None or bgr.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    b, g, r = (bgr[:, :, i].astype(int) for i in range(3))
+    blueness = b - np.maximum(g, r)
+    return float(((blueness > 25) & (hsv[:, :, 1] > 90)).mean())
+
+
+def portal_tab_is_selected(hwnd: int) -> bool:
+    """True only when the Portals tab is actually the SELECTED (blue) tab.
+
+    Locates the tab with either name's art -- the shape is the same in both
+    states, which is exactly why the template cannot answer this -- and then
+    reads the colour at that spot. Returns False when the tab isn't on screen
+    at all, so callers can treat it as "not there / not selected" without a
+    separate existence check.
+    """
+    try:
+        found = find_image_any(hwnd, ("portal_tab_selected", "portal_tab"))
+    except TemplateNotFound:
+        return False
+    if not found:
+        return False
+    match = found[0] if isinstance(found, tuple) else found
+    if not match:
+        return False
+    return portal_tab_blue_fraction(hwnd, match) >= PORTAL_TAB_BLUE_MIN_FRACTION
 
 
 def find_image_any(hwnd: int, names: tuple, region: tuple = None, threshold: float = DEFAULT_THRESHOLD,

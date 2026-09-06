@@ -20,7 +20,10 @@ import shutil
 
 import pytest
 
-from tests.test_ui_js import run_js
+try:
+    from tests.test_ui_js import run_js
+except (ImportError, ModuleNotFoundError):
+    from test_ui_js import run_js
 
 # Своя отметка, а не унаследованная: pytestmark из test_ui_js.py на этот файл
 # не распространяется, и без неё без node тесты падали бы вместо пропуска.

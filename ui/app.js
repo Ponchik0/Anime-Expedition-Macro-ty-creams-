@@ -2759,6 +2759,26 @@ const TASK_DATA = {
     stages: ['1'],
     isTower: true,
   },
+  portals: {
+    label: 'Portals',
+    // Portals are opened straight out of the inventory (Items > Portals >
+    // the portal), not through Play/gamemode/map and not through the Event
+    // menu -- so there is no map carousel and no difficulty picker. There is no portal
+    // TYPE picker either: which panel a portal is opened from depends on
+    // where the last run left you, so the runner decides that by looking at
+    // the screen (see _portal_chooser_showing) rather than by asking. What
+    // the task stores instead is the two click points themselves --
+    // portal_lobby_x/y and portal_chooser_x/y, picked right here in the Task
+    // Builder, because two queued Portals tasks can want two different
+    // portals out of the same inventory.
+    //
+    // `extract_after` is the run count (0 = until stopped), and it stands in
+    // for Repeat, which is hidden for this mode so the two can't disagree.
+    // Solo/Matchmaking isn't offered: a portal is always entered solo from
+    // your own inventory.
+    extractAfter: ['0', '1', '2', '3', '4', '5'],
+    isPortals: true,
+  },
 };
 
 let taskCards = [];
@@ -2785,6 +2805,7 @@ function defaultTask() {
     infinite_wave_limit: DEFAULT_INFINITE_WAVE_LIMIT,
     extract_after: '1',
     repeat: 1, team: '', equipment: 'include', play_mode: 'solo', macro: '',
+    auto_play: 'macro',
     // Таймер задачи (бета): 0 — выключен. timer_next — id задачи,
     // на которую перейти, когда время выйдет; пусто — просто дальше
     // по очереди. Проверяется МЕЖДУ матчами, см. core/runner.py.
@@ -3280,6 +3301,13 @@ function setTaskProp(id, key, value) {
       if (!t.tower_mode) t.tower_mode = 'normal';
       t.play_mode = 'solo';
     }
+    if (d.isPortals) {
+      // No map to pick, but a label keeps logs/status/webhook readable --
+      // and the runner skips a task with an empty map.
+      t.map = 'Portals';
+      t.extract_after = '0';
+      t.play_mode = 'solo';
+    }
   }
   if (key === 'stage' && value === 'Infinite' && !Number.isInteger(Number(t.infinite_wave_limit))) {
     t.infinite_wave_limit = DEFAULT_INFINITE_WAVE_LIMIT;
@@ -3294,7 +3322,74 @@ function taskOpts(list, current, fmt) {
 }
 
 // One accent per mode so the queue scans by color before you even read it.
-const TASK_MODE_COLORS = { story: 'var(--brand)', raid: 'var(--rose)', expedition: 'var(--teal)', event: 'var(--amber)', tournament: 'var(--lilac)', tower: 'var(--slate)' };
+const TASK_MODE_COLORS = { story: 'var(--brand)', raid: 'var(--rose)', expedition: 'var(--teal)', event: 'var(--amber)', tournament: 'var(--lilac)', tower: 'var(--slate)', portals: 'var(--sky)' };
+
+function portalSlotsReady(t) {
+  return ['portal_lobby', 'portal_chooser'].every(k =>
+    Number.isInteger(t[`${k}_x`]) && Number.isInteger(t[`${k}_y`]));
+}
+
+// One row of the Task Builder's per-task coordinate pickers: the current
+// point (or "Not set") plus a Pick button that opens the same capture modal
+// the Settings > Debug > Macro Coordinates rows use. Per task rather than in
+// settings because two queued Portals tasks can want two different portals
+// out of the same inventory.
+function taskCoordPicker(t, key) {
+  const has = Number.isInteger(t[`${key}_x`]) && Number.isInteger(t[`${key}_y`]);
+  const text = has ? `X ${t[`${key}_x`]}, Y ${t[`${key}_y`]}` : 'Not set \u2014 required';
+  return `
+    <div class="flex items-center gap-2" style="width: 100%;">
+      <span class="task-chip" style="flex: 1 1 auto; ${has ? '' : 'color: var(--text-muted);'}">${escapeHtml(text)}</span>
+      <button type="button" class="text-xs font-semibold px-2 py-1.5 rounded-lg border flex-shrink-0 settings-action-btn"
+              style="color: var(--slate); border-color: var(--border);"
+              onclick="openTaskCoordPicker('${t.id}', '${key}')">Pick</button>
+      ${has ? `<button type="button" class="task-icon-btn delete" data-tooltip="Clear"
+              onclick="clearTaskCoord('${t.id}', '${key}')">&#10005;</button>` : ''}
+    </div>`;
+}
+
+// Same capture modal as openCoordPicker, but the picked point lands on the
+// TASK instead of in settings.json (see applyPlaceUnitPosition's taskCoord
+// branch). Navigate the GAME to the screen the point lives on first -- the
+// capture is of whatever Roblox is showing right now, so pick the lobby slot
+// with the Portals inventory open and the chooser slot with a post-run
+// chooser on screen.
+async function openTaskCoordPicker(taskId, key) {
+  const t = findTask(taskId);
+  if (!t) return;
+  puState.blockId = null;
+  puState.coordTarget = null;
+  puState.coordHeightKey = null;
+  puState.coordStep = null;
+  puState.coordFirst = null;
+  puState.coordPreview = null;
+  puState.taskCoord = { taskId, key };
+  puState.markX = Number.isInteger(t[`${key}_x`]) ? t[`${key}_x`] : null;
+  puState.markY = Number.isInteger(t[`${key}_y`]) ? t[`${key}_y`] : null;
+  puState.image = null;
+
+  document.getElementById('pu-canvas-wrap').style.display = 'none';
+  document.getElementById('pu-category-tabs').innerHTML = '';
+  const grid = document.getElementById('pu-map-grid');
+  grid.style.display = '';
+  grid.innerHTML = '<div class="rh-empty">Capturing the Roblox screen...</div>';
+  document.getElementById('pu-pos-readout').textContent =
+    puState.markX != null ? `X ${puState.markX}, Y ${puState.markY}` : 'Not set';
+  document.getElementById('pu-modal').style.display = 'flex';
+
+  const ok = await usePlaceUnitRobloxScreen();
+  if (!ok) closePlaceUnitModal();  // no Roblox to capture -- nothing to pick on
+}
+
+function clearTaskCoord(taskId, key) {
+  const t = findTask(taskId);
+  if (!t) return;
+  delete t[`${key}_x`];
+  delete t[`${key}_y`];
+  updateQueueRowInPlace(t);
+  renderTaskBuilder();
+  saveTaskQueue();
+}
 
 // The two text lines a queue row shows for a task -- where it goes, then how
 // it runs. All editing happens in the Builder, rows are read-only summaries.
@@ -3312,12 +3407,18 @@ function taskSummary(t) {
   const diff = ((t.mode === 'story' && !specialStage) || t.mode === 'expedition') ? t.difficulty
              : (d.fixedDifficulty || specialStage) ? 'Hard' : '';
   const meta = [
-    `×${t.repeat}`,
+    t.mode === 'portals' ? '' : `×${t.repeat}`,
     diff,
     t.mode === 'story' && t.stage === 'Infinite'
       ? `Stop after wave ${t.infinite_wave_limit || DEFAULT_INFINITE_WAVE_LIMIT}` : '',
     t.tower_mode === 'traitless' ? 'Traitless' : '',
-    (t.mode === 'tournament' || t.mode === 'tower') ? '' : (t.play_mode === 'matchmaking' ? 'Matchmaking' : 'Solo'),
+    t.mode === 'portals'
+      ? ((parseInt(t.extract_after, 10) || 0) > 0
+          ? `${parseInt(t.extract_after, 10)} portals` : 'Until stopped') : '',
+    // Both slots are required: a Portals task can't run without them.
+    (t.mode === 'portals' && !portalSlotsReady(t)) ? '\u26a0 pick portal slots' : '',
+    (t.mode === 'tournament' || t.mode === 'tower' || t.mode === 'portals') ? '' : (t.play_mode === 'matchmaking' ? 'Matchmaking' : 'Solo'),
+    t.auto_play === 'autoplay' ? 'Auto Play' : '',
     t.macro ? `▸ ${t.macro}` : '',
     (t.mode === 'event' && t.stage !== '4' && t.act4_on_drop)
       ? `⮡ Act 4 on drop${t.act4_mode === 'until_locked' ? ' (until locked)' : ''}` : '',
@@ -3388,12 +3489,19 @@ function renderTaskBuilder() {
   const field = (label, control, tooltip = '') => `<div class="task-field" ${tooltip ? `data-tooltip="${escapeHtml(tooltip)}"` : ''}><span>${label}</span>${control}</div>`;
 
   const fields = [
-    field('Mode', sel('mode', Object.keys(TASK_DATA), k => TASK_DATA[k].label, 'Select game mode: Story, Raid, Expedition, Event, Tournament, or Tower'), 'Choose game mode'),
-    field('Repeat', `<div class="task-rep-group" style="width: 100%;">&times;<input type="number" min="1" value="${t.repeat}"
-      oninput="setTaskProp('${t.id}', 'repeat', Math.max(1, parseInt(this.value, 10) || 1))"></div>`, 'Number of times to run this task'),
-    // ── Таймер задачи (бета) ──────────────────────────────────────────
-    // Отсчитывает ВРЕМЯ НА ЗАДАЧЕ и обнуляется при каждом заходе в неё.
-    // Срабатывает между матчами, поэтому начатый бой всегда доигрывается.
+    field('Mode', sel('mode', Object.keys(TASK_DATA), k => TASK_DATA[k].label, 'Select game mode: Story, Raid, Expedition, Event, Tournament, Tower, or Portals'), 'Choose game mode'),
+  ];
+  // Portals counts portals, not repeats -- its "Portals Then Exit" field is
+  // the count (and can be 0 = until stopped, which Repeat can't express), so
+  // showing both would be two controls fighting over the same number.
+  if (t.mode !== 'portals') {
+    fields.push(field('Repeat', `<div class="task-rep-group" style="width: 100%;">&times;<input type="number" min="1" value="${t.repeat}"
+      oninput="setTaskProp('${t.id}', 'repeat', Math.max(1, parseInt(this.value, 10) || 1))"></div>`, 'Number of times to run this task'));
+  }
+  // ── Таймер задачи (бета) ──────────────────────────────────────────
+  // Отсчитывает ВРЕМЯ НА ЗАДАЧЕ и обнуляется при каждом заходе в неё.
+  // Срабатывает между матчами, поэтому начатый бой всегда доигрывается.
+  fields.push(
     field('Таймер, мин <span style="opacity:.6">бета</span>',
       `<input type="number" min="0" class="task-field-input" value="${t.timer_minutes || 0}"
         oninput="setTaskProp('${t.id}', 'timer_minutes', Math.max(0, parseInt(this.value, 10) || 0))">`,
@@ -3405,8 +3513,8 @@ function renderTaskBuilder() {
           `<option value="${o.id}"${o.id === t.timer_next ? ' selected' : ''}>${i + 1}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'задача')}</option>`
         ).join('')}
       </select>`,
-      'Куда перейти, когда таймер выйдет.'),
-  ];
+      'Куда перейти, когда таймер выйдет.')
+  );
 
   if (t.mode === 'story' || t.mode === 'raid') {
     fields.push(field('Map', sel('map', d.maps, null, 'Select map')));
@@ -3449,9 +3557,27 @@ function renderTaskBuilder() {
       `Number of extraction prompts to decline before extracting (maximum ${MAX_EXTRACT_AFTER})`));
   }
 
+  // Portals reuses extract_after as its run counter (see TASK_DATA.portals).
+  // 0 = keep running portals until the task is stopped, which is why the
+  // label and tooltip differ from Expedition's.
+  if (t.mode === 'portals') {
+    fields.push(field('Portals Then Exit', `<input type="number" class="block-input" min="0" max="${MAX_EXTRACT_AFTER}" step="1" value="${t.extract_after}"
+      onchange="this.value = normalizeExtractAfter(this.value); setTaskProp('${t.id}', 'extract_after', this.value)">`,
+      `How many portals to run before exiting to the lobby -- 0 keeps going until you stop the task (maximum ${MAX_EXTRACT_AFTER})`));
+    // The two slots this task clicks. Which of them gets used on any given
+    // run is decided by the runner from the screen, not here -- the chooser
+    // one after a run that ended on the post-run screen, the lobby one when
+    // re-entering from the inventory. Both are picked from the live Roblox
+    // window with the same picker the Macro Coordinates rows use.
+    fields.push(field('Portal in lobby', taskCoordPicker(t, 'portal_lobby'),
+      'Required. The portal to click in Items > Portals, used when starting or re-entering from the lobby.'));
+    fields.push(field('Portal in chooser', taskCoordPicker(t, 'portal_chooser'),
+      'Required. The portal to click on the post-run chooser, used to go straight into the next run.'));
+  }
+
   // Tournament and Tower have no Solo/Matchmaking choice -- their runner paths
   // force the solo Start tail, so the toggle would be a no-op here.
-  if (t.mode !== 'tournament' && t.mode !== 'tower') {
+  if (t.mode !== 'tournament' && t.mode !== 'tower' && t.mode !== 'portals') {
     const playSeg = `
       <div class="seg-toggle" data-tooltip="Select Solo or Matchmaking / Party mode">
         <button type="button" class="seg-btn ${t.play_mode === 'solo' ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'play_mode', 'solo'); renderTaskBuilder()">Solo</button>
@@ -3459,6 +3585,19 @@ function renderTaskBuilder() {
       </div>`;
     fields.push(field('Play Mode', playSeg, 'Select Solo or Matchmaking / Party mode'));
   }
+
+  // Who fights the round. Deliberately NOT wired to hide the Macro Operation
+  // picker below: picking Auto Play hands combat to the game, but the
+  // template still runs, which is the whole point -- e.g. autoplay clears the
+  // portal while the template's own blocks walk to the water and fish.
+  const autoPlayOn = t.auto_play === 'autoplay';
+  const autoPlaySeg = `
+    <div class="seg-toggle" data-tooltip="Macro: the template's blocks play the round (Auto Play is switched off). Auto Play: the game plays it -- your Macro Operation still runs alongside.">
+      <button type="button" class="seg-btn ${!autoPlayOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'auto_play', 'macro'); renderTaskBuilder()">Macro</button>
+      <button type="button" class="seg-btn ${autoPlayOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'auto_play', 'autoplay'); renderTaskBuilder()">Auto Play</button>
+    </div>`;
+  fields.push(field('Plays The Map', autoPlaySeg,
+    "Macro: the template's blocks play the round. Auto Play: the game's Auto Play button is switched on -- your Macro Operation still runs alongside it."));
 
   // Team Loadout rides with the chosen template (see the Macro Manager tab), so the
   // macro picker is the only loadout-related control left on a task.
@@ -5104,6 +5243,14 @@ const MACRO_COORD_KEYS = [
   'team_button_x', 'team_button_y',
   'screen_middle_x', 'screen_middle_y',
   'unit_info_reset_x', 'unit_info_reset_y',
+  'nav_items_x', 'nav_items_y',
+  'portal_tab_x', 'portal_tab_y',
+  'portal_activate_x', 'portal_activate_y',
+  'portal_start_x', 'portal_start_y',
+  'portal_select_x', 'portal_select_y',
+  'portal_exit_x', 'portal_exit_y',
+  'autoplay_x', 'autoplay_y',
+  'portal_panel_close_x', 'portal_panel_close_y',
 ];
 
 async function loadMacroCoords() {
@@ -6683,6 +6830,20 @@ function drawPlaceUnitCanvas() {
 }
 
 function applyPlaceUnitPosition() {
+  if (puState.taskCoord) {
+    // Per-task Pick mode -- the point belongs to one task, not to
+    // settings.json (see openTaskCoordPicker).
+    const { taskId, key } = puState.taskCoord;
+    const t = findTask(taskId);
+    if (!t) return;
+    t[`${key}_x`] = puState.markX;
+    t[`${key}_y`] = puState.markY;
+    updateQueueRowInPlace(t);
+    renderTaskBuilder();
+    saveTaskQueue();
+    document.getElementById('pu-pos-readout').textContent = `X ${puState.markX}, Y ${puState.markY}`;
+    return;
+  }
   if (puState.coordTarget) {
     // Macro Coordinates Pick mode -- write straight to the settings inputs
     // and persist, no block involved (see openCoordPicker).

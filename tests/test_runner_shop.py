@@ -171,11 +171,12 @@ def test_known_item_scroll_steps_match_the_observed_shop_rows():
         "frown_fruit": 1,
         "delicious_pie": 1,
         "mana_flask": 1,
-        "trait_crystal": 1,
+        "meat": 1,
+        "trait_crystal": 2,
         "sprite_grey": 2,
-        "equipment_reroll": 2,
+        "equipment_reroll": 3,
         "equipment_lock": 3,
-        "stat_reroll": 3,
+        "stat_reroll": 4,
         "stat_lock": 4,
     }
     assert runner_shop.SHOP_ITEM_SCROLL_AMOUNTS == {
@@ -184,11 +185,12 @@ def test_known_item_scroll_steps_match_the_observed_shop_rows():
         "frown_fruit": -120,
         "delicious_pie": -120,
         "mana_flask": -480,
-        "trait_crystal": -480,
+        "meat": -480,
+        "trait_crystal": -720,
         "sprite_grey": -720,
-        "equipment_reroll": -720,
+        "equipment_reroll": -960,
         "equipment_lock": -960,
-        "stat_reroll": -960,
+        "stat_reroll": -4800,
         "stat_lock": -4800,
     }
 

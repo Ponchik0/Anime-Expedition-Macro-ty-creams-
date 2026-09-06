@@ -132,8 +132,8 @@ def test_item_lookup_is_restricted_to_its_expected_column(monkeypatch):
         1,
         {
             **_item(),
-            "key": "equipment_lock",
-            "name": "Equipment Lock",
+            "key": "equipment_reroll",
+            "name": "Equipment Reroll",
             "daily_maximum": 10,
         },
         threading.Event(),
@@ -142,8 +142,8 @@ def test_item_lookup_is_restricted_to_its_expected_column(monkeypatch):
         1,
         {
             **_item(),
-            "key": "stat_reroll",
-            "name": "Stat Reroll",
+            "key": "equipment_lock",
+            "name": "Equipment Lock",
             "daily_maximum": 10,
         },
         threading.Event(),

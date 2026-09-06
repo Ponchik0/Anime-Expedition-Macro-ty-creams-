@@ -55,6 +55,7 @@ AUTO_SHOP_ITEMS = (
     {"key": "frown_fruit", "name": "Frown Fruit", "stock": 100, "template": "shop_frown_fruit"},
     {"key": "delicious_pie", "name": "Delicious Pie", "stock": 125, "template": "shop_delicious_pie"},
     {"key": "mana_flask", "name": "Mana Flask", "stock": 150, "template": "shop_mana_flask"},
+    {"key": "meat", "name": "Meat", "stock": 200, "template": "shop_meat"},
     {"key": "trait_crystal", "name": "Trait Crystal", "stock": 25, "template": "shop_trait_crystal"},
     {"key": "sprite_grey", "name": "Sprite (Grey)", "stock": 25, "template": "shop_sprite_grey"},
     {

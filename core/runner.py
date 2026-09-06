@@ -44,6 +44,16 @@ from .runner_shop import ShopOps
 
 
 MAX_EXTRACT_AFTER = 9999
+PORTAL_SCREEN_TIMEOUT = 10
+PORTAL_CONTINUOUS_REPEATS = 9999
+PORTAL_STEP_TIMEOUT = 6
+PORTAL_VERIFY_TIMEOUT = 5
+PORTAL_STEP_ATTEMPTS = 3
+PORTAL_IN_MATCH_IMAGES = ("start_game_prompt", "nav_start_game", "autoplay_on", "autoplay_off")
+AUTOPLAY_MATCH_THRESHOLD = 0.93
+AUTOPLAY_BUTTON_TIMEOUT = 8
+AUTOPLAY_TOGGLE_SETTLE = 0.6
+AUTOPLAY_VERIFY_ATTEMPTS = 3
 
 
 def _open_deep_link(url: str) -> None:
@@ -1180,6 +1190,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         map_name = task.get("map")
         mode = task.get("mode") or "story"
         repeat_total = max(1, int(task.get("repeat") or 1))
+        if mode == "portals":
+            portal_limit = _parse_extract_after(task.get("extract_after"), default=0)
+            repeat_total = portal_limit if portal_limit > 0 else PORTAL_CONTINUOUS_REPEATS
         # Отсчёт таймера начинается здесь — то есть при КАЖДОМ заходе в
         # задачу, включая возврат к ней по кругу очереди.
         self._task_started_at = time.time()
@@ -1607,7 +1620,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     continue
 
                 if not is_last_repeat:
-                    if left_live_match or task.get("play_mode") == "matchmaking" or self._force_fresh_reentry:
+                    if left_live_match or task.get("play_mode") == "matchmaking" or mode == "portals" or self._force_fresh_reentry:
                         # Leave Stage (see _handle_match_result -- matchmaking
                         # always leaves, never Repeat Stage), or the Infinite
                         # wave-limit exit, puts us back in the lobby rather
@@ -1792,6 +1805,25 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 return False
             if self._checkpoint(stop_event):
                 return False
+        elif mode == "portals":
+            reached_portal = False
+            for attempt in range(1, MAP_SELECT_RETRY_ATTEMPTS + 1):
+                if self._checkpoint(stop_event):
+                    return False
+                if attempt > 1:
+                    self._log(f"[Macro] Retrying Portal entry from the lobby (attempt {attempt}/{MAP_SELECT_RETRY_ATTEMPTS})...")
+                    self._close_open_panels(hwnd, stop_event)
+                if self._reach_portal_activated(hwnd, stop_event, task):
+                    reached_portal = True
+                    break
+                if stop_event.is_set():
+                    return False
+            if not reached_portal:
+                self._log(f"[Macro] Couldn't open a portal after {MAP_SELECT_RETRY_ATTEMPTS} attempts -- stopping.")
+                return False
+            if self._checkpoint(stop_event):
+                return False
+            return self._wait_teleport_in(hwnd, stop_event, webhook, task, extra_ok_names=PORTAL_IN_MATCH_IMAGES)
         else:
             # Lobby -> Play -> Story/Raid -> map search, retried wholesale from
             # the lobby if the map search fails and backing out succeeds (see
@@ -1888,6 +1920,106 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 return False
         return not self._checkpoint(stop_event)
 
+    def _autoplay_state(self, hwnd):
+        """\"on\" / \"off\" / None (button not on screen).
+
+        ON is tested first on purpose. The two button images differ only in
+        their label, so when a frame scores close on both, calling it "on"
+        means the worst case is leaving autoplay as it already was; calling
+        it "off" would mean clicking a button that is already on and turning
+        autoplay back off mid-match.
+        """
+        for name, state in (("autoplay_on", "on"), ("autoplay_off", "off")):
+            try:
+                if vision.find_image(hwnd, name, threshold=AUTOPLAY_MATCH_THRESHOLD):
+                    return state
+            except vision.TemplateNotFound:
+                continue
+        return None
+
+    def _ensure_autoplay(self, hwnd, stop_event: threading.Event, want_on: bool):
+        """Put the in-match Auto Play button into the state this task wants.
+
+        This is a check, not a blind click: the button is read first, and
+        clicked only when it is actually in the wrong state -- clicking it
+        unconditionally would toggle autoplay OFF on every task that already
+        had it on. Verified after clicking (the label swaps immediately) and
+        retried a couple of times, because one missed click here means a
+        whole match played the wrong way.
+
+        Returns True when the button ended up in the requested state, or when
+        the button simply isn't there to read -- a mode without an Auto Play
+        button is not a failure worth ending a task over, just a log line.
+        """
+        wanted = "on" if want_on else "off"
+        deadline = time.time() + AUTOPLAY_BUTTON_TIMEOUT
+        state = self._autoplay_state(hwnd)
+        while state is None and time.time() < deadline:
+            if self._checkpoint(stop_event):
+                return False
+            time.sleep(0.5)
+            state = self._autoplay_state(hwnd)
+
+        if state is None:
+            self._log(
+                "[Macro] Auto Play button not found on this screen -- leaving it alone. "
+                "(Add art to Assets/ui/autoplay_on/ and autoplay_off/ if this mode has one.)"
+            )
+            return True
+
+        if state == wanted:
+            self._log(f"[Macro] Auto Play is already {state} -- nothing to do.")
+            return True
+
+        for attempt in range(1, AUTOPLAY_VERIFY_ATTEMPTS + 1):
+            if self._checkpoint(stop_event):
+                return False
+            image = "autoplay_on" if state == "on" else "autoplay_off"
+            self._set_status(f"Turning Auto Play {wanted}...", action=True)
+            self._log(
+                f"[Macro] Auto Play is {state}, this task wants it {wanted} "
+                f"-- clicking it (attempt {attempt}/{AUTOPLAY_VERIFY_ATTEMPTS})."
+            )
+            try:
+                if self._click_found_image(hwnd, image, AUTOPLAY_BUTTON_TIMEOUT, stop_event, threshold=AUTOPLAY_MATCH_THRESHOLD) is None:
+                    self._click_coord_point(hwnd, "autoplay", f"Turning Auto Play {wanted}")
+            except (KeyError, TypeError, ValueError):
+                self._log('[Macro] Auto Play button went missing before it could be clicked and no "autoplay" coordinate is set -- leaving it alone.')
+                return True
+            self._interruptible_sleep(AUTOPLAY_TOGGLE_SETTLE, stop_event)
+            if self._checkpoint(stop_event):
+                return False
+            state = self._autoplay_state(hwnd)
+            if state == wanted:
+                self._log(f"[Macro] Auto Play is now {wanted}.")
+                return True
+            if state is None:
+                self._log("[Macro] Auto Play button disappeared right after the click -- assuming it took.")
+                return True
+
+        self._log(
+            f"[Macro] Auto Play still reads {state} after {AUTOPLAY_VERIFY_ATTEMPTS} clicks "
+            f"-- continuing anyway, but this match may not play the way the task asked."
+        )
+        return True
+
+    def _settle_autoplay_for_match(self, hwnd, stop_event: threading.Event, task: dict):
+        """Put Auto Play where this task wants it, once per entry into a run.
+
+        Called as early as the button can exist -- straight after teleport-in,
+        before Pre Start -- so the run is auto-playing from its first wave
+        rather than from whenever the macro got round to it.
+
+        Portals entered straight from the post-run chooser are skipped: Auto
+        Play survives from one portal into the next and is reset only by
+        returning to the lobby, so clicking it on a chooser entry would toggle
+        it OFF mid-chain.
+        """
+        if task.get("mode") == "portals" and getattr(self, "_portal_entered_from", "lobby") == "chooser":
+            self._log("[Macro] Came straight from the portal chooser -- leaving Auto Play as the last run left it (it only resets via the lobby).")
+            return True
+        return self._ensure_autoplay(hwnd, stop_event, task.get("auto_play") == "autoplay")
+
     def _play_one_match(self, hwnd, stop_event: threading.Event, task: dict, default_walk_paths: dict,
                           first_repeat: bool = True, webhook: dict = None):
         """Assumes teleport-in already happened -- the initial one from
@@ -1898,6 +2030,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         Pre Start block so they only fire on the task's first entry into
         this stage, not on every repeat (see _run_prestart). Returns
         "win"/"loss", or None on failure/stop."""
+        self._settle_autoplay_for_match(hwnd, stop_event, task)
         if not self._start_game_or_reset_via_settings(hwnd, stop_event, task.get("play_mode")):
             return None
         if self._checkpoint(stop_event):
@@ -2130,6 +2263,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             deadline = time.time() + MATCH_RESULT_TIMEOUT
         self._battle_status_minute = None  # свежий матч -- свежий такт (см. _pulse_battle_status)
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
+        portal_offer_last_check = 0.0
+        portal_offer_selected = False
         while deadline is None or time.time() < deadline:
             if self._checkpoint(stop_event):
                 return None
@@ -2179,6 +2314,26 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             if self._battle_leave_requested:
                 self._battle_leave_requested = False
                 return "left"
+
+            if task and task.get("mode") == "portals" and not portal_offer_selected:
+                now = time.monotonic()
+                if now - portal_offer_last_check >= 3.0:
+                    portal_offer_last_check = now
+                    self._log("[Macro] Portal run: scanning for the 3 portal cards (threshold 0.60)...")
+                    middle = self._find_middle_portal_card(hwnd)
+                    if middle:
+                        self._log(
+                            f"[Macro] 3-portal selection detected DURING the round "
+                            f"({len(middle['_cards'])} cards, best score {middle['score']:.2f}) "
+                            f"-- clicking the middle one."
+                        )
+                        if wm.activate_window(hwnd):
+                            vision.click_match(self._mouse, hwnd, middle, shuffle=False)
+                            portal_offer_selected = True
+                            self._set_status("Portal selected -- continuing round until Victory/Defeat...", action=True)
+                            self._interruptible_sleep(SETTLE_DELAY, stop_event)
+                        else:
+                            self._log("[Macro] Couldn't confirm focus before clicking the middle portal.")
 
             # Roblox's own Reconnect/Retry prompt can show up mid-battle too,
             # not just during the teleport-in wait -- this used to only be
@@ -2263,11 +2418,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             # Второй, независимый признак конца матча -- кнопка «Repeat Stage»
             # (см. _match_ended_without_a_banner). Без него макрос стоял на
             # законченном матче полные 30 минут и валил задачу.
-            polls += 1
-            if polls % MATCH_END_CHECK_EVERY == 0:
-                ended = self._match_ended_without_a_banner(hwnd)
-                if ended is not None:
-                    return ended
+            if not (task and task.get("mode") == "portals"):
+                polls += 1
+                if polls % MATCH_END_CHECK_EVERY == 0:
+                    ended = self._match_ended_without_a_banner(hwnd)
+                    if ended is not None:
+                        return ended
             time.sleep(MATCH_RESULT_POLL_INTERVAL)
         self._log(f'[Macro] Neither "victory" nor "defeat" matched within {MATCH_RESULT_TIMEOUT / 60:.0f} min. '
                    f'If the result screen was actually showing, its reference image isn\'t matching your '
@@ -2625,6 +2781,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if result == "win" and not self._clear_result_obtainment_modal(hwnd, stop_event):
             return False
 
+        if task and task.get("mode") == "portals":
+            return self._handle_portal_result(hwnd, stop_event, task, repeat, webhook)
+
         # Matchmaking never uses Repeat Stage, even with more repeats left --
         # a matchmade lobby is a one-shot party for that specific match, not
         # something "repeat the same stage" can just re-queue into the way
@@ -2778,7 +2937,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         raw_stage = task.get("stage") or "-"
         # Raid/Event pick Acts; Story's Infinite/Mastery are named; the rest
         # are numbered stages.
-        if mode == "tower":
+        if mode in ("tower", "portals"):
             stage = "-"
         elif mode in ("raid", "event"):
             stage = f"Act {raw_stage}" if raw_stage != "-" else "-"
@@ -2793,7 +2952,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # no difficulty at all.
         if mode == "raid" or raw_stage in SPECIAL_STAGES_NO_DIFFICULTY:
             difficulty = "Hard"
-        elif mode in ("event", "tournament", "tower"):
+        elif mode in ("event", "tournament", "tower", "portals"):
             difficulty = "-"
         else:
             difficulty = task.get("difficulty") or "-"
@@ -2934,37 +3093,44 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
     def _run_prestart(self, hwnd, stop_event: threading.Event, task: dict, default_walk_paths: dict,
                         first_repeat: bool = True) -> bool:
-        # НАСТРОЙКА КАМЕРЫ ВЫПОЛНЯЕТСЯ ПЕРЕД КАЖДЫМ МАТЧЕМ/ПОВТОРОМ.
-        # При каждом респавне и перезаходе (включая Repeat Stage, ре-телепорт
-        # или повторный заход) Roblox сбрасывает ракурс камеры на стандартный
-        # горизонтальный вид. Если не повернуть и не наклонить камеру,
-        # координаты расстановки попадут мимо поля и юниты не встанут.
-        #
-        # Expedition получает свою последовательность: наклон вниз + поворот
-        # влево стрелкой (730 мс) + короткое нажатие O для масштаба.
-        self._log("[Macro] Pre Start: setting up the camera...")
-        self._set_status(action="Setting up camera...")
-        # nav_unitmanager (just confirmed by _wait_teleport_in) is a HUD
-        # element and can render a beat before the character/camera
-        # controller has actually finished attaching to the freshly-
-        # spawned avatar -- this blind right-click-drag has no visual
-        # confirmation of its own to wait on, so a short settle here is
-        # what catches that rare case instead of dragging on a camera
-        # that isn't ready to receive it yet.
-        self._interruptible_sleep(CAMERA_SETUP_SETTLE, stop_event)
-        if self._checkpoint(stop_event):
-            return False
-        try:
-            if task.get("mode") == "expedition":
-                camera.run_camera_drag_hold(self._mouse, self._keyboard, hwnd, hold_ms=730,
-                                             o_tap_ms=self._expedition_camera_o_ms)
-            else:
-                camera.run_camera_setup(self._mouse, self._keyboard, hwnd)
-            self._log("[Macro] Camera setup done.")
-        except Exception as exc:
-            self._log(f"[Macro] Camera setup failed: {exc}")
-        if self._checkpoint(stop_event):
-            return False
+        plays_with_autoplay = (task.get("auto_play") == "autoplay")
+        if plays_with_autoplay:
+            self._log("[Macro] Pre Start: Auto Play is playing this map -- leaving the camera alone.")
+            self._interruptible_sleep(CAMERA_SETUP_SETTLE, stop_event)
+            if self._checkpoint(stop_event):
+                return False
+        else:
+            # НАСТРОЙКА КАМЕРЫ ВЫПОЛНЯЕТСЯ ПЕРЕД КАЖДЫМ МАТЧЕМ/ПОВТОРОМ.
+            # При каждом респавне и перезаходе (включая Repeat Stage, ре-телепорт
+            # или повторный заход) Roblox сбрасывает ракурс камеры на стандартный
+            # горизонтальный вид. Если не повернуть и не наклонить камеру,
+            # координаты расстановки попадут мимо поля и юниты не встанут.
+            #
+            # Expedition получает свою последовательность: наклон вниз + поворот
+            # влево стрелкой (730 мс) + короткое нажатие O для масштаба.
+            self._log("[Macro] Pre Start: setting up the camera...")
+            self._set_status(action="Setting up camera...")
+            # nav_unitmanager (just confirmed by _wait_teleport_in) is a HUD
+            # element and can render a beat before the character/camera
+            # controller has actually finished attaching to the freshly-
+            # spawned avatar -- this blind right-click-drag has no visual
+            # confirmation of its own to wait on, so a short settle here is
+            # what catches that rare case instead of dragging on a camera
+            # that isn't ready to receive it yet.
+            self._interruptible_sleep(CAMERA_SETUP_SETTLE, stop_event)
+            if self._checkpoint(stop_event):
+                return False
+            try:
+                if task.get("mode") == "expedition":
+                    camera.run_camera_drag_hold(self._mouse, self._keyboard, hwnd, hold_ms=730,
+                                                 o_tap_ms=self._expedition_camera_o_ms)
+                else:
+                    camera.run_camera_setup(self._mouse, self._keyboard, hwnd)
+                self._log("[Macro] Camera setup done.")
+            except Exception as exc:
+                self._log(f"[Macro] Camera setup failed: {exc}")
+            if self._checkpoint(stop_event):
+                return False
 
         # Team Loadout only makes sense the FIRST time a task enters a stage --
         # it sets up units/equipment before the match even starts, so
@@ -4533,6 +4699,443 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # _select_stage settles after its own click).
         time.sleep(SETTLE_DELAY)
         return not self._checkpoint(stop_event)
+
+    def _click_coord_point(self, hwnd, prefix: str, label: str):
+        """Click one Macro Coordinates point by name, in window space.
+
+        Same conversion _select_difficulty does (window rect + the saved
+        client-space point), pulled out because the Portals path clicks
+        several of these in a row. Every point read through here is
+        re-tunable from Settings > Debug > Macro Coordinates, so a game
+        update that shifts one is a picker click rather than a code change.
+        """
+        x, y = self._cxy(prefix)
+        self._log(f"[Macro] {label} -- clicking the calibrated point ({x}, {y}).")
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
+        self._hover_click(left + x, top + y, hwnd)
+
+    def _hover_click(self, sx: int, sy: int, hwnd=None):
+        """Click a screen point the way the game actually accepts.
+
+        Two things a bare mouse.click() skips, both of which have already bitten
+        this codebase once: the window has to have focus (see the Start Game
+        click, which reasserts it every attempt), and some Roblox buttons only
+        register after genuine hover-in movement rather than a cursor that
+        teleports onto them (see vision.click_match's shuffle, added for the
+        lobby Event button). The portal route clicks exactly that kind of
+        button, so it gets exactly that treatment.
+        """
+        if hwnd is not None:
+            if not wm.activate_window(hwnd):
+                self._log("[Macro] Couldn't confirm focus before clicking -- the click may not register.")
+        shuffle_click = getattr(self._mouse, "shuffle_click", None)
+        if shuffle_click is not None:
+            shuffle_click(sx, sy)
+            return
+        self._mouse.click(sx, sy)
+
+    def _click_task_point(self, hwnd, x: int, y: int, label: str):
+        """Click a point stored on the TASK rather than in settings.
+
+        Portals inventory coordinates are per-player and per-task, picked
+        from the Task Builder rather than globally in Settings > Debug.
+        The conversion from client space to screen space is identical.
+        """
+        self._log(f"[Macro] {label} -- clicking ({x}, {y}).")
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
+        self._hover_click(left + int(x), top + int(y), hwnd)
+
+    @staticmethod
+    def _portal_task_point(task: dict, which: str):
+        """(x, y) for a Portals task's portal slot, or None if it isn't set.
+
+        `which` is "lobby" or "chooser". These live on the TASK and nowhere
+        else -- there is deliberately no global fallback. Which portal to run
+        is per-player and per-task (two queued tasks can farm two different
+        portals out of one inventory), so a shared default could only ever be
+        right for one of them, and a task quietly opening someone else's
+        portal is worse than a task that says what it needs. Missing means
+        the caller reports which point to pick and stops.
+        """
+        try:
+            x = task.get(f"portal_{which}_x")
+            y = task.get(f"portal_{which}_y")
+            if x not in (None, "") and y not in (None, ""):
+                return int(x), int(y)
+            return None
+        except (TypeError, ValueError):
+            return None
+
+    def _portal_anchor(self, hwnd, names, timeout: float, stop_event: threading.Event = None):
+        """Wait for any one of `names` to show up. Returns the name that did,
+        or None. Missing art is skipped, not fatal.
+        """
+        try:
+            left, top, _, _ = wm.get_window_rect_screen(hwnd)
+            self._mouse.move_to(left + 3, top + 3)
+            time.sleep(0.15)
+        except Exception:
+            pass
+
+        deadline = time.time() + timeout
+        while True:
+            for name in names:
+                try:
+                    if vision.find_image(hwnd, name):
+                        if name == "portal_tab_selected" and not vision.portal_tab_is_selected(hwnd):
+                            continue
+                        return name
+                except vision.TemplateNotFound:
+                    continue
+            if time.time() >= deadline:
+                return None
+            if stop_event is not None and stop_event.is_set():
+                return None
+            time.sleep(0.4)
+
+    def _portal_step(self, hwnd, stop_event: threading.Event, image: str, prefix: str, label: str,
+                     expect=(), attempts: int = 3):
+        """One click of the portal route: find it, click it, then CHECK it
+        worked -- and try again if it didn't.
+
+        The check is the important part. A Roblox click can land on the right
+        pixel and still not register (the reason vision.click_match grew its
+        shuffle mode for the lobby Event button), and a route that just
+        marches on from an unregistered click spends the rest of its steps
+        clicking a screen that never changed -- which reads in the log as
+        "found it, clicked it" followed by every later step mysteriously
+        failing. `expect` names the art that proves the click took (usually
+        the anchor of the screen it was meant to open); an empty `expect`
+        means there is nothing to verify against and one click is all we do.
+
+        Order within an attempt is search-then-fallback, never fallback
+        first: the image is what confirms we are on the screen we think we
+        are, and the calibrated point is only a guess about where a button
+        sits on it.
+        """
+        self._set_status(f"{label}...", action=True)
+        if expect and self._portal_anchor(hwnd, expect, 0, stop_event) is not None:
+            self._log(f"[Macro] {label} -- already done (that screen is showing), skipping the click.")
+            return True
+
+        for attempt in range(1, max(1, attempts) + 1):
+            if self._checkpoint(stop_event):
+                return False
+            suffix = f" (attempt {attempt}/{attempts})" if attempts > 1 else ""
+            clicked = False
+            match = None
+            try:
+                match = vision.wait_for_image(hwnd, image, timeout=PORTAL_STEP_TIMEOUT, stop_event=stop_event)
+            except vision.TemplateNotFound as exc:
+                self._log(f"[Macro] {label}: {exc}")
+            if match is not None:
+                self._log(f'[Macro] {label} -- found "{image}" (score {match["score"]:.2f}), clicking it.{suffix}')
+                if not wm.activate_window(hwnd):
+                    self._log("[Macro] Couldn't confirm focus before the click -- it may not register.")
+                vision.click_match(self._mouse, hwnd, match, shuffle=True)
+                clicked = True
+            else:
+                if self._checkpoint(stop_event):
+                    return False
+                self._log(f'[Macro] {label} -- "{image}" not on screen; falling back to the "{prefix}" point from Settings > Debug.{suffix}')
+                try:
+                    self._click_coord_point(hwnd, prefix, label)
+                    clicked = True
+                except (KeyError, TypeError, ValueError):
+                    self._log(f'[Macro] {label} -- "{image}" wasn\'t found and no "{prefix}" coordinate is set. Pick one in Settings > Debug > Macro Coordinates.')
+                    return False
+            if not clicked:
+                return False
+            self._interruptible_sleep(SETTLE_DELAY, stop_event)
+            if not expect:
+                return True
+            seen = self._portal_anchor(hwnd, expect, PORTAL_VERIFY_TIMEOUT, stop_event)
+            if seen:
+                self._log(f'[Macro] {label} -- confirmed ("{seen}" is on screen).')
+                return True
+            self._log(f"[Macro] {label} -- the click doesn't seem to have registered ({' / '.join(expect)} never appeared).")
+        self._log(f"[Macro] {label} failed after {attempts} attempts -- giving up on this attempt at the route.")
+        return False
+
+    def _close_open_panels(self, hwnd, stop_event: threading.Event):
+        """Click the lobby's close button (top-left) to shut whatever panel is
+        still open, before a retry starts over.
+
+        A failed attempt usually leaves the Items/Portals panel sitting open,
+        and the next attempt then clicks "Items" at a point that is now
+        something else entirely -- which is how one missed image turns into a
+        run of increasingly wrong clicks. Backing out with the Back button
+        (_spam_back_until_gone) doesn't always close these panels; this does.
+
+        Best-effort by design: an unset coord is logged and skipped, never a
+        failure -- this is cleanup before a retry, not a step of the route.
+        """
+        try:
+            self._click_coord_point(hwnd, "portal_panel_close", "Closing any open panel before retrying")
+            self._interruptible_sleep(SETTLE_DELAY, stop_event)
+        except (KeyError, TypeError, ValueError):
+            self._log(
+                '[Macro] No "portal_panel_close" coordinate is set -- skipping the close-panel click. '
+                'Pick it in Settings > Debug > Macro Coordinates if a retry ever starts with a panel still open.'
+            )
+
+    def _find_middle_portal_card(self, hwnd):
+        """The MIDDLE card of the in-round three-portal offer, or None.
+
+        Finds each card on its own and picks the middle by x, instead of
+        matching one wide template across all three.
+
+        That wide template is what never worked. Measured against a real
+        capture of this screen (Image Manager, so already 1152x756), every
+        band crop scored 0.19-0.41 against a 0.60 bar -- because a band is
+        mostly LIVE GAMEPLAY between and behind the cards, and that background
+        is different every run. Scale was never the problem; the template was
+        simply mostly moving pixels.
+
+        A single card is almost entirely fixed art. The same crop of the
+        lantern scores 0.88-1.00 across all five tiers (grayscale matching
+        discards the per-tier colour, so one shape covers them all), and three
+        variants ship to keep every tier well clear of the bar.
+
+        Returns a match dict with cx/cy on the middle card, plus "_cards" for
+        the log. Needs all three: two hits could be cards 1+2 or 2+3, and
+        guessing which would click the wrong portal.
+        """
+        try:
+            cards = vision.find_image_all(hwnd, "portal_offer_card", threshold=0.6)
+            if not cards or len(cards) < 3:
+                return None
+            cards = sorted(cards, key=lambda m: m["cx"])[:3]
+            middle = dict(cards[1])
+            middle["_cards"] = cards
+            return middle
+        except vision.TemplateNotFound:
+            return None
+
+    def _portal_chooser_showing(self, hwnd):
+        """True when the post-run portal screen is up.
+
+        This is the whole "am I still in the portal flow" decision: the
+        post-run chooser and the lobby inventory are different panels with
+        different layouts, and the task stores a point for each. Rather than
+        asking which one a task uses (they alternate constantly -- one run
+        ends on the chooser, the next starts from the lobby), the runner
+        looks.
+        """
+        for name in ("portal_exit", "portal_chooser_header", "portal_chooser_confirm"):
+            try:
+                if vision.find_image(hwnd, name) is not None:
+                    return True
+            except vision.TemplateNotFound:
+                continue
+        return False
+
+    def _open_portal_from_chooser(self, hwnd, stop_event: threading.Event, task: dict):
+        """Post-run Portal flow:
+
+        1) wait for/click the gray Select Portal button that appears after a
+           win or loss;
+        2) confirm the Portal Selection header;
+        3) click the task's saved chooser slot to pick the portal to run;
+        4) confirm it with that screen's green SELECT button.
+
+        The three cards are NOT part of this route -- they appear during the
+        live round, long before any result screen (see _find_middle_portal_card).
+        """
+        if self._checkpoint(stop_event):
+            return False
+        if not self._portal_step(hwnd, stop_event, "portal_select", "portal_select",
+                                 "Opening the Portal Selection screen",
+                                 ("portal_chooser_header", "portal_chooser_confirm")):
+            return False
+        if not self._portal_anchor(hwnd, ("portal_chooser_header", "portal_chooser_confirm"),
+                                  PORTAL_VERIFY_TIMEOUT, stop_event):
+            self._log("[Macro] Portal Selection screen did not appear after Select Portal (neither the header nor the green Select button matched).")
+            return False
+        chooser_point = self._portal_task_point(task, "chooser")
+        if chooser_point is None:
+            self._log('[Macro] This task has no chooser portal set -- pick one with Pick beside "Portal after a run" in the Task Builder, then run the task again.')
+            return False
+        if not wm.activate_window(hwnd):
+            self._log("[Macro] Couldn't confirm focus before picking the portal from the chooser.")
+        self._log(f"[Macro] Picking the portal from the chooser -- clicking {chooser_point}.")
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
+        self._mouse.click(left + chooser_point[0], top + chooser_point[1])
+        self._interruptible_sleep(SETTLE_DELAY, stop_event)
+        if self._checkpoint(stop_event):
+            return False
+        confirm_expect = ("portal_start", "portal_party") + PORTAL_IN_MATCH_IMAGES
+        if not self._portal_step(hwnd, stop_event, "portal_chooser_confirm", "portal_chooser_confirm",
+                                 "Confirming the portal (Select)", confirm_expect):
+            self._log(f"[Macro] Couldn't confirm the portal with Select -- the chooser slot may be empty, or Select never registered. Watched for: {', '.join(confirm_expect)}.")
+            return False
+        return not self._checkpoint(stop_event)
+
+    def _activate_portal(self, hwnd, stop_event: threading.Event, where: str):
+        """Activate the portal, then Start the party -- the two clicks that
+        turn a picked portal into a run.
+
+        Activate opens a PARTY screen (portal name, rewards, party slots) with
+        its own green Start button; nothing teleports until Start is pressed.
+        Missing that second click was why a run picked a portal, looked
+        entirely successful in the log, and then sat on the party screen until
+        the teleport wait timed out.
+
+        Activate is verified by that party screen appearing (its Start button
+        and the "Public Party" band both only exist there). Start itself has
+        nothing to verify against locally -- what proves it worked is the
+        teleport, which the caller already waits for.
+        """
+        if not self._portal_step(hwnd, stop_event, "portal_activate", "portal_activate",
+                                 f"Activating the portal (from {where})",
+                                 ("portal_start", "portal_party")):
+            self._log(f"[Macro] Couldn't get to the party screen after picking a portal from {where} -- either the slot is empty or Activate never registered.")
+            return False
+        if self._checkpoint(stop_event):
+            return False
+        if not self._portal_step(hwnd, stop_event, "portal_start", "portal_start", "Starting the portal"):
+            self._log('[Macro] Couldn\'t click Start on the party screen -- the portal won\'t begin. Set the "Portal: Start Run" point in Settings > Debug > Macro Coordinates if the button can\'t be matched.')
+            return False
+        time.sleep(SETTLE_DELAY)
+        return not self._checkpoint(stop_event)
+
+    def _reach_portal_activated(self, hwnd, stop_event: threading.Event, task: dict):
+        """Get from wherever we are to an activated portal, as one restartable
+        unit -- the Portals mode's equivalent of _reach_map_selected.
+
+        Two routes, chosen by looking at the screen rather than by asking:
+
+        - Post-run (the chooser is up, a run just ended): middle of screen ->
+          Select -> this task's chooser slot -> Activate.
+        - From the lobby (anything else): Items -> Portals tab -> this task's
+          lobby slot -> Activate.
+
+        The lobby route goes through the INVENTORY, not the Event menu. A
+        portal can be opened straight out of Items > Portals whatever else is
+        on screen, so the event card and Portal Mode tile the 0.21 route
+        clicked through are gone -- along with two screens' worth of things
+        that could fail. On any failure it backs out to the lobby
+        (_spam_back_until_gone) so the next attempt starts clean, same as
+        every other _reach_* path.
+        """
+        post_run = self._portal_chooser_showing(hwnd)
+        if not post_run:
+            on_lobby = False
+            try:
+                on_lobby = vision.find_image(hwnd, "nav_play") is not None
+            except vision.TemplateNotFound:
+                on_lobby = False
+            if on_lobby:
+                self._log("[Macro] On the lobby -- opening a portal from the inventory.")
+            else:
+                try:
+                    self._click_coord_point(hwnd, "screen_middle", "Dismissing anything covering the post-run screen")
+                    self._interruptible_sleep(SETTLE_DELAY, stop_event)
+                except (KeyError, TypeError, ValueError):
+                    pass
+                post_run = self._portal_chooser_showing(hwnd)
+                if post_run:
+                    self._log("[Macro] Post-run portal screen was covered -- cleared it.")
+                else:
+                    self._log("[Macro] Not on the lobby and the post-run anchors didn't match -- assuming the result screen is up and trying the chooser route anyway (it falls back to the lobby if that's wrong).")
+                    post_run = True
+
+        if post_run:
+            self._log("[Macro] Post-run portal screen is on screen -- taking the next portal from the chooser instead of going back to the lobby.")
+            if self._open_portal_from_chooser(hwnd, stop_event, task):
+                self._portal_entered_from = "chooser"
+                return True
+            if self._checkpoint(stop_event):
+                return False
+            self._log(
+                "[Macro] Couldn't start a portal from the chooser. NOT falling back to the lobby inventory: "
+                "that slot is a fixed coordinate and the grid re-flows as portals are spent, so it would likely "
+                "open a different portal than the one this task is for. Stopping instead of spending the wrong portal."
+            )
+            self._log(
+                '[Macro] To fix: re-pick "Portal after a run" for this task, and check the "Portal: Select Portal" '
+                'point in Settings > Debug > Macro Coordinates against the post-run screen.'
+            )
+            self._spam_back_until_gone(hwnd, stop_event)
+            self._close_open_panels(hwnd, stop_event)
+            return False
+
+        lobby_point = self._portal_task_point(task, "lobby")
+        if lobby_point is None:
+            self._log('[Macro] This task has no lobby portal set -- pick one with Pick beside "Portal in lobby" in the Task Builder, then run the task again.')
+            return False
+
+        if not self._ensure_lobby(hwnd, stop_event):
+            return False
+        if self._checkpoint(stop_event):
+            return False
+
+        steps = (
+            ("nav_items", "nav_items", "Opening Items", ("portal_tab_selected", "portal_tab", "portal_inventory")),
+            ("portal_tab", "portal_tab", "Opening the Portals tab", ("portal_tab_selected", "portal_activate", "portal_inventory")),
+        )
+        for image, prefix, label, expect in steps:
+            if not self._portal_step(hwnd, stop_event, image, prefix, label, expect):
+                self._spam_back_until_gone(hwnd, stop_event)
+                self._close_open_panels(hwnd, stop_event)
+                return False
+            if self._checkpoint(stop_event):
+                return False
+
+        for attempt in range(1, PORTAL_STEP_ATTEMPTS + 1):
+            if self._checkpoint(stop_event):
+                return False
+            self._set_status("Opening the portal...", action=True)
+            self._click_task_point(hwnd, lobby_point[0], lobby_point[1], "Picking the portal in the inventory")
+            self._interruptible_sleep(SETTLE_DELAY, stop_event)
+            if self._checkpoint(stop_event):
+                return False
+            if self._portal_anchor(hwnd, ("portal_activate",), PORTAL_VERIFY_TIMEOUT, stop_event) is not None:
+                break
+            self._log(f"[Macro] No Activate screen after picking the portal (attempt {attempt}/{PORTAL_STEP_ATTEMPTS}) -- either the click didn't register or that inventory square is empty.")
+        else:
+            self._spam_back_until_gone(hwnd, stop_event)
+            self._close_open_panels(hwnd, stop_event)
+            return False
+
+        if not self._activate_portal(hwnd, stop_event, "the inventory"):
+            self._spam_back_until_gone(hwnd, stop_event)
+            self._close_open_panels(hwnd, stop_event)
+            return False
+
+        self._portal_entered_from = "lobby"
+        return True
+
+    def _handle_portal_result(self, hwnd, stop_event: threading.Event, task: dict, repeat: bool, webhook: dict):
+        """What happens after a portal run ends, in place of Repeat/Leave Stage.
+
+        Portals has neither button. The last portal exits to the lobby, so the
+        next task in the queue starts from a known screen; a continuing one
+        leaves the result screen up for the next entry to deal with.
+
+        This handler no longer enters the next portal itself. The three-card
+        selection is made DURING the live round (see _play_one_match's battle
+        watcher), and re-entry goes back through _reach_portal_activated --
+        chooser route first, lobby route as its fallback.
+        """
+        if not repeat:
+            self._set_status("Last portal -- exiting to the lobby...", action=True)
+            try:
+                self._click_coord_point(hwnd, "screen_middle", "Dismissing the post-run screen")
+                self._interruptible_sleep(SETTLE_DELAY, stop_event)
+            except (KeyError, TypeError, ValueError):
+                pass
+            if not self._portal_step(hwnd, stop_event, "portal_exit", "portal_exit", "Exiting to the lobby"):
+                self._log("[Macro] Couldn't click Exit to Lobby -- backing out instead.")
+                self._spam_back_until_gone(hwnd, stop_event)
+                self._close_open_panels(hwnd, stop_event)
+                return self._ensure_lobby(hwnd, stop_event)
+            time.sleep(SETTLE_DELAY)
+            return not self._checkpoint(stop_event)
+
+        self._log("[Macro] Portal selection was handled during the live round; not checking for 3 portals after Victory/Defeat.")
+        self._set_status("Portal result complete -- preparing next Portal run...", action=True)
+        return True
 
     def _reach_tournament_selected(self, hwnd, stop_event: threading.Event, tournament_type: str) -> bool:
         """Lobby -> Play -> Tournament -> type card, as one restartable unit --

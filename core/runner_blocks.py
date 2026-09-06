@@ -125,6 +125,12 @@ class BlockOps:
                 break
         self._battle_block_index, self._battle_block_state = saved_index, saved_state
 
+    def _current_task_mode(self) -> str:
+        """The running task's mode, for skip_modes checks in the Battle/Loop
+        tick (which, unlike Pre Start, isn't handed the task dict)."""
+        task = getattr(self, "_current_task", None)
+        return (task.get("mode") if isinstance(task, dict) else None) or "story"
+
     def _run_battle_blocks_tick(self, hwnd, stop_event: threading.Event, battle_blocks: list, first_repeat: bool,
                                   macro_name: str = None, persistent_detects=None) -> None:
         """Advances the Battle-phase block list by one step, called once per
@@ -150,6 +156,12 @@ class BlockOps:
             if btype == "_jump":
                 self._battle_block_index += block.get("_offset", 1)
                 continue
+            skip_modes = block.get("skip_modes")
+            if skip_modes and self._current_task_mode() in {str(m) for m in skip_modes}:
+                self._release_quick_place_shift()
+                self._battle_block_index += block.get("_else_offset", 1) if btype == "detect" else 1
+                self._battle_block_state = {}
+                return
             if btype == "detect":
                 detect_index = self._battle_block_index
                 if persistent_detects is not None and detect_index in persistent_detects:
@@ -330,17 +342,28 @@ class BlockOps:
         verification: it clicks where told, whatever is (or isn't) there,
         which is exactly what makes it a useful escape hatch."""
         label = f"{phase_label} block #{block_num} (Click)"
-        params = block.get("params", {})
-        try:
-            x, y = int(params.get("x") or 0), int(params.get("y") or 0)
-        except (TypeError, ValueError):
-            self._log(f"[Macro] {label}: bad x/y -- skipping.")
-            return
+        params = block.get("params") or {}
+        coord_key = params.get("coord_key")
+        if coord_key:
+            base = str(coord_key)
+            try:
+                x = int(self._coords.get(f"{base}_x") or 0)
+                y = int(self._coords.get(f"{base}_y") or 0)
+            except (TypeError, ValueError):
+                self._log(f"[Macro] {label}: coord_key {base!r} resolved to non-numeric values -- skipping.")
+                return
+        else:
+            try:
+                x = int(params.get("x") or 0)
+                y = int(params.get("y") or 0)
+            except (TypeError, ValueError):
+                self._log(f"[Macro] {label}: bad x/y -- skipping.")
+                return
         if not x and not y:
-            # (0, 0) is the unset default straight from the palette -- a
-            # deliberate top-left-corner click is not a real use case, but a
-            # forgotten Set button absolutely is.
-            self._log(f"[Macro] {label}: no position set -- skipping.")
+            if coord_key:
+                self._log(f"[Macro] {label}: coord_key {coord_key!r} not set in Settings > Debug > Macro Coordinates -- skipping.")
+            else:
+                self._log(f"[Macro] {label}: no position set -- skipping.")
             return
         self._log(f"[Macro] {label}: clicking ({x}, {y}).")
         left, top, _, _ = wm.get_window_rect_screen(hwnd)
@@ -902,6 +925,12 @@ class BlockOps:
                     idx += block.get("_offset", 1)
                     continue
                 step += 1
+                skip_modes = block.get("skip_modes")
+                if skip_modes and (task.get("mode") or "story") in {str(m) for m in skip_modes}:
+                    self._release_quick_place_shift()
+                    self._log(f'[Macro] Skipping block #{step} -- the template marks it as not applicable to "{task.get("mode") or "story"}" tasks.')
+                    idx += block.get("_else_offset", 1) if btype == "detect" else 1
+                    continue
                 if btype == "detect":
                     found = self._run_prestart_detect(hwnd, stop_event, block, step)
                     if found is None:
