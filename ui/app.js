@@ -163,9 +163,19 @@ function showDocked() {
   setDockStep('dock-step-running', 'done');
   setDockStep('dock-step-docked', 'done');
 
+  // Переводим stage в docked
+  const stage = document.getElementById('stage');
+  if (stage) {
+    stage.classList.remove('is-searching', 'is-docking');
+    stage.classList.add('is-docked');
+  }
+
   document.getElementById('waiting-screen').style.display = 'none';
   document.getElementById('main-layout').style.display = 'flex';
   document.getElementById('titlebar').style.display = 'flex';
+
+  const slotStage = document.getElementById('game-slot-stage');
+  if (slotStage) slotStage.style.display = 'none';
 
   // First-ever dock this session: jump to the Dashboard so the user actually
   // sees it worked. After that, respect wherever they navigated to.
@@ -395,11 +405,17 @@ function dismissScaleWarning() {
 }
 
 async function manualCheckForUpdate() {
+  const badge = document.getElementById('ver-badge');
+  // Если обновление уже найдено и горит маячок — сразу открываем окно обновления
+  if (badge && badge.classList.contains('has-update')) {
+    showUpdateAvailable();
+    return;
+  }
+
   const badgeText = document.getElementById('ver-badge-text');
   const badgeIcon = document.querySelector('#ver-badge .ver-badge-icon');
   const settingsBtn = document.getElementById('btn-check-updates');
 
-  const badge = document.getElementById('ver-badge');
   const original = badgeText ? badgeText.textContent : (badge ? badge.textContent : '');
 
   if (badgeText) badgeText.textContent = 'Checking...';
@@ -642,6 +658,18 @@ function updateDockHint(running) {
   hint.textContent = text;
 }
 
+function sizeScan() {
+  const stage = document.getElementById('stage');
+  if (stage) {
+    stage.style.setProperty('--scan-h', (stage.clientHeight || 360) + 'px');
+  }
+  const slotStage = document.getElementById('game-slot-stage');
+  if (slotStage) {
+    slotStage.style.setProperty('--scan-h', (slotStage.clientHeight || 756) + 'px');
+  }
+}
+window.addEventListener('resize', sizeScan);
+
 async function pollDockState() {
   let running = false;
   try {
@@ -652,6 +680,16 @@ async function pollDockState() {
   }
   setDockStep('dock-step-running', running ? 'done' : 'active');
   setDockStep('dock-step-docked', running ? 'active' : null);
+  const stage = document.getElementById('stage');
+  if (stage) {
+    if (running) {
+      stage.classList.remove('is-searching');
+      stage.classList.add('is-docking');
+    } else if (!stage.classList.contains('is-docked')) {
+      stage.classList.add('is-searching');
+      stage.classList.remove('is-docking');
+    }
+  }
   updateDockHint(running);
 }
 
@@ -664,6 +702,12 @@ function showWaiting() {
   document.getElementById('main-layout').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'flex';
   document.getElementById('titlebar').style.display = 'none';
+
+  const stage = document.getElementById('stage');
+  if (stage) {
+    stage.className = 'stage is-searching';
+  }
+  sizeScan();
 
   dockWaitStarted = Date.now();
   setDockStep('dock-step-running', 'active');
@@ -680,6 +724,10 @@ function skipWaiting() {
   document.getElementById('waiting-screen').style.display = 'none';
   document.getElementById('main-layout').style.display = 'flex';
   document.getElementById('titlebar').style.display = 'flex';
+
+  const slotStage = document.getElementById('game-slot-stage');
+  if (slotStage) slotStage.style.display = 'grid';
+
   runPendingFirstRun();
 }
 

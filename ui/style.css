@@ -1771,6 +1771,98 @@ body.compact-mode #compact-strip { display: flex; }
   color: var(--text);
 }
 
+/* --- Игровая область ожидания и встраивания Roblox (из концепта dock-screen) --- */
+/* Пропорции строгие — 1152 × 756, как в игре и в коде */
+.stage {
+  position: relative;
+  width: 100%;
+  max-width: 580px;
+  aspect-ratio: 1152 / 756;
+  margin: var(--s3) auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Рамка будущего места игры: пунктир при поиске, сплошная при встраивании */
+.stage-frame {
+  position: absolute; inset: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-tab) var(--ease), border-style var(--t-tab) var(--ease);
+  pointer-events: none;
+}
+.stage.is-docked .stage-frame { border-style: solid; border-color: var(--border); }
+
+/* Отметка разрешения 1152 × 756 */
+.stage-size {
+  position: absolute; top: var(--s2); left: var(--s2);
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-muted);
+  transition: opacity var(--t-tab) var(--ease);
+  user-select: none;
+  pointer-events: none;
+}
+.stage.is-docking .stage-size,
+.stage.is-docked .stage-size { opacity: 0; }
+
+/* Развёртка сканера: тонкая лазерная линия ходит сверху вниз во время поиска.
+   Использует var(--accent) и transform: translateY для максимальной плавности без reflow. */
+.scan {
+  position: absolute; left: 0; right: 0; top: 0; height: 1.5px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  opacity: 0.6;
+  animation: scan 2.4s var(--ease) infinite;
+  pointer-events: none;
+}
+@keyframes scan {
+  0%   { transform: translateY(0); opacity: 0; }
+  12%  { opacity: 0.7; }
+  88%  { opacity: 0.7; }
+  100% { transform: translateY(var(--scan-h, 380px)); opacity: 0; }
+}
+.stage:not(.is-searching) .scan { display: none; }
+
+/* Окно игры: плавное появление из уменьшенного масштаба (прилёт в рамку) */
+.game {
+  position: absolute; inset: 0;
+  border-radius: var(--r-md);
+  background: var(--bg-card);
+  display: grid; place-items: center;
+  color: var(--text-muted);
+  font-family: var(--font-mono); font-size: 12px;
+  opacity: 0;
+  transform: translate(18%, 14%) scale(0.55);
+  transition: transform 340ms var(--ease), opacity 220ms var(--ease);
+  pointer-events: none;
+}
+.stage.is-docking .game,
+.stage.is-docked  .game { opacity: 1; transform: translate(0, 0) scale(1); }
+
+/* Блок состояния поверх пустой области */
+.status {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+  padding: var(--s3);
+  transition: opacity 220ms var(--ease);
+}
+.stage.is-docking .status,
+.stage.is-docked  .status { opacity: 0; pointer-events: none; }
+
+.status-mark { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.status-hint { color: var(--text-muted); font-size: 12px; margin-top: var(--s2); min-height: 1.4em; }
+.status-actions { display: flex; gap: var(--s2); margin-top: var(--s4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .scan { animation: none; opacity: 0; }
+  .game { transition: opacity 160ms linear; transform: none; }
+  .stage.is-docking .game, .stage.is-docked .game { transform: none; }
+  .stage-frame, .stage-size, .status { transition: none; }
+}
+
 /* Два шага подключения. Ровно столько, сколько приложение умеет проверить —
    см. комментарий в index.html. Моноширинный размер не нужен, а вот
    ФИКСИРОВАННАЯ ширина отметки нужна: без неё подписи прыгают влево-вправо в
@@ -2514,6 +2606,30 @@ body.compact-mode #compact-strip { display: flex; }
   100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 .ver-badge-btn.has-update:hover { animation-play-state: paused; }
+
+/* Пульсирующая лампа-маячок (ver-dot) — загорается при наличии обновления.
+   Цвет строго через var(--accent), поэтому автоматически меняется под цвет выбранной темы. */
+.ver-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  flex-shrink: 0;
+  display: none;
+}
+.ver-badge-btn.has-update .ver-dot {
+  display: inline-block;
+  animation: verDotPulse 2s var(--ease) infinite;
+}
+@keyframes verDotPulse {
+  0%   { transform: scale(0.85); opacity: 0.45; box-shadow: 0 0 3px var(--accent); }
+  50%  { transform: scale(1.2);  opacity: 1;    box-shadow: 0 0 10px var(--accent); }
+  100% { transform: scale(0.85); opacity: 0.45; box-shadow: 0 0 3px var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ver-badge-btn.has-update .ver-dot { animation: none; opacity: 1; }
+}
 
 /* Иконка слева от версии крутится, пока обновление не поставлено. Она и так
    означает «проверить/обновить», поэтому вращение читается сразу и без

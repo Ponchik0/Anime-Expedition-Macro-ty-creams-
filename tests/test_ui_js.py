@@ -1768,3 +1768,85 @@ def test_dashboard_style_toggle_switches_between_classic_and_modern(tmp_path):
     assert "dash-modern" in out["modern"]["classes"]
     assert out["modern"]["modernActive"] is True
 
+
+def test_ver_badge_click_when_has_update_opens_update_modal_directly(tmp_path):
+    """Проверяет, что при наличии обновления клик по бейджу сразу открывает окно обновления."""
+    out = run_js("""
+        let updateModalShown = false;
+        let checkCalled = false;
+        global.showUpdateAvailable = () => { updateModalShown = true; };
+        global.document = {
+          getElementById: id => {
+            if (id === 'ver-badge') {
+              return {
+                classList: {
+                  contains: c => c === 'has-update'
+                }
+              };
+            }
+            return null;
+          },
+          querySelector: () => null
+        };
+        global.pywebview = {
+          api: {
+            check_for_updates: async () => { checkCalled = true; }
+          }
+        };
+        eval(extract('manualCheckForUpdate'));
+        manualCheckForUpdate().then(() => {
+          console.log(JSON.stringify({ updateModalShown, checkCalled }));
+        });
+    """, tmp_path)
+    assert out["updateModalShown"] is True
+    assert out["checkCalled"] is False
+
+
+def test_poll_dock_state_updates_stage_searching_and_docking_classes(tmp_path):
+    """Проверяет, что обнаружение Roblox переводит .stage из is-searching в is-docking."""
+    out = run_js("""
+        let stageClasses = ['stage', 'is-searching'];
+        let windowsToReturn = [];
+        global.lastDockHint = '';
+        global.dockWaitStarted = Date.now();
+        global.setDockStep = () => {};
+        global.updateDockHint = () => {};
+        global.document = {
+          getElementById: id => {
+            if (id === 'stage') {
+              return {
+                classList: {
+                  contains: c => stageClasses.includes(c),
+                  add: (...cls) => { for (const c of cls) if (!stageClasses.includes(c)) stageClasses.push(c); },
+                  remove: (...cls) => { stageClasses = stageClasses.filter(c => !cls.includes(c)); }
+                }
+              };
+            }
+            if (id === 'dock-hint') return { textContent: '' };
+            return null;
+          }
+        };
+        global.pywebview = {
+          api: {
+            list_roblox_windows: async () => windowsToReturn
+          }
+        };
+        eval(extract('pollDockState'));
+        (async () => {
+          windowsToReturn = [];
+          await pollDockState();
+          const idleClasses = [...stageClasses];
+
+          windowsToReturn = [12345];
+          await pollDockState();
+          const runningClasses = [...stageClasses];
+
+          console.log(JSON.stringify({ idleClasses, runningClasses }));
+        })();
+    """, tmp_path)
+    assert "is-searching" in out["idleClasses"]
+    assert "is-docking" not in out["idleClasses"]
+    assert "is-docking" in out["runningClasses"]
+    assert "is-searching" not in out["runningClasses"]
+
+

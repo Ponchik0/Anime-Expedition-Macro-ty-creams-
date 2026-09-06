@@ -127,7 +127,8 @@
       'Roblox пока не отвечает — проверь, запущен ли он',
     'Launch Roblox': 'Запустить Roblox',
     'Skip': 'Пропустить',
-    'Skip Waiting': 'Пропустить ожидание',
+    'Roblox Window': 'Здесь окно Roblox',
+    'Waiting for Roblox window...': 'Ожидание окна Roblox...',
     'Use the panel before Roblox docks.': 'Открыть интерфейс, не дожидаясь Roblox.',
 
     // --- Задачи ---
