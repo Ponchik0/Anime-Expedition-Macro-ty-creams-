@@ -284,6 +284,19 @@
       </div>
 
       <div id="dash-side" class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="flex: 1; min-width: 0;">
+        <!-- Format Switcher (Classic vs Modern V2) -->
+        <div class="dash-mode-bar flex items-center justify-between px-1 pb-1 mb-0.5">
+          <div class="dash-view-brand flex items-center gap-2">
+            <span class="dash-view-dot"></span>
+            <span class="dash-view-title text-xs font-semibold" style="color: var(--text-dim);">Dashboard</span>
+            <span class="dash-badge-test text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Test</span>
+          </div>
+          <div class="dash-style-toggle-pill flex items-center p-0.5 rounded-lg border" style="background: var(--bg-surface); border-color: var(--border);">
+            <button type="button" id="btn-dash-classic" class="dash-pill-btn text-[11px] font-semibold px-2.5 py-1 rounded transition" onclick="applyDashStyle('classic')">Classic</button>
+            <button type="button" id="btn-dash-modern" class="dash-pill-btn active text-[11px] font-semibold px-2.5 py-1 rounded transition" onclick="applyDashStyle('modern')">Modern V2</button>
+          </div>
+        </div>
+
         <!-- Status readout: hero Action row + ledger rows with dotted leaders.
              Wrapped in .rp-hoverpanel so the extra detail rows (.rp-rows-extra)
              can be absolutely positioned and overlay the panels below on hover
@@ -305,36 +318,66 @@
           </div>
           <div class="rp-rows">
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #06b6d4;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--lilac);"></span>
               <span class="rp-row-label">Current Task</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-current-task">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #a855f7;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--teal);"></span>
               <span class="rp-row-label">Repeat</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-current-repeat">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--brand);"></span>
               <span class="rp-row-label">Map</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-map">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #f59e0b;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--amber);"></span>
               <span class="rp-row-label">Last Run</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-last-run">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #3b82f6;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--teal);"></span>
               <span class="rp-row-label">Runs / Hour</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-runs-per-hour">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #ec4899;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.45 1-1 1H7.5"/><path d="M14 14.66V17c0 .55.45 1 1 1h1.5"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--slate);"></span>
               <span class="rp-row-label">Time Until Challenge</span>
               <span class="rp-leader"></span>
@@ -348,30 +391,55 @@
         <div class="rp-rows-extra">
           <div class="rp-rows">
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #3b82f6;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4m-2-2v4m7-2h.01m3 0h.01"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--brand);"></span>
               <span class="rp-row-label">Mode</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-mode">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--teal);"></span>
               <span class="rp-row-label">Stage</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-stage">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #f59e0b;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2l7 4v6c0 5-3.5 9.5-7 10-3.5-.5-7-5-7-10V6l7-4z"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--amber);"></span>
               <span class="rp-row-label">Difficulty</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-difficulty">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #8b5cf6;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--slate);"></span>
               <span class="rp-row-label">Play Mode</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-play-mode">-</span>
             </div>
             <div class="rp-row">
+              <span class="rp-row-icon" style="--rp-icon-c: #ec4899;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </span>
               <span class="rp-mark" style="--rp-mk: var(--lilac);"></span>
               <span class="rp-row-label">Macro</span>
               <span class="rp-leader"></span>

@@ -1721,3 +1721,50 @@ def test_detect_controls_expose_live_test_button(tmp_path):
     assert "testDetect('d1'" in out
     assert 'Test now' in out
 
+
+def test_dashboard_style_toggle_switches_between_classic_and_modern(tmp_path):
+    """Проверяет переключение между современным и классическим форматом панели."""
+    out = run_js("""
+        let classes = [];
+        let stored = null;
+        let classicActive = false;
+        let modernActive = false;
+        global.localStorage = {
+          getItem: k => stored,
+          setItem: (k, v) => { stored = v; }
+        };
+        global.document = {
+          getElementById: id => {
+            if (id === 'main-layout') {
+              return {
+                classList: {
+                  contains: c => classes.includes(c),
+                  toggle: (c, on) => {
+                    classes = classes.filter(x => x !== c);
+                    if (on) classes.push(c);
+                  }
+                }
+              };
+            }
+            if (id === 'btn-dash-classic') return { classList: { toggle: (c, on) => { classicActive = on; } } };
+            if (id === 'btn-dash-modern') return { classList: { toggle: (c, on) => { modernActive = on; } } };
+            return null;
+          }
+        };
+        eval(extract('applyDashStyle'));
+        eval(extract('initDashStyle'));
+        initDashStyle();
+        const initial = { classes: [...classes], stored, modernActive, classicActive };
+        applyDashStyle('classic');
+        const classic = { classes: [...classes], stored, modernActive, classicActive };
+        applyDashStyle('modern');
+        const modern = { classes: [...classes], stored, modernActive, classicActive };
+        console.log(JSON.stringify({ initial, classic, modern }));
+    """, tmp_path)
+    assert "dash-modern" in out["initial"]["classes"]
+    assert out["initial"]["modernActive"] is True
+    assert "dash-modern" not in out["classic"]["classes"]
+    assert out["classic"]["classicActive"] is True
+    assert "dash-modern" in out["modern"]["classes"]
+    assert out["modern"]["modernActive"] is True
+

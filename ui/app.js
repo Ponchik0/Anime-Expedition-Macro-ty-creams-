@@ -995,6 +995,11 @@ function setMacroButtons(running, paused) {
     csPause.setAttribute('data-tooltip', paused ? 'Resume' : 'Pause');
   }
   if (csDot) csDot.className = 'cs-dot' + (running ? (paused ? ' paused' : ' running') : '');
+  const pulse = document.querySelector('.rp-pulse');
+  if (pulse) {
+    pulse.classList.toggle('running', running && !paused);
+    pulse.classList.toggle('paused', !!paused);
+  }
 }
 
 async function startMacro() {
@@ -9169,3 +9174,29 @@ async function refreshRecLive() {
       : '<div style="color:var(--text-muted)">Жду первых действий — переключись в Roblox и играй.</div>';
   }
 }
+
+// ── Переключение стиля панели (Classic / Modern V2) ─────────────────────────
+function applyDashStyle(style) {
+  const isModern = style === 'modern';
+  const target = document.getElementById('main-layout') || document.getElementById('screen-dashboard');
+  if (target) {
+    target.classList.toggle('dash-modern', isModern);
+  }
+  document.getElementById('btn-dash-classic')?.classList.toggle('active', !isModern);
+  document.getElementById('btn-dash-modern')?.classList.toggle('active', isModern);
+  try {
+    localStorage.setItem('ae_dash_style', isModern ? 'modern' : 'classic');
+  } catch (e) {}
+}
+
+function initDashStyle() {
+  let saved = 'modern';
+  try {
+    const s = localStorage.getItem('ae_dash_style');
+    if (s === 'classic' || s === 'modern') saved = s;
+  } catch (e) {}
+  applyDashStyle(saved);
+}
+
+initDashStyle();
+
