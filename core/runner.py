@@ -14,6 +14,7 @@ rest of the Battle-phase block types (Walk/Wait/Setting), plug in once those
 exist.
 """
 import os
+import random
 import subprocess
 import threading
 import time
@@ -50,7 +51,7 @@ PORTAL_STEP_TIMEOUT = 6
 PORTAL_VERIFY_TIMEOUT = 5
 PORTAL_STEP_ATTEMPTS = 3
 PORTAL_IN_MATCH_IMAGES = ("start_game_prompt", "nav_start_game", "autoplay_on", "autoplay_off")
-AUTOPLAY_MATCH_THRESHOLD = 0.93
+AUTOPLAY_MATCH_THRESHOLD = 0.88
 AUTOPLAY_BUTTON_TIMEOUT = 8
 AUTOPLAY_TOGGLE_SETTLE = 0.6
 AUTOPLAY_VERIFY_ATTEMPTS = 3
@@ -202,8 +203,20 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._progress_at = time.time()
         self._stall_reported = False
 
-        def _tracking_set_status(**kw):
-            if "action" in kw and kw["action"] != self._last_action:
+        def _tracking_set_status(*args, **kw):
+            # Поддерживаем позиционные вызовы вроде self._set_status("текст", action=True)
+            # или self._set_status({"action": "..."}), чтобы не падать с TypeError при
+            # вызовах из порталов и автоигры.
+            if args:
+                first = args[0]
+                if isinstance(first, str):
+                    kw["action"] = first
+                elif isinstance(first, dict):
+                    kw.update(first)
+            if kw.get("action") is True and args and isinstance(args[0], str):
+                kw["action"] = args[0]
+
+            if "action" in kw and isinstance(kw["action"], str) and kw["action"] != self._last_action:
                 self._last_action = kw["action"]
                 self._progress_at = time.time()
                 self._stall_reported = False
@@ -568,16 +581,26 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if spent < minutes * 60:
             return False
 
+        # Переход по таймеру можно выключить. Если выключен — таймер не прерывает задачу.
+        timer_next_on = task.get("timer_next_enabled")
+        if timer_next_on is None:
+            # Для обратной совместимости: если ключ явно не задан, проверяем наличие timer_next
+            timer_next_on = bool(task.get("timer_next") and task.get("timer_next") != "off")
+        if not timer_next_on:
+            return False
+
         nxt = task.get("timer_next") or ""
+        if nxt == "off":
+            return False
+
         mins_spent = int(spent // 60)
-        if nxt:
+        if nxt and nxt != "next":
             self._timer_jump_to = nxt
             self._log(f"[Таймер] На задаче {mins_spent} мин из {minutes:g} — время вышло, "
                        f"матч доигран. Перехожу к назначенной задаче.")
         else:
-            # Задача перехода не указана — просто заканчиваем эту и идём
-            # дальше по очереди. Это осмысленное поведение, а не ошибка:
-            # «поиграй тут столько-то и двигайся дальше».
+            # Задача перехода не указана или выбрана «следующая по очереди»
+            self._timer_jump_to = None
             self._log(f"[Таймер] На задаче {mins_spent} мин из {minutes:g} — время вышло, "
                        f"перехожу к следующей задаче очереди.")
         self._set_status(action="Таймер задачи вышел — перехожу")
@@ -1122,30 +1145,19 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if not task_ok:
                     if self._checkpoint(stop_event):
                         return
+                    if task.get("stop_on_failure"):
+                        self._log(f"[Macro] Задача {task_index}/{len(tasks)} прервана из-за ошибки — "
+                                  f"останавливаю макрос (включено «Остановить при сбое»).")
+                        self._set_status(action="Остановлен: ошибка в задаче")
+                        return
                     # Recovery already returned to the lobby. Skip only this
                     # broken task and let the remaining queue (or its next
                     # pass) continue instead of ending the runner thread.
                     continue
                 if not task_result:
-                    self._set_status(action="Idle")
+                    if not (self._last_action and (self._last_action.startswith("Остановлен") or self._last_action.startswith("Stopped"))):
+                        self._set_status(action="Idle")
                     return
-
-                # Таймер задачи вышел и указал, куда переходить. Ищем задачу
-                # по её id: индексы плывут, если очередь редактировали, а id
-                # у карточки постоянный.
-                jump = self._timer_jump_to
-                self._timer_jump_to = None
-                if jump:
-                    target = next((k for k, t in enumerate(tasks)
-                                    if str(t.get("id")) == str(jump)), None)
-                    if target is None:
-                        self._log("[Таймер] Задача, на которую нужно было перейти, из очереди "
-                                   "пропала — продолжаю по порядку.")
-                    else:
-                        ti = target
-                        self._log(f"[Таймер] Перехожу к задаче {target + 1}/{len(tasks)}: "
-                                   f'"{tasks[target].get("map") or "—"}".')
-                        continue
 
                 # Auto Crafting after each finished task (we're back at the
                 # lobby here). This is what catches the cases the between-
@@ -1171,6 +1183,56 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 self._run_guarded_phase(
                     "Auto Shop", hwnd, stop_event,
                     lambda: self._run_auto_shop_if_due(hwnd, stop_event))
+                if self._current_hwnd and wm.is_window(self._current_hwnd):
+                    hwnd = self._current_hwnd
+                if self._checkpoint(stop_event):
+                    return
+
+                # Таймер задачи вышел и указал, куда переходить. Ищем задачу
+                # по её id: индексы плывут, если очередь редактировали, а id
+                # у карточки постоянный.
+                jump = self._timer_jump_to
+                self._timer_jump_to = None
+                if jump:
+                    target = next((k for k, t in enumerate(tasks)
+                                    if str(t.get("id")) == str(jump)), None)
+                    if target is None:
+                        self._log("[Таймер] Задача, на которую нужно было перейти, из очереди "
+                                   "пропала — продолжаю по порядку.")
+                    else:
+                        ti = target
+                        self._log(f"[Таймер] Перехожу к задаче {target + 1}/{len(tasks)}: "
+                                   f'"{tasks[target].get("map") or "—"}".')
+                        continue
+
+                # Переход после завершения задачи: выбор дальнейшего действия
+                # (следующая по очереди, остановить макрос, повторить/зациклить задачу
+                # или перейти к конкретной задаче).
+                if task.get("on_complete_enabled"):
+                    action = task.get("on_complete_action") or "next"
+                    if action == "stop":
+                        self._log(f"[Macro] Задача {task_index}/{len(tasks)} завершена — "
+                                  f"останавливаю макрос (действие после завершения: «Остановить»).")
+                        self._set_status(action="Idle")
+                        return
+                    elif action == "repeat":
+                        self._log(f"[Macro] Задача {task_index}/{len(tasks)} завершена — "
+                                  f"повторяю эту же задачу (действие после завершения: «Зациклить»).")
+                        ti = task_index - 1
+                        continue
+                    elif action == "jump":
+                        target_id = task.get("on_complete_target")
+                        target = next((k for k, t in enumerate(tasks)
+                                        if str(t.get("id")) == str(target_id)), None)
+                        if target is not None:
+                            ti = target
+                            self._log(f"[Macro] Задача {task_index}/{len(tasks)} завершена — "
+                                      f"перехожу к задаче {target + 1}/{len(tasks)}: "
+                                      f'"{tasks[target].get("map") or "—"}".')
+                            continue
+                        else:
+                            self._log(f"[Macro] Задача {task_index}/{len(tasks)}: целевая задача для перехода не найдена "
+                                      f"— продолжаю по порядку.")
                 if self._current_hwnd and wm.is_window(self._current_hwnd):
                     hwnd = self._current_hwnd
                 if self._checkpoint(stop_event):
@@ -1678,10 +1740,16 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._log(f'[Macro] Task {task_index}/{task_count} still failing after '
                    f'{TASK_RECOVERY_ATTEMPTS} attempts -- giving up on it.')
         screenshot_path = self._save_debug_screenshot_unconditional(hwnd, "task_gave_up")
+        fail_action_msg = "stopping macro" if task.get("stop_on_failure") else "moving on to the next task"
         self._send_event_webhook(
             webhook, task, "Task Gave Up",
             f"Task {task_index}/{task_count} still failing after {TASK_RECOVERY_ATTEMPTS} recovery "
-            f"attempts -- moving on to the next task.", 0xE05A6D, screenshot_path)
+            f"attempts -- {fail_action_msg}.", 0xE05A6D, screenshot_path)
+        if task.get("stop_on_failure"):
+            self._log(f"[Macro] Задача {task_index}/{task_count} не смогла завершиться — "
+                      f"останавливаю макрос (включено «Остановить при сбое»).")
+            self._set_status(action="Остановлен: сбой задачи")
+            return False
         return True
 
     def _recover_to_lobby(self, hwnd, stop_event: threading.Event) -> bool:
@@ -2030,7 +2098,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if task.get("mode") == "portals" and getattr(self, "_portal_entered_from", "lobby") == "chooser":
             self._log("[Macro] Came straight from the portal chooser -- leaving Auto Play as the last run left it (it only resets via the lobby).")
             return True
-        return self._ensure_autoplay(hwnd, stop_event, task.get("auto_play") == "autoplay")
+        wants_autoplay = (
+            task.get("auto_play") == "autoplay"
+            or task.get("autoplay") is True
+            or task.get("plays_the_map") == "autoplay"
+            or task.get("macro") == "Autoplay"
+        )
+        return self._ensure_autoplay(hwnd, stop_event, wants_autoplay)
 
     def _play_one_match(self, hwnd, stop_event: threading.Event, task: dict, default_walk_paths: dict,
                           first_repeat: bool = True, webhook: dict = None):
@@ -2042,6 +2116,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         Pre Start block so they only fire on the task's first entry into
         this stage, not on every repeat (see _run_prestart). Returns
         "win"/"loss", or None on failure/stop."""
+        self._portal_offer_selected_this_run = False
         self._settle_autoplay_for_match(hwnd, stop_event, task)
         if not self._start_game_or_reset_via_settings(hwnd, stop_event, task.get("play_mode")):
             return None
@@ -2277,6 +2352,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
         portal_offer_last_check = 0.0
         portal_offer_selected = False
+        portal_offer_selected_card = None
+        portal_offer_confirm_time = 0.0
+        portal_offer_click_attempts = 0
+        if task and task.get("mode") == "portals":
+            self._log("[Macro] Portal run: watching for the 3 portal cards during the round...")
         afk_clicked_at = 0.0  # last time the AFK Chamber exit was clicked
         # {"handled_at", "seen_at"} -- the settle is deferred, not slept, so the
         # poll loop keeps picking upgrade cards and clicking Continues meanwhile.
@@ -2331,25 +2411,44 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 self._battle_leave_requested = False
                 return "left"
 
-            if task and task.get("mode") == "portals" and not portal_offer_selected:
+            if task and task.get("mode") == "portals":
                 now = time.monotonic()
-                if now - portal_offer_last_check >= 3.0:
-                    portal_offer_last_check = now
-                    self._log("[Macro] Portal run: scanning for the 3 portal cards (threshold 0.60)...")
-                    middle = self._find_middle_portal_card(hwnd)
-                    if middle:
+                if not portal_offer_selected:
+                    if now - portal_offer_last_check >= 0.5:
+                        portal_offer_last_check = now
+                        card = self._choose_portal_card(hwnd)
+                        if card:
+                            idx = card.get("_index", 2)
+                            via_msg = f" (via {card['_via']})" if "_via" in card else ""
+                            self._log(
+                                f"[Macro] 3-portal selection detected DURING the round{via_msg} "
+                                f"({len(card['_cards'])} cards, best score {card['score']:.2f}) "
+                                f"-- randomly picked card #{idx} at ({card['cx']}, {card['cy']})."
+                            )
+                            if wm.activate_window(hwnd):
+                                vision.click_match(self._mouse, hwnd, card, shuffle=True)
+                                portal_offer_selected = True
+                                portal_offer_selected_card = card
+                                portal_offer_confirm_time = now + 0.8
+                                self._portal_offer_selected_this_run = True
+                                self._set_status("Portal selected -- continuing round until Victory/Defeat...", action=True)
+                                self._interruptible_sleep(0.3, stop_event)
+                            else:
+                                self._log("[Macro] Couldn't confirm focus before clicking the portal card.")
+                elif portal_offer_click_attempts < 2 and now >= portal_offer_confirm_time and portal_offer_selected_card is not None:
+                    # Если после клика экран с 3 картами всё ещё отображается (например, Roblox
+                    # проглотил первый клик во время анимации появления), повторно кликаем ту же карту,
+                    # чтобы гарантированно подтвердить выбор до 5-секундного автовыбора игры.
+                    portal_offer_confirm_time = now + 0.8
+                    if self._choose_portal_card(hwnd) is not None:
+                        portal_offer_click_attempts += 1
                         self._log(
-                            f"[Macro] 3-portal selection detected DURING the round "
-                            f"({len(middle['_cards'])} cards, best score {middle['score']:.2f}) "
-                            f"-- clicking the middle one."
+                            f"[Macro] 3-portal cards still visible -- re-clicking card #{portal_offer_selected_card.get('_index', 2)} "
+                            f"(attempt {portal_offer_click_attempts + 1}/3)..."
                         )
                         if wm.activate_window(hwnd):
-                            vision.click_match(self._mouse, hwnd, middle, shuffle=False)
-                            portal_offer_selected = True
-                            self._set_status("Portal selected -- continuing round until Victory/Defeat...", action=True)
-                            self._interruptible_sleep(SETTLE_DELAY, stop_event)
-                        else:
-                            self._log("[Macro] Couldn't confirm focus before clicking the middle portal.")
+                            vision.click_match(self._mouse, hwnd, portal_offer_selected_card, shuffle=True)
+                            self._interruptible_sleep(0.3, stop_event)
 
             # Roblox's own Reconnect/Retry prompt can show up mid-battle too,
             # not just during the teleport-in wait -- this used to only be
@@ -2461,7 +2560,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             # Второй, независимый признак конца матча -- кнопка «Repeat Stage»
             # (см. _match_ended_without_a_banner). Без него макрос стоял на
             # законченном матче полные 30 минут и валил задачу.
-            if not (task and task.get("mode") == "portals"):
+            if task and task.get("mode") == "portals":
+                # В режиме порталов нет кнопки 'Repeat Stage' (вместо неё пост-ран экран с 'portal_select' / 'portal_exit').
+                # Если экран выбора следующего портала уже открыт, значит раунд завершён -- выходим без задержки!
+                polls += 1
+                if polls % MATCH_END_CHECK_EVERY == 0 and self._portal_chooser_showing(hwnd):
+                    self._log("[Macro] Post-run portal screen is already visible -- match finished (Victory).")
+                    return "win"
+            else:
                 polls += 1
                 if polls % MATCH_END_CHECK_EVERY == 0:
                     ended = self._match_ended_without_a_banner(hwnd)
@@ -3529,15 +3635,16 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
 
     def _wait_teleport_in(self, hwnd, stop_event: threading.Event, webhook: dict = None,
-                            task: dict = None, timeout: float = None) -> bool:
+                            task: dict = None, timeout: float = None, extra_ok_names=()) -> bool:
         # nav_unitmanager only renders once you're actually in the match (not
         # during the loading/teleport transition), so waiting for it is the
         # confirmation the teleport actually finished.
         timeout = TELEPORT_IN_TIMEOUT if timeout is None else timeout
-        self._log(f'[Macro] Waiting to teleport in-game (watching for "nav_unitmanager", up to '
+        watching = ('nav_unitmanager',) + tuple(extra_ok_names)
+        self._log(f'[Macro] Waiting to teleport in-game (watching for {", ".join(watching)}, up to '
                    f'{timeout:.0f}s)...')
-        self._set_status(action='Waiting to teleport in-game ("nav_unitmanager")...')
-        result = self._wait_for_teleport_result(hwnd, stop_event, timeout)
+        self._set_status(action=f'Waiting to teleport in-game ({", ".join(watching)})...')
+        result = self._wait_for_teleport_result(hwnd, stop_event, timeout, extra_ok_names=extra_ok_names)
         if result == "ok":
             self._log("[Macro] Teleported in-game.")
             return True
@@ -3555,13 +3662,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if result == "timeout" and not stop_event.is_set():
             screenshot_path = self._save_debug_screenshot_unconditional(hwnd, "teleport_timeout")
             suffix = f" Debug: {screenshot_path}" if screenshot_path else ""
-            self._log(f'[Macro] "nav_unitmanager" not found within {timeout:.0f}s -- never teleported '
+            self._log(f'[Macro] "{", ".join(watching)}" not found within {timeout:.0f}s -- never teleported '
                        f'in-game (or the Unit Manager button isn\'t matching your setup -- if you\'re '
                        f'visibly in the match, add your own crop of it via Settings > General > '
                        f'Image Manager). Stopping.{suffix}')
         return False
 
-    def _wait_for_teleport_result(self, hwnd, stop_event: threading.Event, timeout: float) -> str:
+    def _wait_for_teleport_result(self, hwnd, stop_event: threading.Event, timeout: float, extra_ok_names=()) -> str:
         """Poll for teleport success or Roblox's definite disconnect prompt.
 
         ``teleportstuck`` is only Roblox's ordinary black loading screen, not
@@ -3571,16 +3678,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         deadline = time.time() + timeout
         lobby_sightings = 0     # consecutive checks that found the lobby's Play button
         polls = 0
+        watching = ("nav_unitmanager",) + tuple(extra_ok_names)
         while time.time() < deadline:
             if stop_event.is_set():
                 return "stopped"
-            try:
-                match = vision.find_image(hwnd, "nav_unitmanager")
-            except vision.TemplateNotFound as exc:
-                self._log(f"[Macro] Can't confirm teleport-in: {exc}")
-                return "timeout"
-            if match is not None:
-                return "ok"
+
+            for name in watching:
+                try:
+                    match = vision.find_image(hwnd, name)
+                except vision.TemplateNotFound as exc:
+                    if name == "nav_unitmanager" and not extra_ok_names:
+                        self._log(f"[Macro] Can't confirm teleport-in: {exc}")
+                        return "timeout"
+                    continue
+                if match is not None:
+                    if name != "nav_unitmanager":
+                        self._log(f'[Macro] Teleport confirmed by "{name}".')
+                    return "ok"
 
             for name in RECONNECT_IMAGE_NAMES:
                 try:
@@ -4888,20 +5002,31 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         """Wait for any one of `names` to show up. Returns the name that did,
         or None. Missing art is skipped, not fatal.
         """
-        try:
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
-            self._mouse.move_to(left + 3, top + 3)
-            time.sleep(0.15)
-        except Exception:
-            pass
+        if timeout > 0:
+            try:
+                left, top, _, _ = wm.get_window_rect_screen(hwnd)
+                self._mouse.move_to(left + 3, top + 3)
+                time.sleep(0.05)
+            except Exception:
+                pass
 
         deadline = time.time() + timeout
         while True:
             for name in names:
                 try:
+                    # Для portal_tab_selected проверяем активность вкладки через
+                    # portal_tab_is_selected: форма вкладки одинакова, но цвет активной
+                    # — синий. Если есть откалиброванная координата portal_tab, передаём её.
+                    if name == "portal_tab_selected":
+                        tab_pt = None
+                        try:
+                            tab_pt = self._cxy("portal_tab")
+                        except Exception:
+                            pass
+                        if vision.portal_tab_is_selected(hwnd, coords=tab_pt):
+                            return name
+                        continue
                     if vision.find_image(hwnd, name):
-                        if name == "portal_tab_selected" and not vision.portal_tab_is_selected(hwnd):
-                            continue
                         return name
                 except vision.TemplateNotFound:
                     continue
@@ -4909,7 +5034,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 return None
             if stop_event is not None and stop_event.is_set():
                 return None
-            time.sleep(0.4)
+            time.sleep(0.15)
 
     def _portal_step(self, hwnd, stop_event: threading.Event, image: str, prefix: str, label: str,
                      expect=(), attempts: int = 3):
@@ -4964,13 +5089,24 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     return False
             if not clicked:
                 return False
-            self._interruptible_sleep(SETTLE_DELAY, stop_event)
             if not expect:
+                self._interruptible_sleep(0.2, stop_event)
                 return True
+            self._interruptible_sleep(0.15, stop_event)
             seen = self._portal_anchor(hwnd, expect, PORTAL_VERIFY_TIMEOUT, stop_event)
             if seen:
                 self._log(f'[Macro] {label} -- confirmed ("{seen}" is on screen).')
                 return True
+            # Специальное подтверждение для переключения вкладки порталов:
+            # если мы кликнули по невыбранной вкладке "portal_tab" (на экране или по калибровке),
+            # и после клика невыбранная плашка исчезла, значит переключение сработало.
+            if image == "portal_tab" and clicked:
+                try:
+                    if not vision.find_image(hwnd, "portal_tab"):
+                        self._log(f'[Macro] {label} -- confirmed ("{image}" was clicked and is no longer unselected).')
+                        return True
+                except vision.TemplateNotFound:
+                    pass
             self._log(f"[Macro] {label} -- the click doesn't seem to have registered ({' / '.join(expect)} never appeared).")
         self._log(f"[Macro] {label} failed after {attempts} attempts -- giving up on this attempt at the route.")
         return False
@@ -4997,38 +5133,89 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 'Pick it in Settings > Debug > Macro Coordinates if a retry ever starts with a panel still open.'
             )
 
-    def _find_middle_portal_card(self, hwnd):
-        """The MIDDLE card of the in-round three-portal offer, or None.
+    def _choose_portal_card(self, hwnd):
+        """Ищет 3 карты предложения порталов на экране и случайно выбирает одну из них.
 
-        Finds each card on its own and picks the middle by x, instead of
-        matching one wide template across all three.
+        По запросу пользователя («ну и порталы между 3 чтоб выбирался рандомно ваще»),
+        вместо жесткого выбора только средней карты выбирается случайная из
+        найденных карт. Карты сортируются слева направо (по оси X).
 
-        That wide template is what never worked. Measured against a real
-        capture of this screen (Image Manager, so already 1152x756), every
-        band crop scored 0.19-0.41 against a 0.60 bar -- because a band is
-        mostly LIVE GAMEPLAY between and behind the cards, and that background
-        is different every run. Scale was never the problem; the template was
-        simply mostly moving pixels.
+        1. Основной путь: шаблоны фонарей 'portal_offer_card' (через multi-variant NMS,
+           поддерживающий тиры _t1, _t4 и альты). Возвращает смещение +60px в тело карты.
+        2. Запасной путь 1: кнопка 'Game Results' (Assets/ui/Game_results). Присутствует
+           на экране 3 карт независимо от тира портала (T1..T5). 3 карты математически
+           привязаны к положению Game Results: средняя строго над ней (-147px),
+           а левая и правая смещены на +-305px.
+        3. Запасной путь 2: шаблон ряда 'portal_offer' (Assets/ui/portal_offer).
 
-        A single card is almost entirely fixed art. The same crop of the
-        lantern scores 0.88-1.00 across all five tiers (grayscale matching
-        discards the per-tier colour, so one shape covers them all), and three
-        variants ship to keep every tier well clear of the bar.
-
-        Returns a match dict with cx/cy on the middle card, plus "_cards" for
-        the log. Needs all three: two hits could be cards 1+2 or 2+3, and
-        guessing which would click the wrong portal.
+        Возвращает словарь совпадения выбранной карты, списком '_cards' и 1-базовым номером '_index'.
         """
         try:
-            cards = vision.find_image_all(hwnd, "portal_offer_card", threshold=0.6)
-            if not cards or len(cards) < 3:
-                return None
-            cards = sorted(cards, key=lambda m: m["cx"])[:3]
-            middle = dict(cards[1])
-            middle["_cards"] = cards
-            return middle
+            cards = vision.find_image_all(hwnd, "portal_offer_card", threshold=0.60)
+            if cards and len(cards) >= 3:
+                cards = sorted(cards, key=lambda m: m["cx"])[:3]
+                picked = random.choice(cards)
+                chosen_idx = cards.index(picked) + 1
+                chosen = dict(picked)
+                chosen["_cards"] = cards
+                chosen["_index"] = chosen_idx
+
+                # Смещаем клик на +60 пикселей вниз (~366..380), прямо в центр тела карты,
+                # где клик гарантированно регистрируется интерфейсом Roblox.
+                chosen_click = dict(chosen)
+                chosen_click["cy"] = chosen["cy"] + 60
+                return chosen_click
         except vision.TemplateNotFound:
-            return None
+            pass
+
+        # ЗАПАСНОЙ ВАРИАНТ 1 (для любых тиров порталов T1..T5):
+        # Кнопка 'Game Results' гарантированно присутствует под 3 картами.
+        try:
+            gr = vision.find_image(hwnd, "Game_results", threshold=0.85)
+            if gr is not None:
+                gr_cx = gr["cx"]
+                gr_cy = gr["cy"]
+                cards = [
+                    {"cx": gr_cx - 305, "cy": gr_cy - 147, "score": gr["score"], "w": 175, "h": 200, "x": gr_cx - 305 - 87, "y": gr_cy - 147 - 100},
+                    {"cx": gr_cx, "cy": gr_cy - 147, "score": gr["score"], "w": 175, "h": 200, "x": gr_cx - 87, "y": gr_cy - 147 - 100},
+                    {"cx": gr_cx + 305, "cy": gr_cy - 147, "score": gr["score"], "w": 175, "h": 200, "x": gr_cx + 305 - 87, "y": gr_cy - 147 - 100},
+                ]
+                picked = random.choice(cards)
+                chosen_idx = cards.index(picked) + 1
+                chosen = dict(picked)
+                chosen["_cards"] = cards
+                chosen["_index"] = chosen_idx
+                chosen["_via"] = "Game_results"
+                return chosen
+        except Exception:
+            pass
+
+        # ЗАПАСНОЙ ВАРИАНТ 2: шаблон целого ряда 'portal_offer' (T1..T5)
+        try:
+            offer = vision.find_image(hwnd, "portal_offer", threshold=0.65)
+            if offer is not None:
+                ox = offer["cx"]
+                oy = offer["cy"]
+                cards = [
+                    {"cx": ox - 305, "cy": oy, "score": offer["score"], "w": 175, "h": 200, "x": ox - 305 - 87, "y": oy - 100},
+                    {"cx": ox, "cy": oy, "score": offer["score"], "w": 175, "h": 200, "x": ox - 87, "y": oy - 100},
+                    {"cx": ox + 305, "cy": oy, "score": offer["score"], "w": 175, "h": 200, "x": ox + 305 - 87, "y": oy - 100},
+                ]
+                picked = random.choice(cards)
+                chosen_idx = cards.index(picked) + 1
+                chosen = dict(picked)
+                chosen["_cards"] = cards
+                chosen["_index"] = chosen_idx
+                chosen["_via"] = "portal_offer"
+                return chosen
+        except Exception:
+            pass
+
+        return None
+
+    def _find_middle_portal_card(self, hwnd):
+        """Алиас для _choose_portal_card (для обратной совместимости)."""
+        return self._choose_portal_card(hwnd)
 
     def _portal_chooser_showing(self, hwnd):
         """True when the post-run portal screen is up.
@@ -5040,7 +5227,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         ends on the chooser, the next starts from the lobby), the runner
         looks.
         """
-        for name in ("portal_exit", "portal_chooser_header", "portal_chooser_confirm"):
+        for name in ("portal_select", "portal_exit", "portal_chooser_header", "portal_chooser_confirm"):
             try:
                 if vision.find_image(hwnd, name) is not None:
                     return True
@@ -5066,10 +5253,6 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                                  "Opening the Portal Selection screen",
                                  ("portal_chooser_header", "portal_chooser_confirm")):
             return False
-        if not self._portal_anchor(hwnd, ("portal_chooser_header", "portal_chooser_confirm"),
-                                  PORTAL_VERIFY_TIMEOUT, stop_event):
-            self._log("[Macro] Portal Selection screen did not appear after Select Portal (neither the header nor the green Select button matched).")
-            return False
         chooser_point = self._portal_task_point(task, "chooser")
         if chooser_point is None:
             self._log('[Macro] This task has no chooser portal set -- pick one with Pick beside "Portal after a run" in the Task Builder, then run the task again.')
@@ -5079,7 +5262,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._log(f"[Macro] Picking the portal from the chooser -- clicking {chooser_point}.")
         left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._mouse.click(left + chooser_point[0], top + chooser_point[1])
-        self._interruptible_sleep(SETTLE_DELAY, stop_event)
+        self._interruptible_sleep(0.25, stop_event)
         if self._checkpoint(stop_event):
             return False
         confirm_expect = ("portal_start", "portal_party") + PORTAL_IN_MATCH_IMAGES
@@ -5104,17 +5287,37 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         nothing to verify against locally -- what proves it worked is the
         teleport, which the caller already waits for.
         """
-        if not self._portal_step(hwnd, stop_event, "portal_activate", "portal_activate",
+        target_name = "portal_activate"
+        try:
+            if not vision.find_image(hwnd, "portal_activate") and vision.find_image(hwnd, "portal_select"):
+                target_name = "portal_select"
+        except vision.TemplateNotFound:
+            pass
+        party_expect = ("portal_start", "portal_party", "nav_start_game") + PORTAL_IN_MATCH_IMAGES
+        if not self._portal_step(hwnd, stop_event, target_name, "portal_activate",
                                  f"Activating the portal (from {where})",
-                                 ("portal_start", "portal_party")):
+                                 party_expect):
             self._log(f"[Macro] Couldn't get to the party screen after picking a portal from {where} -- either the slot is empty or Activate never registered.")
             return False
         if self._checkpoint(stop_event):
             return False
-        if not self._portal_step(hwnd, stop_event, "portal_start", "portal_start", "Starting the portal"):
+
+        # Если нажатие Activate сразу запустило телепорт/матч:
+        if self._portal_anchor(hwnd, PORTAL_IN_MATCH_IMAGES, 0, stop_event) is not None:
+            time.sleep(SETTLE_DELAY)
+            return not self._checkpoint(stop_event)
+
+        start_name = "portal_start"
+        try:
+            if not vision.find_image(hwnd, "portal_start") and vision.find_image(hwnd, "nav_start_game"):
+                start_name = "nav_start_game"
+        except vision.TemplateNotFound:
+            pass
+
+        if not self._portal_step(hwnd, stop_event, start_name, "portal_start", "Starting the portal"):
             self._log('[Macro] Couldn\'t click Start on the party screen -- the portal won\'t begin. Set the "Portal: Start Run" point in Settings > Debug > Macro Coordinates if the button can\'t be matched.')
             return False
-        time.sleep(SETTLE_DELAY)
+        time.sleep(0.25)
         return not self._checkpoint(stop_event)
 
     def _reach_portal_activated(self, hwnd, stop_event: threading.Event, task: dict):
@@ -5146,6 +5349,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             if on_lobby:
                 self._log("[Macro] On the lobby -- opening a portal from the inventory.")
             else:
+                card = self._choose_portal_card(hwnd)
+                if card:
+                    card_num = card.get("_index", 2)
+                    self._log(f"[Macro] 3-portal selection still showing before chooser -- picking card #{card_num}.")
+                    if wm.activate_window(hwnd):
+                        vision.click_match(self._mouse, hwnd, card, shuffle=True)
+                        self._interruptible_sleep(SETTLE_DELAY, stop_event)
                 try:
                     self._click_coord_point(hwnd, "screen_middle", "Dismissing anything covering the post-run screen")
                     self._interruptible_sleep(SETTLE_DELAY, stop_event)
@@ -5190,7 +5400,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
         steps = (
             ("nav_items", "nav_items", "Opening Items", ("portal_tab_selected", "portal_tab", "portal_inventory")),
-            ("portal_tab", "portal_tab", "Opening the Portals tab", ("portal_tab_selected", "portal_activate", "portal_inventory")),
+            ("portal_tab", "portal_tab", "Opening the Portals tab", ("portal_tab_selected", "portal_inventory")),
         )
         for image, prefix, label, expect in steps:
             if not self._portal_step(hwnd, stop_event, image, prefix, label, expect):
@@ -5205,10 +5415,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 return False
             self._set_status("Opening the portal...", action=True)
             self._click_task_point(hwnd, lobby_point[0], lobby_point[1], "Picking the portal in the inventory")
-            self._interruptible_sleep(SETTLE_DELAY, stop_event)
+            self._interruptible_sleep(0.25, stop_event)
             if self._checkpoint(stop_event):
                 return False
-            if self._portal_anchor(hwnd, ("portal_activate",), PORTAL_VERIFY_TIMEOUT, stop_event) is not None:
+            if self._portal_anchor(hwnd, ("portal_activate", "portal_select"), PORTAL_VERIFY_TIMEOUT, stop_event) is not None:
                 break
             self._log(f"[Macro] No Activate screen after picking the portal (attempt {attempt}/{PORTAL_STEP_ATTEMPTS}) -- either the click didn't register or that inventory square is empty.")
         else:
@@ -5251,7 +5461,24 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             time.sleep(SETTLE_DELAY)
             return not self._checkpoint(stop_event)
 
-        self._log("[Macro] Portal selection was handled during the live round; not checking for 3 portals after Victory/Defeat.")
+        if not getattr(self, "_portal_offer_selected_this_run", False):
+            # Если выбор 3 порталов не успел сработать во время раунда (карты появились прямо перед Victory),
+            # проверяем экран ещё раз: если 3 карты на экране, случайно выбираем одну!
+            card = self._choose_portal_card(hwnd)
+            if card:
+                card_num = card.get("_index", 2)
+                via_msg = f" (via {card['_via']})" if "_via" in card else ""
+                self._log(
+                    f"[Macro] 3-portal selection detected at match end{via_msg} "
+                    f"({len(card['_cards'])} cards) -- randomly picked card #{card_num} at ({card['cx']}, {card['cy']})."
+                )
+                if wm.activate_window(hwnd):
+                    vision.click_match(self._mouse, hwnd, card, shuffle=True)
+                    self._interruptible_sleep(SETTLE_DELAY, stop_event)
+            else:
+                self._log("[Macro] No 3-portal offer on screen at match end -- proceeding to post-run screen.")
+        else:
+            self._log("[Macro] Portal selection was handled during the live round; not checking for 3 portals after Victory/Defeat.")
         self._set_status("Portal result complete -- preparing next Portal run...", action=True)
         return True
 

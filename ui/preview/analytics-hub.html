@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Концепт: Аналитический хаб забегов и эффективности фарма</title>
+<!-- КОНЦЕПТ, А НЕ ЧАСТЬ ПРИЛОЖЕНИЯ.
+     Файл никуда не подключён: ui/index.html о нём не знает, app.js его не
+     грузит. Открывается двойным щелчком в браузере.
+
+     Стили берутся из НАСТОЯЩЕГО ui/style.css: та же приборная панель,
+     строгая контрастная палитра, те же 4 уровня фонов и латунный акцент.
+
+     ЧТО ЗДЕСЬ РЕШАЕТСЯ
+     Сейчас на главной панели есть только 3 цифры: Wins, Losses, Winrate
+     и текстовый лог.
+     Игрок не может быстро понять:
+     1. Какая карта реально выгоднее по соотношению время/победы?
+     2. В какие моменты происходят поражения (слишком рано или затягивается босс)?
+     3. Не зависает ли макрос на застрявших мобах по 10 минут?
+     4. Сколько ресурсов/гемов нафармлено за сессию.
+
+     ЧТО ПРЕДЛАГАЕТ ЭТОТ КОНЦЕПТ
+     • Интерактивная гистограмма забегов (SVG Bar Timeline): высота столбика —
+       длительность матча в секундах, цвет — победа (--ok) или поражение (--fail).
+       Клик по столбцу показывает анатомию конкретного матча.
+     • Анализ по картам (Map Efficiency): рейтинг карт по винрейту и темпу.
+     • Карточка забега (Deep-Dive Inspector): пошаговый лог с таймингами,
+       статусом распознавания (два опроса CONFIRM_SIGHTINGS) и экспортом в Discord.
+     • Поддержка всех тем макроса (Тёплая, Чёрная, Холодная, Светлая). -->
+<link rel="stylesheet" href="../style.css">
+<style>
+  body {
+    margin: 0; padding: 20px;
+    background: var(--bg-deep); color: var(--text);
+    font-family: var(--font, system-ui, sans-serif);
+    font-size: 13px;
+  }
+  .pv-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .pv-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .pv-badge {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 2px 7px; border-radius: var(--r-sm);
+    background: var(--accent-wash); color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  .pv-note { color: var(--text-muted); font-size: 12px; }
+  .pv-btn {
+    padding: 5px 12px; border-radius: var(--r-md);
+    border: 1px solid var(--border); background: var(--bg-surface);
+    color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer;
+    transition: border-color var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
+  }
+  .pv-btn:hover { border-color: var(--border-strong); color: var(--text); }
+  .pv-btn.is-active { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+
+  /* Контейнер хаба */
+  .hub-container {
+    display: flex; flex-direction: column; gap: 16px;
+    max-width: 1220px;
+  }
+
+  /* Верхний ряд KPI карточек */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .kpi-card {
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--bg-card);
+    padding: 14px 16px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+  .kpi-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-muted);
+  }
+  .kpi-body {
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .kpi-value {
+    font-size: 26px; font-weight: 800; font-family: var(--font-mono);
+    letter-spacing: -0.02em; color: var(--text); line-height: 1;
+  }
+  .kpi-sub {
+    font-size: 12px; color: var(--text-muted);
+  }
+  .kpi-foot {
+    font-size: 11px; display: flex; align-items: center; gap: 6px;
+  }
+  .kpi-trend-up { color: var(--ok); font-weight: 600; }
+
+  /* Основная двухколоночная раскладка */
+  .hub-main-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 16px;
+  }
+
+  /* Панели */
+  .hub-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--bg-card);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  }
+  .hub-panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+  }
+  .hub-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text); }
+
+  /* Область графика длительности забегов */
+  .chart-area {
+    padding: 16px; display: flex; flex-direction: column; gap: 10px;
+    background: var(--bg-card);
+  }
+  .chart-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: var(--text-muted);
+  }
+  .chart-svg-wrap {
+    position: relative; width: 100%; height: 180px;
+    background: var(--bg-deep); border: 1px solid var(--border);
+    border-radius: var(--r-md); overflow: hidden;
+  }
+
+  /* Столбцы графика */
+  .bar-rect {
+    cursor: pointer;
+    transition: opacity 0.1s ease, transform 0.1s ease;
+  }
+  .bar-rect:hover {
+    opacity: 0.8;
+    filter: brightness(1.2);
+  }
+  .bar-rect.selected {
+    stroke: var(--text);
+    stroke-width: 2px;
+  }
+
+  /* Легенда графика */
+  .chart-legend {
+    display: flex; align-items: center; gap: 16px; font-size: 11px; color: var(--text-muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* Таблица эффективности карт */
+  .maps-table {
+    display: flex; flex-direction: column;
+    padding: 8px 12px; gap: 8px;
+  }
+  .map-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 90px;
+    align-items: center; gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-surface);
+    transition: border-color var(--t-hover) var(--ease);
+  }
+  .map-row:hover { border-color: var(--border-strong); }
+  .map-name { font-weight: 600; font-size: 12px; }
+  .map-bar-wrap {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .map-bar-track {
+    height: 6px; border-radius: 3px; background: var(--bg-deep);
+    overflow: hidden; display: flex; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  }
+  .map-bar-w { background: var(--ok); height: 100%; }
+  .map-bar-l { background: var(--fail); height: 100%; }
+  .map-stats {
+    font-family: var(--font-mono); font-size: 11px; text-align: right;
+  }
+
+  /* Правая колонка: Детали выбранного забега */
+  .run-detail-body {
+    padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .run-status-hero {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px; border-radius: var(--r-md);
+    background: var(--bg-surface); border: 1px solid var(--border);
+  }
+  .run-badge {
+    padding: 4px 10px; border-radius: var(--r-sm);
+    font-weight: 700; font-size: 12px; font-family: var(--font-mono);
+  }
+  .badge-win { background: color-mix(in srgb, var(--ok) 20%, var(--bg-card)); color: var(--ok); border: 1px solid var(--ok); }
+  .badge-loss { background: color-mix(in srgb, var(--fail) 20%, var(--bg-card)); color: var(--fail); border: 1px solid var(--fail); }
+
+  /* Таймлайн событий забега */
+  .run-events-list {
+    display: flex; flex-direction: column; gap: 8px;
+    position: relative; padding-left: 14px;
+    border-left: 2px solid var(--border);
+    margin-left: 6px;
+  }
+  .run-ev-item {
+    position: relative; font-size: 12px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .run-ev-item::before {
+    content: ''; position: absolute; left: -19px; top: 4px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--border-strong); border: 2px solid var(--bg-card);
+  }
+  .run-ev-item.active::before { background: var(--accent); }
+  .run-ev-item.win::before { background: var(--ok); }
+  .run-ev-item.loss::before { background: var(--fail); }
+  .run-ev-time { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+  .run-ev-desc { color: var(--text); }
+
+  /* Экспорт и действия */
+  .run-action-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 14px; border-radius: var(--r-md);
+    background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--text); font-weight: 600; font-size: 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .run-action-btn:hover {
+    border-color: var(--border-strong); background: var(--bg-field);
+  }
+</style>
+</head>
+<body>
+
+<div class="pv-bar">
+  <span class="pv-title">Концепт: Аналитический хаб забегов</span>
+  <span class="pv-badge">Analytics Hub</span>
+  <span class="pv-note">Наглядная статистика побед, времени прохождения и доходности карт</span>
+  <span style="flex:1"></span>
+  <button class="pv-btn is-active" onclick="switchPeriod('session', this)">За сессию (3ч)</button>
+  <button class="pv-btn" onclick="switchPeriod('day', this)">За 24 часа</button>
+  <button class="pv-btn" onclick="switchPeriod('all', this)">Все время</button>
+  <span style="width: 1px; height: 16px; background: var(--border); margin: 0 4px;"></span>
+  <button class="pv-btn is-active" onclick="setTheme('')">Тёплая</button>
+  <button class="pv-btn" onclick="setTheme('black')">Чёрная</button>
+  <button class="pv-btn" onclick="setTheme('cool')">Холодная</button>
+</div>
+
+<div class="hub-container">
+  <!-- Верхний ряд: Ключевые показатели -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-head">
+        <span>Винрейт (Win Rate)</span>
+        <span style="color: var(--ok);">&#9650; 89.2%</span>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-value" style="color: var(--ok);" id="kpi-winrate">89.2%</div>
+        <div class="kpi-sub" id="kpi-wl-detail">58W / 7L</div>
+      </div>
+      <div class="kpi-foot">
+        <span class="kpi-trend-up">+4.1%</span>
+        <span style="color: var(--text-muted);">выше вчерашнего</span>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-head">
+        <span>Темп фарма</span>
+        <span>Забегов / ч</span>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-value" id="kpi-runs-hour">19.4</div>
+        <div class="kpi-sub">runs / hr</div>
+      </div>
+      <div class="kpi-foot">
+        <span style="color: var(--text-muted);">Всего забегов: <strong style="color: var(--text);" id="kpi-total-runs">65</strong></span>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-head">
+        <span>Ср. длительность матча</span>
+        <span>Avg Time</span>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-value" id="kpi-avg-time">02:34</div>
+        <div class="kpi-sub">мин</div>
+      </div>
+      <div class="kpi-foot">
+        <span style="color: var(--text-muted);">Быстрейший: <strong style="color: var(--ok);">01:48</strong> (Desert)</span>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-head">
+        <span>Оценка наград</span>
+        <span>Estimated</span>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-value" style="color: var(--accent);" id="kpi-gems">14,500</div>
+        <div class="kpi-sub">Gems</div>
+      </div>
+      <div class="kpi-foot">
+        <span style="color: var(--text-muted);">+ 48.2k Gold</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Главная сетка: График + Детали забега -->
+  <div class="hub-main-grid">
+    <!-- Левая колонка: График забегов и таблица карт -->
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <!-- Панель графика -->
+      <section class="hub-panel">
+        <header class="hub-panel-head">
+          <span class="hub-title">Хронология и длительность забегов (Run Duration Chart)</span>
+          <span style="font-size: 11px; color: var(--text-muted);">Кликните на столбец для подробностей</span>
+        </header>
+
+        <div class="chart-area">
+          <div class="chart-meta">
+            <span>Каждый столбец — завершенный матч. Высота — длительность в секундах.</span>
+            <span id="chart-hover-label" style="font-family: var(--font-mono); color: var(--text); font-weight: 600;">Наведите на столбец</span>
+          </div>
+
+          <div class="chart-svg-wrap">
+            <svg id="runs-chart-svg" width="100%" height="100%" preserveAspectRatio="none"></svg>
+          </div>
+
+          <div class="chart-legend">
+            <div class="legend-item">
+              <div class="legend-dot" style="background: var(--ok);"></div>
+              <span>Победа (Victory)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-dot" style="background: var(--fail);"></div>
+              <span>Поражение (Defeat)</span>
+            </div>
+            <span style="flex:1"></span>
+            <span style="font-size: 10px; color: var(--text-muted);">Пунктирная черта — целевой ориентир 3 мин</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Панель карт -->
+      <section class="hub-panel">
+        <header class="hub-panel-head">
+          <span class="hub-title">Эффективность по картам (Map Efficiency Breakdown)</span>
+          <span style="font-size: 11px; color: var(--text-muted);">4 активных карты в ротации</span>
+        </header>
+
+        <div class="maps-table">
+          <div class="map-row">
+            <div>
+              <div class="map-name">Desert City</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Speedrun Preset</div>
+            </div>
+            <div class="map-bar-wrap">
+              <div class="map-bar-track">
+                <div class="map-bar-w" style="width: 96%;"></div>
+                <div class="map-bar-l" style="width: 4%;"></div>
+              </div>
+              <div style="font-size: 10px; color: var(--text-muted);">25 побед · 1 поражение (96%)</div>
+            </div>
+            <div class="map-stats">
+              <div style="color: var(--ok); font-weight: 700;">02:05 ср.</div>
+              <div style="font-size: 10px; color: var(--text-muted);">22.8 runs/h</div>
+            </div>
+          </div>
+
+          <div class="map-row">
+            <div>
+              <div class="map-name">Demon Forest</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Gem Farming</div>
+            </div>
+            <div class="map-bar-wrap">
+              <div class="map-bar-track">
+                <div class="map-bar-w" style="width: 88%;"></div>
+                <div class="map-bar-l" style="width: 12%;"></div>
+              </div>
+              <div style="font-size: 10px; color: var(--text-muted);">15 побед · 2 поражения (88%)</div>
+            </div>
+            <div class="map-stats">
+              <div style="color: var(--text); font-weight: 700;">02:45 ср.</div>
+              <div style="font-size: 10px; color: var(--text-muted);">18.1 runs/h</div>
+            </div>
+          </div>
+
+          <div class="map-row">
+            <div>
+              <div class="map-name">Sky Sanctuary</div>
+              <div style="font-size: 10px; color: var(--text-muted);">XP & Raid</div>
+            </div>
+            <div class="map-bar-wrap">
+              <div class="map-bar-track">
+                <div class="map-bar-w" style="width: 82%;"></div>
+                <div class="map-bar-l" style="width: 18%;"></div>
+              </div>
+              <div style="font-size: 10px; color: var(--text-muted);">14 побед · 3 поражения (82%)</div>
+            </div>
+            <div class="map-stats">
+              <div style="color: var(--text); font-weight: 700;">03:12 ср.</div>
+              <div style="font-size: 10px; color: var(--text-muted);">15.2 runs/h</div>
+            </div>
+          </div>
+
+          <div class="map-row">
+            <div>
+              <div class="map-name">Abyss Stronghold</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Nightmare / Heavy</div>
+            </div>
+            <div class="map-bar-wrap">
+              <div class="map-bar-track">
+                <div class="map-bar-w" style="width: 75%;"></div>
+                <div class="map-bar-l" style="width: 25%;"></div>
+              </div>
+              <div style="font-size: 10px; color: var(--text-muted);">4 победы · 1 поражение (75%)</div>
+            </div>
+            <div class="map-stats">
+              <div style="color: var(--text); font-weight: 700;">04:05 ср.</div>
+              <div style="font-size: 10px; color: var(--text-muted);">12.0 runs/h</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Правая колонка: Детали выбранного забега -->
+    <section class="hub-panel">
+      <header class="hub-panel-head">
+        <span class="hub-title">Инспектор матча (Run Inspector)</span>
+        <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);" id="det-run-id">#42</span>
+      </header>
+
+      <div class="run-detail-body">
+        <div class="run-status-hero">
+          <div>
+            <div style="font-size: 11px; color: var(--text-muted);">Карта / Режим:</div>
+            <div style="font-weight: 700; font-size: 14px;" id="det-map-name">Desert City</div>
+          </div>
+          <div class="run-badge badge-win" id="det-badge">ПОБЕДА (VICTORY)</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+          <div style="padding: 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface);">
+            <div style="color: var(--text-muted);">Длительность:</div>
+            <div style="font-family: var(--font-mono); font-weight: 700; font-size: 13px; color: var(--text);" id="det-dur">02:18</div>
+          </div>
+          <div style="padding: 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface);">
+            <div style="color: var(--text-muted);">Начало:</div>
+            <div style="font-family: var(--font-mono); font-weight: 700; font-size: 13px; color: var(--text);" id="det-started">21:24:10</div>
+          </div>
+        </div>
+
+        <!-- Пошаговый отчет -->
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); margin-top: 4px;">
+          Хронология этапов макроса
+        </div>
+
+        <div class="run-events-list">
+          <div class="run-ev-item active">
+            <span class="run-ev-time">00:00.2</span>
+            <span class="run-ev-desc">Окно Roblox активно, захват hwnd подтвержден</span>
+          </div>
+          <div class="run-ev-item active">
+            <span class="run-ev-time">00:02.1</span>
+            <span class="run-ev-desc">Выбор карты Desert City, вход в портал</span>
+          </div>
+          <div class="run-ev-item active">
+            <span class="run-ev-time">00:08.5</span>
+            <span class="run-ev-desc">Загрузка матча завершена, старт расстановки</span>
+          </div>
+          <div class="run-ev-item active">
+            <span class="run-ev-time">00:19.4</span>
+            <span class="run-ev-desc">4 юнита успешно размещены, включен автобой</span>
+          </div>
+          <div class="run-ev-item win" id="det-last-step">
+            <span class="run-ev-time">02:18.0</span>
+            <span class="run-ev-desc">Победа зафиксирована 2 кадра подряд (CONFIRM_SIGHTINGS)</span>
+          </div>
+        </div>
+
+        <!-- Кнопки действий -->
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: auto;">
+          <button class="run-action-btn" onclick="copyDiscordCard()">
+            <span>&#128172;</span> Скопировать карточку для Discord
+          </button>
+          <button class="run-action-btn" onclick="exportPdf()">
+            <span>&#128196;</span> Экспортировать отчет PDF
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+// ── Генератор данных забегов ───────────────────────────────────────────────
+const RUNS_DATA = [];
+const MAPS = ["Desert City", "Demon Forest", "Sky Sanctuary", "Abyss Stronghold"];
+
+function generateRuns() {
+  RUNS_DATA.length = 0;
+  for (let i = 1; i <= 32; i++) {
+    const isWin = Math.random() > 0.12; // 88% винрейт
+    const baseTime = isWin ? (110 + Math.random() * 80) : (60 + Math.random() * 50);
+    const map = MAPS[Math.floor(Math.random() * MAPS.length)];
+    const date = new Date(Date.now() - (32 - i) * 160000);
+    const timeStr = date.toTimeString().split(' ')[0];
+
+    RUNS_DATA.push({
+      id: i,
+      win: isWin,
+      duration: Math.round(baseTime),
+      map: map,
+      time: timeStr
+    });
+  }
+}
+
+generateRuns();
+let selectedRunId = 32;
+
+// ── Отрисовка графика ──────────────────────────────────────────────────────
+function renderChart() {
+  const svg = document.getElementById('runs-chart-svg');
+  svg.innerHTML = '';
+
+  const w = svg.clientWidth || 700;
+  const h = svg.clientHeight || 180;
+  const count = RUNS_DATA.length;
+  const barWidth = Math.max(8, (w / count) - 4);
+  const maxDur = 260; // максимальная шкала секунд
+
+  // Пунктирная ориентирная линия 3 мин (180 сек)
+  const lineY = h - (180 / maxDur) * (h - 20);
+  const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  gridLine.setAttribute('x1', '0');
+  gridLine.setAttribute('x2', '100%');
+  gridLine.setAttribute('y1', lineY);
+  gridLine.setAttribute('y2', lineY);
+  gridLine.setAttribute('stroke', 'var(--border)');
+  gridLine.setAttribute('stroke-dasharray', '4 4');
+  svg.appendChild(gridLine);
+
+  RUNS_DATA.forEach((run, idx) => {
+    const barHeight = Math.max(8, (run.duration / maxDur) * (h - 24));
+    const x = idx * (w / count) + 2;
+    const y = h - barHeight;
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', x);
+    rect.setAttribute('y', y);
+    rect.setAttribute('width', barWidth);
+    rect.setAttribute('height', barHeight);
+    rect.setAttribute('rx', '3');
+    rect.setAttribute('class', `bar-rect ${run.id === selectedRunId ? 'selected' : ''}`);
+    rect.setAttribute('fill', run.win ? 'var(--ok)' : 'var(--fail)');
+
+    rect.onmouseenter = () => {
+      const mins = Math.floor(run.duration / 60);
+      const secs = run.duration % 60;
+      document.getElementById('chart-hover-label').textContent =
+        `#${run.id}: ${run.map} — ${run.win ? 'Победа' : 'Поражение'} (${mins}м ${secs}с) в ${run.time}`;
+    };
+    rect.onmouseleave = () => {
+      document.getElementById('chart-hover-label').textContent = 'Наведите на столбец';
+    };
+    rect.onclick = () => {
+      selectRun(run.id);
+    };
+
+    svg.appendChild(rect);
+  });
+}
+
+function selectRun(id) {
+  selectedRunId = id;
+  const run = RUNS_DATA.find(r => r.id === id);
+  if (!run) return;
+
+  document.getElementById('det-run-id').textContent = `#${run.id}`;
+  document.getElementById('det-map-name').textContent = run.map;
+  document.getElementById('det-dur').textContent = `${Math.floor(run.duration / 60)}:${String(run.duration % 60).padStart(2, '0')}`;
+  document.getElementById('det-started').textContent = run.time;
+
+  const badge = document.getElementById('det-badge');
+  badge.textContent = run.win ? 'ПОБЕДА (VICTORY)' : 'ПОРАЖЕНИЕ (DEFEAT)';
+  badge.className = `run-badge ${run.win ? 'badge-win' : 'badge-loss'}`;
+
+  const lastStep = document.getElementById('det-last-step');
+  lastStep.className = `run-ev-item ${run.win ? 'win' : 'loss'}`;
+  lastStep.querySelector('.run-ev-time').textContent = `${Math.floor(run.duration / 60)}:${String(run.duration % 60).padStart(2, '0')}`;
+  lastStep.querySelector('.run-ev-desc').textContent = run.win
+    ? 'Победа подтверждена двумя опросами подряд (CONFIRM_SIGHTINGS)'
+    : 'Поражение зафиксировано (база разрушена / тайм-аут)';
+
+  renderChart();
+}
+
+function switchPeriod(p, btn) {
+  document.querySelectorAll('.pv-bar .pv-btn').forEach(b => {
+    if (b.textContent.includes('сессию') || b.textContent.includes('24 часа') || b.textContent.includes('Все время')) {
+      b.classList.remove('is-active');
+    }
+  });
+  btn.classList.add('is-active');
+
+  if (p === 'day') {
+    document.getElementById('kpi-total-runs').textContent = '148';
+    document.getElementById('kpi-wl-detail').textContent = '132W / 16L';
+    document.getElementById('kpi-gems').textContent = '38,200';
+  } else if (p === 'all') {
+    document.getElementById('kpi-total-runs').textContent = '842';
+    document.getElementById('kpi-wl-detail').textContent = '748W / 94L';
+    document.getElementById('kpi-gems').textContent = '214,000';
+  } else {
+    document.getElementById('kpi-total-runs').textContent = '65';
+    document.getElementById('kpi-wl-detail').textContent = '58W / 7L';
+    document.getElementById('kpi-gems').textContent = '14,500';
+  }
+  generateRuns();
+  renderChart();
+  selectRun(32);
+}
+
+function copyDiscordCard() {
+  const run = RUNS_DATA.find(r => r.id === selectedRunId) || RUNS_DATA[RUNS_DATA.length - 1];
+  const text = `**Anime Expeditions Macro** · Match #${run.id}\nResult: ${run.win ? 'VICTORY' : 'DEFEAT'}\nMap: ${run.map}\nDuration: ${Math.floor(run.duration / 60)}m ${run.duration % 60}s\nWinrate: 89.2% (58W / 7L)`;
+  navigator.clipboard?.writeText(text);
+  alert('Скопировано в буфер обмена для Discord:\n\n' + text);
+}
+
+function exportPdf() {
+  alert('Инициирована генерация PDF-отчета через core/report_pdf.py');
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme-base', theme);
+  document.querySelectorAll('.pv-bar .pv-btn').forEach(b => {
+    if (b.textContent.includes('Тёплая') || b.textContent.includes('Чёрная') || b.textContent.includes('Холодная')) {
+      b.classList.remove('is-active');
+    }
+  });
+  event.target.classList.add('is-active');
+  renderChart();
+}
+
+window.addEventListener('resize', renderChart);
+renderChart();
+selectRun(32);
+</script>
+</body>
+</html>

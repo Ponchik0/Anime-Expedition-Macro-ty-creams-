@@ -45,6 +45,21 @@ else:
     BUNDLE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     APP_DIR = BUNDLE_DIR
 
+# Перенаправляем временную папку на D:\tmp (если диск D: доступен), чтобы не
+# расходовать место на системном диске C: при создании временных скриншотов,
+# распаковке обновлений и отчётов.
+if sys.platform == "win32":
+    _preferred_tmp = "D:\\tmp" if os.path.exists("D:\\") else os.path.join(APP_DIR, "tmp")
+    try:
+        os.makedirs(_preferred_tmp, exist_ok=True)
+        import tempfile
+        tempfile.tempdir = _preferred_tmp
+        os.environ["TEMP"] = _preferred_tmp
+        os.environ["TMP"] = _preferred_tmp
+    except Exception:
+        pass
+
+
 # macOS: a frozen build's APP_DIR (above) lands INSIDE the .app bundle
 # (<App>.app/Contents/MacOS) -- the wrong home for user data on two counts.
 # 1. Gatekeeper App Translocation runs a freshly-downloaded, still-quarantined

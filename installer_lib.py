@@ -122,7 +122,10 @@ def extract_release(zip_path: str, dest_dir: str, on_progress=None) -> int:
         entries = [i for i in zf.infolist() if not i.is_dir()]
         for n, info in enumerate(entries, 1):
             parts = info.filename.replace("\\", "/").split("/")
-            if not parts or any(p in ("", ".", "..") for p in parts):
+            # Точки уводят путь выше папки (zip-slip), а двоеточие — признак буквы
+            # диска в Windows (например, a/b/D:/payload.exe) или NTFS-потока, из-за
+            # которого os.path.join либо переключает диск, либо приземляет файл мимо.
+            if not parts or any(p in ("", ".", "..") or ":" in p for p in parts):
                 continue
             dest = os.path.join(dest_dir, *parts)
             if not is_inside(dest_dir, dest):

@@ -121,6 +121,68 @@ Common blocks include:
 Keep recordings short and deterministic. Prefer dedicated blocks over a long
 recording when possible, because they are easier to adjust after a game update.
 
+### Expedition encounters
+
+Expedition nodes can drop an encounter that has to be walked to and talked to.
+The macro handles this itself: when the encounter marker appears it teleports to
+spawn, walks that map's route, and interacts. Nothing is needed in your template
+beyond your unit placements.
+
+Routes ship for School Grounds, Rose Kingdom, Flower Forest, and East Town. For
+any other map the encounter is left alone and logged. To add one, record a walk
+from spawn to that map's NPC and map it in
+`Assets/default_encounter_walk_paths.json`:
+
+```json
+{ "Your Map": "Your recorded path name" }
+```
+
+A route that does not fit your spawn stops safely: the interact prompt has to be
+found before anything is clicked, so a walk that lands somewhere wrong logs and
+gives up rather than clicking at the world.
+
+### Placing a unit you cannot afford yet (Expedition)
+
+Pre Start runs **before** the round begins, so no income has arrived while it
+is running. Placing a unit there only *stages* it: nothing is really on the
+board until the round starts, and anything the purse cannot cover at that
+moment is silently dropped. Expedition starts you with far less than a unit
+costs, so a team can end up a unit or two short for the whole match while the
+log reports every placement as fine.
+
+Pre Start cannot detect this. Verification has nothing to read yet -- before
+the round, no unit is deployed, so a check there reports failure for every
+unit whether or not it would have worked.
+
+Put the units you cannot afford up front in the **Battle** phase instead, with
+a wait in front of them:
+
+```
+Pre Start:  Place Unit #1        (cheap -- affordable immediately)
+            Place Unit #2
+Battle:     Wait for Wave -> 2
+            Place Unit #3
+            Place Unit #4
+```
+
+Battle blocks run once per match, in order, one block per poll -- so
+consecutive blocks land roughly a second apart, and the round keeps playing
+around them.
+
+**Use "Wait for Wave", not "Wait".** They are not interchangeable here:
+
+- **Wait for Wave** is checked between polls and gives the loop back in
+  between, so upgrade cards still get picked, wave Continues still get
+  clicked, and Expedition encounters are still handled while it waits.
+- **Wait (ms)** sleeps in place. Everything else in the match loop stops for
+  the whole duration -- a 60-second Wait in the Battle phase means a minute
+  with no card selection, no Continue clicks and no result detection. Fine
+  for a few hundred milliseconds between two clicks; not for waiting out
+  income.
+
+Waiting on a wave is also the more reliable condition, since it tracks what
+actually pays out rather than guessing how long that takes on a given map.
+
 ## 5. Create the task queue
 
 Open **Task**, add tasks in the order they should run, and configure each one:
@@ -156,6 +218,44 @@ queue.
   crop for the name shown in the log.
 - Crop tightly, but retain enough unique pixels to avoid matching unrelated UI.
 - Remove overlays, notifications, and unusual UI scaling, then test again.
+
+Reference crops are specific to the size the game renders at. `core.vision`
+only sweeps +/-10% around a crop's own size, so a crop captured on a different
+setup can miss outright rather than score slightly lower. On one machine a
+shipped crop peaked at 0.61 where a locally captured crop of the same button
+scored 1.00. If a name will not match, capture it yourself in the Image Manager
+before adjusting thresholds.
+
+### Two similar states match each other's crop
+
+Templates are matched in greyscale, so two states of the same control that
+share a border, background shape, and label can score highly against each
+other. Colour differences do not help. On one setup a whole-button crop of an
+*unset* control matched the *set* version of that same button at 0.92, over the
+0.90 default threshold.
+
+- Crop tightly around the part that actually differs (the glyph or digit)
+  rather than the whole button.
+- Or raise that name's Match threshold in the Image Manager above the score the
+  wrong state reaches.
+- Check both directions with the Detect block's **Test now** button: a crop
+  should hit on the state it is named for and miss on the other one. Read the
+  reported location too -- a miss whose best hit is somewhere unrelated on
+  screen is no match at all, not a near miss.
+
+### A Detect block drives an action that must not repeat
+
+Detect treats a missing reference image, an unreadable screen, and an invalid
+condition all as *not found*, so every unknown lands in the Else branch. Put
+the branch that must not fire by accident behind a positive match:
+
+```
+find('quote_off') and not find('quote_on')    -> Then = retry
+```
+
+Written the other way round -- retrying whenever a "done" image fails to match
+-- every unknown becomes a retry. This matters for controls that cycle rather
+than being set, where applying the same value twice is not a no-op.
 
 ### Clicks land in the wrong place
 

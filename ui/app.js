@@ -2859,7 +2859,13 @@ function defaultTask() {
     // Таймер задачи (бета): 0 — выключен. timer_next — id задачи,
     // на которую перейти, когда время выйдет; пусто — просто дальше
     // по очереди. Проверяется МЕЖДУ матчами, см. core/runner.py.
-    timer_minutes: 0, timer_next: '',
+    timer_minutes: 0, timer_next_enabled: false, timer_next: '',
+    // Остановка при ошибке / сбое задачи:
+    stop_on_failure: false,
+    // Действие после завершения задачи:
+    on_complete_enabled: false,
+    on_complete_action: 'next',
+    on_complete_target: '',
     // Event-only: auto-clear Villian Invasion Act 4 when a Crow Relic drops.
     // act4_mode 'once' spends one relic then resumes; 'until_locked' spends
     // every banked relic. act4_macro is Act 4's own Macro Operation (it plays
@@ -3551,19 +3557,30 @@ function renderTaskBuilder() {
   // ── Таймер задачи (бета) ──────────────────────────────────────────
   // Отсчитывает ВРЕМЯ НА ЗАДАЧЕ и обнуляется при каждом заходе в неё.
   // Срабатывает между матчами, поэтому начатый бой всегда доигрывается.
+  const timerNextOn = t.timer_next_enabled === true || (t.timer_next_enabled === undefined && !!t.timer_next && t.timer_next !== 'off');
+  const timerNextControl = `
+    <div class="flex items-center gap-2" style="width: 100%;">
+      <div class="seg-toggle" style="flex-shrink: 0;">
+        <button type="button" class="seg-btn ${timerNextOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'timer_next_enabled', true); renderTaskBuilder()">On</button>
+        <button type="button" class="seg-btn ${!timerNextOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'timer_next_enabled', false); renderTaskBuilder()">Off</button>
+      </div>
+      ${timerNextOn ? `
+        <select class="task-select" style="flex: 1;" onchange="setTaskProp('${t.id}', 'timer_next', this.value)" data-tooltip="Куда перейти, когда таймер выйдет">
+          <option value=""${!t.timer_next || t.timer_next === 'next' ? ' selected' : ''}>следующей по очереди</option>
+          ${taskCards.filter(o => o.id !== t.id).map(o => {
+            const idx = taskCards.indexOf(o) + 1;
+            return `<option value="${o.id}"${o.id === t.timer_next ? ' selected' : ''}>${idx}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'задача')}</option>`;
+          }).join('')}
+        </select>
+      ` : `<span style="font-size: 11px; opacity: .6;">выключено</span>`}
+    </div>`;
+
   fields.push(
     field('Таймер, мин <span style="opacity:.6">бета</span>',
       `<input type="number" min="0" class="task-field-input" value="${t.timer_minutes || 0}"
         oninput="setTaskProp('${t.id}', 'timer_minutes', Math.max(0, parseInt(this.value, 10) || 0))">`,
       '0 — выключен. Иначе: столько минут на этой задаче, потом переход. Текущий матч всегда доигрывается.'),
-    field('Потом перейти к',
-      `<select class="task-select" onchange="setTaskProp('${t.id}', 'timer_next', this.value)">
-        <option value="">следующей по очереди</option>
-        ${taskCards.filter(o => o.id !== t.id).map((o, i) =>
-          `<option value="${o.id}"${o.id === t.timer_next ? ' selected' : ''}>${i + 1}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'задача')}</option>`
-        ).join('')}
-      </select>`,
-      'Куда перейти, когда таймер выйдет.')
+    field('Потом перейти к', timerNextControl, 'Куда перейти, когда таймер выйдет. Можно выключить.')
   );
 
   if (t.mode === 'story' || t.mode === 'raid') {
@@ -3693,6 +3710,48 @@ function renderTaskBuilder() {
           <button type="button" class="seg-btn ${act4Play === 'matchmaking' ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'act4_play_mode', 'matchmaking'); renderTaskBuilder()">Matchmaking</button>
         </div>`;
       fields.push(field('Act 4 Play Mode', act4PlaySeg));
+    }
+  }
+
+  // Остановка макроса при сбое или ошибке задачи
+  const stopOnFail = !!t.stop_on_failure;
+  const stopOnFailSeg = `
+    <div class="seg-toggle" data-tooltip="Stop macro if this task fails or encounters an error">
+      <button type="button" class="seg-btn ${stopOnFail ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'stop_on_failure', true); renderTaskBuilder()">On</button>
+      <button type="button" class="seg-btn ${!stopOnFail ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'stop_on_failure', false); renderTaskBuilder()">Off</button>
+    </div>`;
+  fields.push(field('Stop On Failure', stopOnFailSeg, 'Stop macro if this task fails or encounters an error'));
+
+  // Особый переход после успешного завершения задачи
+  const onComp = !!t.on_complete_enabled;
+  const onCompSeg = `
+    <div class="seg-toggle" data-tooltip="Enable custom action after task completes all repeats">
+      <button type="button" class="seg-btn ${onComp ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'on_complete_enabled', true); renderTaskBuilder()">On</button>
+      <button type="button" class="seg-btn ${!onComp ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'on_complete_enabled', false); renderTaskBuilder()">Off</button>
+    </div>`;
+  fields.push(field('After Completion', onCompSeg, 'Enable custom action after task completes all repeats'));
+
+  if (onComp) {
+    const act = t.on_complete_action || 'next';
+    const actSel = `
+      <select class="task-select" onchange="setTaskProp('${t.id}', 'on_complete_action', this.value); renderTaskBuilder()" data-tooltip="What to do when this task finishes cleanly">
+        <option value="next"${act === 'next' ? ' selected' : ''}>Next in queue</option>
+        <option value="stop"${act === 'stop' ? ' selected' : ''}>Stop macro</option>
+        <option value="repeat"${act === 'repeat' ? ' selected' : ''}>Repeat this task</option>
+        <option value="jump"${act === 'jump' ? ' selected' : ''}>Jump to task</option>
+      </select>`;
+    fields.push(field('Action On Finish', actSel, 'What to do when this task finishes cleanly'));
+
+    if (act === 'jump') {
+      const targetSel = `
+        <select class="task-select" onchange="setTaskProp('${t.id}', 'on_complete_target', this.value)" data-tooltip="Task to jump to after completion">
+          <option value="">Select task...</option>
+          ${taskCards.filter(o => o.id !== t.id).map(o => {
+            const idx = taskCards.indexOf(o) + 1;
+            return `<option value="${o.id}"${o.id === t.on_complete_target ? ' selected' : ''}>${idx}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'task')}</option>`;
+          }).join('')}
+        </select>`;
+      fields.push(field('Target Task', targetSel, 'Task to jump to after completion'));
     }
   }
 
@@ -9219,29 +9278,4 @@ async function refreshRecLive() {
       : '<div style="color:var(--text-muted)">Жду первых действий — переключись в Roblox и играй.</div>';
   }
 }
-
-// ── Переключение стиля панели (Classic / Modern V2) ─────────────────────────
-function applyDashStyle(style) {
-  const isModern = style === 'modern';
-  const target = document.getElementById('main-layout') || document.getElementById('screen-dashboard');
-  if (target) {
-    target.classList.toggle('dash-modern', isModern);
-  }
-  document.getElementById('btn-dash-classic')?.classList.toggle('active', !isModern);
-  document.getElementById('btn-dash-modern')?.classList.toggle('active', isModern);
-  try {
-    localStorage.setItem('ae_dash_style', isModern ? 'modern' : 'classic');
-  } catch (e) {}
-}
-
-function initDashStyle() {
-  let saved = 'modern';
-  try {
-    const s = localStorage.getItem('ae_dash_style');
-    if (s === 'classic' || s === 'modern') saved = s;
-  } catch (e) {}
-  applyDashStyle(saved);
-}
-
-initDashStyle();
 

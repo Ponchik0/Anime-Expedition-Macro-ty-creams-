@@ -720,10 +720,18 @@ class Api:
             "macro": "-",
         }
 
-    def _set_run_status(self, **kwargs) -> None:
+    def _set_run_status(self, *args, **kwargs) -> None:
+        if args:
+            first = args[0]
+            if isinstance(first, str):
+                kwargs["action"] = first
+            elif isinstance(first, dict):
+                kwargs.update(first)
+        if kwargs.get("action") is True and args and isinstance(args[0], str):
+            kwargs["action"] = args[0]
         action = kwargs.get("action")
         should_reset = kwargs.pop("reset", False)
-        if should_reset or (action and (action == "Idle" or action.startswith("Stopped") or action.startswith("Completed")) and "current_task" not in kwargs):
+        if should_reset or (action and (action == "Idle" or action.startswith("Stopped") or action.startswith("Completed") or action.startswith("Остановлен")) and "current_task" not in kwargs):
             new_status = {
                 "current_task": "-",
                 "current_repeat": "-",

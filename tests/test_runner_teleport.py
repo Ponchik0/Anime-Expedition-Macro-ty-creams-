@@ -201,3 +201,31 @@ def test_slow_solo_teleport_waits_across_chunks_without_reclicking(monkeypatch):
     assert runner._click_start_and_wait_teleport(
         123, threading.Event(), webhook={}, task={"map": "Map"}) is True
     assert clicks == ["start"]
+
+
+def test_wait_teleport_in_accepts_and_verifies_extra_ok_names(monkeypatch):
+    """Ловит TypeError и баг распознавания входа в портал по альтернативным индикаторам.
+
+    В режиме порталов экран загрузки может перейти сразу в игру с отображением
+    индикаторов боя (например, autoplay_on или start_game_prompt) до или вместо
+    nav_unitmanager. Функция обязана принимать extra_ok_names и подтверждать вход
+    при нахождении любого из них.
+    """
+    runner = MacroRunner(MagicMock(), MagicMock(), MagicMock())
+    runner._handle_disconnect = MagicMock()
+
+    # Имитируем: nav_unitmanager нет, но найден autoplay_on из extra_ok_names
+    def fake_find(hwnd, name):
+        if name == "autoplay_on":
+            return {"score": 0.95, "x": 10, "y": 10, "w": 20, "h": 20, "cx": 20, "cy": 20}
+        return None
+
+    monkeypatch.setattr(runner_module.vision, "find_image", fake_find)
+
+    actual = runner._wait_teleport_in(
+        123, threading.Event(), webhook={}, task={"map": "Portals"}, timeout=5.0,
+        extra_ok_names=("autoplay_on", "autoplay_off")
+    )
+
+    assert actual is True
+    assert runner._handle_disconnect.call_count == 0

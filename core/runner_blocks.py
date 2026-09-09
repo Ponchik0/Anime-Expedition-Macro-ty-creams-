@@ -365,6 +365,27 @@ class BlockOps:
             else:
                 self._log(f"[Macro] {label}: no position set -- skipping.")
             return
+        # ЗАЩИТА AUTO PLAY ОТ СЛУЧАЙНОГО ВЫКЛЮЧЕНИЯ.
+        # Если блок клика нацелен на кнопку Auto Play (по ключу coord_key 'autoplay'
+        # или по координатам рядом с (autoplay_x, autoplay_y) / (1119, 474)),
+        # проверяем, не включён ли он уже на экране игры ("on").
+        # В Roblox кнопка Auto Play работает как триггер: если автобой уже активен,
+        # повторный клик выключит его! Поэтому при активном состоянии мы пропускаем клик.
+        is_autoplay_target = (
+            coord_key == "autoplay"
+            or (abs(x - int(getattr(self, "_coords", {}).get("autoplay_x") or 1123)) <= 45
+                and abs(y - int(getattr(self, "_coords", {}).get("autoplay_y") or 485)) <= 45)
+            or (abs(x - 1119) <= 40 and abs(y - 474) <= 40)
+        )
+        if is_autoplay_target and hasattr(self, "_autoplay_state"):
+            try:
+                current_state = self._autoplay_state(hwnd)
+                if current_state == "on":
+                    self._log(f"[Macro] {label}: Auto Play is already active ('autoplay_on' detected) -- skipping click at ({x}, {y}) to avoid turning it off.")
+                    return
+            except Exception:
+                pass
+
         self._log(f"[Macro] {label}: clicking ({x}, {y}).")
         left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._mouse.click(left + x, top + y)

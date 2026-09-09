@@ -1037,36 +1037,49 @@ def find_all_in_gray(haystack_gray: np.ndarray, name: str,
     It lets a diagnostic evaluate every Detect mode against one full-window
     frame, so the preview and the reported score cannot come from different
     captures.
+
+    Сканирует все доступные варианты шаблонов имени (включая альты и тиры _t1, _t4)
+    и объединяет совпадения через подавление немаксимумов (NMS), предотвращая
+    двойной подсчет одного и того же объекта на экране.
     """
     templates = load_template_grays(name, template_dir)
     hh, hw = haystack_gray.shape[:2]
-    template_gray, mask = templates[0]
-    th, tw = template_gray.shape[:2]
-    if th > hh or tw > hw:
-        return []
-    if mask is not None:
-        result = cv2.matchTemplate(haystack_gray, template_gray, cv2.TM_CCORR_NORMED, mask=mask)
-    else:
-        result = cv2.matchTemplate(haystack_gray, template_gray, cv2.TM_CCOEFF_NORMED)
-    result[~np.isfinite(result)] = -1
-
-    ys, xs = np.where(result >= threshold)
-    if len(ys) == 0:
-        return []
-    scores = result[ys, xs]
-    order = np.argsort(scores)[::-1]
-    min_dist_sq = (max(tw, th) * 0.5) ** 2
-    kept = []
-    for i in order:
-        x, y = int(xs[i]), int(ys[i])
-        if any((x - k["_rx"]) ** 2 + (y - k["_ry"]) ** 2 < min_dist_sq for k in kept):
+    all_hits = []
+    for template_gray, mask in templates:
+        th, tw = template_gray.shape[:2]
+        if th > hh or tw > hw:
             continue
-        kept.append({"_rx": x, "_ry": y, "x": x, "y": y, "w": tw, "h": th,
-                     "cx": x + tw // 2, "cy": y + th // 2, "score": float(result[y, x])})
+        if mask is not None:
+            result = cv2.matchTemplate(haystack_gray, template_gray, cv2.TM_CCORR_NORMED, mask=mask)
+        else:
+            result = cv2.matchTemplate(haystack_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        result[~np.isfinite(result)] = -1
+
+        ys, xs = np.where(result >= threshold)
+        if len(ys) == 0:
+            continue
+        scores = result[ys, xs]
+        order = np.argsort(scores)[::-1]
+        for i in order:
+            x, y = int(xs[i]), int(ys[i])
+            all_hits.append((float(result[y, x]), x, y, tw, th))
+
+    if not all_hits:
+        return []
+
+    # Сортируем все совпадения по убыванию коэффициента уверенности (score)
+    all_hits.sort(key=lambda h: h[0], reverse=True)
+    kept = []
+    for score, x, y, tw, th in all_hits:
+        cx = x + tw // 2
+        cy = y + th // 2
+        min_dist_sq = (max(tw, th) * 0.5) ** 2
+        if any((cx - k["cx"]) ** 2 + (cy - k["cy"]) ** 2 < min_dist_sq for k in kept):
+            continue
+        kept.append({"x": x, "y": y, "w": tw, "h": th,
+                     "cx": cx, "cy": cy, "score": score})
         if len(kept) >= max_results:
             break
-    for match in kept:
-        del match["_rx"], match["_ry"]
     return kept
 
 
@@ -1080,9 +1093,8 @@ def find_image_all(hwnd: int, name: str, region: tuple = None, threshold: float 
 
     Returns a list of the same match dicts find_image returns
     ({x,y,w,h,cx,cy,score}, in `region`'s space); empty list if nothing
-    matched. Only the first (primary) variant is scanned -- the extra
-    variants exist to catch DIFFERENT renders of one button, and mixing
-    their hits into one count would double-count."""
+    matched. All variants are scanned and merged via NMS to detect distinct
+    items (such as tier-specific portal cards or alternate button states)."""
     haystack = capture_game_gray(hwnd, region)
     if haystack is None:
         return []
@@ -1173,7 +1185,11 @@ def find_upgrade_state(hwnd: int):
     return ("upgradeable" if green >= UPGRADE_GREEN_MIN_FRACTION else "not_upgradeable"), match
 
 
-PORTAL_TAB_BLUE_MIN_FRACTION = 0.25
+# Порог обнаружения формы вкладки порталов и минимальная доля синего цвета.
+# Вкладка в невыбранном состоянии тёмно-серая (blue_fraction = 0.0),
+# а в выбранном — ярко-синяя (blue_fraction > 0.35).
+PORTAL_TAB_LOCATE_THRESHOLD = 0.80
+PORTAL_TAB_BLUE_MIN_FRACTION = 0.20
 
 
 def portal_tab_blue_fraction(hwnd: int, match: dict) -> float:
@@ -1187,25 +1203,48 @@ def portal_tab_blue_fraction(hwnd: int, match: dict) -> float:
     return float(((blueness > 25) & (hsv[:, :, 1] > 90)).mean())
 
 
-def portal_tab_is_selected(hwnd: int) -> bool:
+def portal_tab_is_selected(hwnd: int, region: tuple = None, coords: tuple = None) -> bool:
     """True only when the Portals tab is actually the SELECTED (blue) tab.
 
-    Locates the tab with either name's art -- the shape is the same in both
-    states, which is exactly why the template cannot answer this -- and then
-    reads the colour at that spot. Returns False when the tab isn't on screen
-    at all, so callers can treat it as "not there / not selected" without a
-    separate existence check.
+    Определяет, выбрана ли вкладка Portals внутри меню Items:
+    1. Ищет плашку вкладки (как выбранную, так и невыбранную) через find_image_any.
+       Если найдена невыбранная вкладка portal_tab, её синева равна 0.0, и функция
+       возвращает False. Если вкладка переключена на Portals, её синева > 0.70,
+       и функция возвращает True.
+    2. Если шаблон не найден (например, другое разрешение), но переданы координаты coords,
+       проверяет синеву в точке coords при условии, что окно лобби закрыто (кнопки nav_items
+       и nav_play не видны, иначе синее небо лобби может давать ложное срабатывание).
     """
     try:
-        found = find_image_any(hwnd, ("portal_tab_selected", "portal_tab"))
+        found = find_image_any(hwnd, ("portal_tab_selected", "portal_tab"),
+                               region=region, threshold=PORTAL_TAB_LOCATE_THRESHOLD)
     except TemplateNotFound:
-        return False
-    if not found:
-        return False
-    match = found[0] if isinstance(found, tuple) else found
-    if not match:
-        return False
-    return portal_tab_blue_fraction(hwnd, match) >= PORTAL_TAB_BLUE_MIN_FRACTION
+        found = None
+
+    if found and found[0]:
+        match = found[0]
+        bf = portal_tab_blue_fraction(hwnd, match)
+        return bf >= PORTAL_TAB_BLUE_MIN_FRACTION
+
+    if coords is not None:
+        try:
+            # На лобби синее небо Roblox может попадать в координаты вкладки.
+            # Если видны кнопки лобби nav_items или nav_play — мы в лобби, инвентарь закрыт.
+            lobby_found = False
+            try:
+                lobby_match = find_image_any(hwnd, ("nav_items", "nav_play"))
+                lobby_found = lobby_match is not None and lobby_match[0] is not None
+            except TemplateNotFound:
+                pass
+            if not lobby_found:
+                cx, cy = coords
+                box = {"x": max(0, int(cx) - 40), "y": max(0, int(cy) - 15), "w": 80, "h": 30}
+                if portal_tab_blue_fraction(hwnd, box) >= PORTAL_TAB_BLUE_MIN_FRACTION:
+                    return True
+        except (TypeError, ValueError):
+            pass
+
+    return False
 
 
 def find_image_any(hwnd: int, names: tuple, region: tuple = None, threshold: float = DEFAULT_THRESHOLD,

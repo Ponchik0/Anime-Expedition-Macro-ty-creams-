@@ -43,9 +43,6 @@
 
     // --- Дашборд: состояние ---
     'Status Readout': 'Состояние',
-    'Classic': 'Классика',
-    'Modern V2': 'Модерн V2',
-    'Test': 'Тест',
     'Action': 'Действие',
     'Idle': 'Ожидание',
     'Current Task': 'Текущая задача',
@@ -161,6 +158,22 @@
       'Макрос: блоки сценария играют раунд (автоигра выключена). Автоигра: играет сама игра — блоки сценария работают параллельно.',
     "Macro: the template's blocks play the round. Auto Play: the game's Auto Play button is switched on -- your Macro Operation still runs alongside it.":
       'Макрос: блоки сценария играют раунд. Автоигра: кнопка автоигры включена — блоки сценария работают параллельно.',
+    'Stop On Failure': 'Остановить при сбое',
+    'Stop macro if this task fails or encounters an error':
+      'Остановить макрос, если эта задача завершилась ошибкой или сбоем',
+    'After Completion': 'После завершения',
+    'Enable custom action after task completes all repeats':
+      'Включить особое действие после выполнения всех повторов задачи',
+    'Action On Finish': 'Действие',
+    'What to do when this task finishes cleanly':
+      'Что делать после успешного завершения задачи',
+    'Next in queue': 'Следующая по очереди',
+    'Stop macro': 'Остановить макрос',
+    'Repeat this task': 'Повторять задачу (зациклить)',
+    'Jump to task': 'Перейти к задаче…',
+    'Target Task': 'Перейти к задаче',
+    'Task to jump to after completion': 'Задача, на которую перейти после завершения',
+    'Select task...': 'Выберите задачу…',
     'Import Settings': 'Импорт настроек',
     'Export Settings': 'Экспорт настроек',
     'Import File': 'Импорт из файла',

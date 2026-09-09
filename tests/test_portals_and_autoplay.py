@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core import detect
+from core import vision
 from core.runner_blocks import BlockOps
 from core.runner import MacroRunner
 
@@ -72,11 +73,12 @@ def test_find_middle_portal_card_requires_at_least_three_cards(mock_find):
 
 
 @patch("core.vision.find_image_all")
-def test_find_middle_portal_card_picks_median_by_x(mock_find):
-    """Проверяет выбор именно центрального портала из трех предложенных по оси X.
+def test_choose_portal_card_picks_randomly_and_offsets_click(mock_find):
+    """Проверяет случайный выбор карты портала из трех предложенных и смещение клика в тело карты.
 
-    Карточки могут прийти в любом порядке от детектора (например, правая, левая,
-    средняя). Функция обязана отсортировать их по X (cx) и взять среднюю.
+    Ловит баг жестко фиксированного выбора всегда средней карты, о котором просил пользователь
+    («ну и порталы между 3 чтоб выбирался рандомно ваще»), а также проверяет, что координаты клика
+    смещаются на +60px по Y прямо в кликабельное тело карты, а _cards отсортированы слева направо.
     """
     runner = MacroRunner.__new__(MacroRunner)
     left = {"cx": 250, "cy": 400, "score": 0.9}
@@ -84,10 +86,19 @@ def test_find_middle_portal_card_picks_median_by_x(mock_find):
     right = {"cx": 750, "cy": 400, "score": 0.92}
 
     mock_find.return_value = [right, left, mid]
-    chosen = runner._find_middle_portal_card(12345)
-    assert chosen is not None
-    assert chosen["cx"] == 500
-    assert chosen["_cards"] == [left, mid, right]
+    with patch("random.choice", side_effect=lambda x: x[1]):
+        chosen = runner._choose_portal_card(12345)
+        assert chosen is not None
+        assert chosen["cx"] == 500
+        assert chosen["cy"] == 460  # 400 + 60px в тело карты
+        assert chosen["_cards"] == [left, mid, right]
+        assert chosen["_index"] == 2
+
+    with patch("random.choice", side_effect=lambda x: x[0]):
+        chosen_left = runner._choose_portal_card(12345)
+        assert chosen_left["cx"] == 250
+        assert chosen_left["cy"] == 460
+        assert chosen_left["_index"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -292,3 +303,344 @@ def test_block_ops_click_skips_when_coord_key_not_configured():
 
     runner._mouse.click.assert_not_called()
     assert any("coord_key 'portal_exit' not set" in log for log in runner.logs)
+
+
+# ---------------------------------------------------------------------------
+# 6. Валидация вкладки порталов и переходов
+# ---------------------------------------------------------------------------
+
+@patch("core.vision.find_image_any", return_value=(None, None))
+@patch("core.vision.portal_tab_blue_fraction")
+def test_portal_tab_is_selected_with_explicit_coords(mock_blue, mock_find):
+    """Проверяет распознавание активной вкладки порталов по явным координатам.
+
+    Ловит баг, когда на экране пользователя шаблон selected не совпадает
+    из-за масштабирования или темы, но точка вкладки откалибрована и синяя.
+    """
+    mock_blue.return_value = 0.20
+    assert vision.portal_tab_is_selected(12345, coords=(227, 246)) is True
+
+    mock_blue.return_value = 0.00
+    assert vision.portal_tab_is_selected(12345, coords=(227, 246)) is False
+
+
+@patch("core.vision.find_image_any")
+@patch("core.vision.portal_tab_blue_fraction")
+def test_portal_tab_is_selected_with_relaxed_template_search(mock_blue, mock_find):
+    """Проверяет поиск вкладки по шаблонам с пониженным порогом и проверкой цвета."""
+    mock_find.return_value = ({"x": 200, "y": 240, "w": 60, "h": 25}, "portal_tab")
+    mock_blue.return_value = 0.35
+    assert vision.portal_tab_is_selected(12345) is True
+
+    # Тот же шаблон, но цвет серый (невыбранная вкладка) -> False
+    mock_blue.return_value = 0.02
+    assert vision.portal_tab_is_selected(12345) is False
+
+
+def test_portal_anchor_verifies_portal_tab_selected_via_color():
+    """Проверяет, что _portal_anchor вызывает portal_tab_is_selected для portal_tab_selected.
+
+    Ловит баг, когда _portal_anchor требовал прямого совпадения шаблона
+    portal_tab_selected через find_image, из-за чего portal_tab_is_selected
+    вообще никогда не вызывался при отсутствии альтернативных шаблонов на диске.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner._mouse = MagicMock()
+    runner._coords = {"portal_tab_x": 227, "portal_tab_y": 246}
+
+    with patch("core.runner.wm.get_window_rect_screen", return_value=(0, 0, 1152, 756)), \
+         patch("core.vision.portal_tab_is_selected", return_value=True) as mock_selected, \
+         patch("time.sleep"):
+        res = runner._portal_anchor(12345, ("portal_tab_selected",), timeout=0)
+        assert res == "portal_tab_selected"
+        mock_selected.assert_called_once_with(12345, coords=(227, 246))
+
+
+def test_portal_step_confirms_when_unselected_tab_disappears():
+    """Ловит баг зацикливания и сброса задачи при открытии вкладки Portals.
+
+    Когда макрос нажимает на серую вкладку portal_tab, игра переключается на
+    порталы, и серая вкладка пропадает. Даже если шаблон portal_tab_selected
+    не определился, факт исчезновения невыбранной вкладки portal_tab после клика
+    подтверждает, что переключение произошло успешно.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._set_status = MagicMock()
+    runner._checkpoint = MagicMock(return_value=False)
+    runner._interruptible_sleep = MagicMock()
+    runner._mouse = MagicMock()
+    runner._portal_anchor = MagicMock(return_value=None)  # якорь не увидел selected
+
+    stop_event = threading.Event()
+
+    with patch("core.vision.wait_for_image", return_value={"score": 1.0, "x": 100, "y": 200, "w": 50, "h": 20, "cx": 125, "cy": 210}), \
+         patch("core.runner.wm.activate_window", return_value=True), \
+         patch("core.vision.click_match"), \
+         patch("core.vision.find_image", return_value=None):  # после клика portal_tab исчез!
+        res = runner._portal_step(12345, stop_event, "portal_tab", "portal_tab", "Opening the Portals tab",
+                                  expect=("portal_tab_selected", "portal_inventory"))
+        assert res is True
+        assert any("no longer unselected" in log for log in runner.logs)
+
+
+def test_portal_step_skips_click_when_portal_tab_already_selected():
+    """Проверяет пропуск клика, если вкладка Portals уже выбрана при открытии Items."""
+    runner = MacroRunner.__new__(MacroRunner)
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._set_status = MagicMock()
+    runner._portal_anchor = MagicMock(return_value="portal_tab_selected")
+
+    stop_event = threading.Event()
+    with patch("core.vision.wait_for_image") as mock_wait:
+        res = runner._portal_step(12345, stop_event, "portal_tab", "portal_tab", "Opening the Portals tab",
+                                  expect=("portal_tab_selected", "portal_inventory"))
+        assert res is True
+        mock_wait.assert_not_called()
+        assert any("already done" in log for log in runner.logs)
+
+
+def test_activate_portal_falls_back_to_portal_select():
+    """Ловит баг, когда кнопка на карточке портала называется Select, а не Activate.
+
+    В некоторых версиях игры кнопка подтверждения портала из инвентаря имеет
+    надпись «Select» (шаблон portal_select), а не «Activate». Макрос обязан
+    распознавать и кликать оба варианта.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._portal_step = MagicMock(return_value=True)
+    runner._checkpoint = MagicMock(return_value=False)
+
+    stop_event = threading.Event()
+    with patch("core.vision.find_image", side_effect=lambda hwnd, name: True if name == "portal_select" else None):
+        res = runner._activate_portal(12345, stop_event, "the inventory")
+        assert res is True
+        first_call_args = runner._portal_step.call_args_list[0]
+        assert first_call_args[0][2] == "portal_select"
+
+
+def test_portal_tab_step_does_not_skip_when_unselected_tab_is_on_screen():
+    """Ловит баг, когда макрос ошибочно считал вкладку Portals выбранной при открытой вкладке Items.
+
+    Если открыто меню Items и выбрана вкладка Items, на экране видна серая вкладка
+    portal_tab. _portal_anchor ни в коем случае не должен возвращать portal_tab_selected,
+    а _portal_step обязан выполнить клик по portal_tab, а не пропускать его.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._set_status = MagicMock()
+    runner._mouse = MagicMock()
+    runner._checkpoint = MagicMock(return_value=False)
+    runner._interruptible_sleep = MagicMock()
+
+    stop_event = threading.Event()
+
+    # Сначала anchor вызывается для проверки "уже открыто" (timeout=0).
+    # Должен вернуть None, чтобы не пропустить клик.
+    # После клика anchor вызывается с timeout > 0 и должен вернуть успешное подтверждение.
+    anchor_calls = []
+    def fake_anchor(hwnd, names, timeout, stop_ev):
+        anchor_calls.append((names, timeout))
+        if timeout == 0:
+            return None  # Не открыто, клик обязателен!
+        return "portal_tab_selected"  # После клика подтверждено!
+
+    runner._portal_anchor = fake_anchor
+
+    with patch("core.vision.wait_for_image", return_value={"x": 50, "y": 120, "w": 140, "h": 30, "cx": 120, "cy": 135, "score": 1.0}), \
+         patch("core.runner.wm.activate_window", return_value=True), \
+         patch("core.vision.click_match") as mock_click:
+        res = runner._portal_step(12345, stop_event, "portal_tab", "portal_tab", "Opening the Portals tab",
+                                  expect=("portal_tab_selected", "portal_inventory"))
+        assert res is True
+        mock_click.assert_called_once()
+        assert not any("already done" in log for log in runner.logs)
+        assert any('found "portal_tab"' in log for log in runner.logs)
+
+
+def test_activate_portal_falls_back_to_nav_start_game():
+    """Ловит баг, когда кнопка старта на экране пати определяется как nav_start_game вместо portal_start.
+
+    Если кнопка Start в лобби портала имеет иную графику (совпадающую с nav_start_game),
+    макрос должен использовать nav_start_game для второго шага запуска портала.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._portal_step = MagicMock(return_value=True)
+    runner._portal_anchor = MagicMock(return_value=None)
+    runner._checkpoint = MagicMock(return_value=False)
+
+    stop_event = threading.Event()
+    def fake_find(hwnd, name):
+        if name == "portal_activate":
+            return True
+        if name == "nav_start_game":
+            return True
+        return None
+
+    with patch("core.vision.find_image", side_effect=fake_find):
+        res = runner._activate_portal(12345, stop_event, "the inventory")
+        assert res is True
+        assert runner._portal_step.call_count == 2
+        second_call_args = runner._portal_step.call_args_list[1]
+        assert second_call_args[0][2] == "nav_start_game"
+
+
+def test_activate_portal_exits_early_if_match_already_started():
+    """Ловит баг повторного клика по Start, если матч начался мгновенно после нажатия Activate.
+
+    Если сразу после нажатия Activate Portal игра перешла в бой (появился HUD матча
+    из PORTAL_IN_MATCH_IMAGES), макрос не должен пытаться искать и кликать кнопку Start,
+    а обязан завершить шаг успешно.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._portal_step = MagicMock(return_value=True)
+    # После нажатия Activate на экране сразу виден autoplay_on
+    runner._portal_anchor = MagicMock(return_value="autoplay_on")
+    runner._checkpoint = MagicMock(return_value=False)
+
+    stop_event = threading.Event()
+    with patch("core.vision.find_image", side_effect=lambda hwnd, name: True if name == "portal_activate" else None):
+        res = runner._activate_portal(12345, stop_event, "the inventory")
+        assert res is True
+        # Только 1 вызов _portal_step (Activate), второй (Start) пропущен
+        assert runner._portal_step.call_count == 1
+
+
+def test_run_click_block_skips_autoplay_when_already_on():
+    """Ловит баг выключения AutoPlay на 2+ забегах или при повторном клике.
+
+    В Roblox клик по кнопке Auto Play переключает состояние (toggle).
+    Если автоплей уже активен ('autoplay_on'), клик по координатам автоплея
+    должен быть пропущен, иначе автобой выключится и матч сольется.
+    """
+    runner = DummyBlockRunner(coords={"autoplay_x": 1123, "autoplay_y": 485})
+    runner._autoplay_state = MagicMock(return_value="on")
+    stop_event = threading.Event()
+
+    block = {"type": "click", "params": {"x": 1119, "y": 474}}
+    with patch("core.window.get_window_rect_screen", return_value=(0, 0, 1152, 756)):
+        runner._run_click_block(12345, stop_event, block, 1)
+
+    runner._mouse.click.assert_not_called()
+    assert any("Auto Play is already active" in log for log in runner.logs)
+
+
+def test_run_click_block_clicks_autoplay_when_off():
+    """Проверяет, что при выключенном AutoPlay клик штатно выполняется для включения."""
+    runner = DummyBlockRunner(coords={"autoplay_x": 1123, "autoplay_y": 485})
+    runner._autoplay_state = MagicMock(return_value="off")
+    stop_event = threading.Event()
+
+    block = {"type": "click", "params": {"x": 1119, "y": 474}}
+    with patch("core.window.get_window_rect_screen", return_value=(100, 200, 1152, 756)):
+        runner._run_click_block(12345, stop_event, block, 1)
+
+    runner._mouse.click.assert_called_once_with(100 + 1119, 200 + 474)
+    assert not any("Auto Play is already active" in log for log in runner.logs)
+
+
+def test_choose_portal_card_uses_game_results_fallback():
+    """Проверяет запасной механизм выбора карт портала по кнопке Game Results.
+
+    Ловит баг, когда на экране выбора 3 порталов шаблоны фонарей конкретного тира
+    (например, T4 Sky Ruins или T2/T3/T5) не совпали с эталоном, из-за чего макрос
+    не выбирал портал и ждал полного истечения 5-секундного таймера автовыбора игры.
+    Кнопка Game Results гарантированно распознается, а координаты 3 карт вычисляются
+    строго относительно неё.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    gr_match = {"cx": 449, "cy": 451, "score": 0.99, "w": 105, "h": 28, "x": 397, "y": 437}
+
+    with patch("core.vision.find_image_all", return_value=[]), \
+         patch("core.vision.find_image", side_effect=lambda hwnd, name, threshold=None: gr_match if name == "Game_results" else None):
+        with patch("random.choice", side_effect=lambda x: x[1]):  # средняя
+            chosen_mid = runner._choose_portal_card(12345)
+            assert chosen_mid is not None
+            assert chosen_mid["cx"] == 449
+            assert chosen_mid["cy"] == 451 - 147  # 304
+            assert chosen_mid["_index"] == 2
+            assert chosen_mid["_via"] == "Game_results"
+
+        with patch("random.choice", side_effect=lambda x: x[0]):  # левая
+            chosen_left = runner._choose_portal_card(12345)
+            assert chosen_left["cx"] == 449 - 305  # 144
+            assert chosen_left["cy"] == 451 - 147
+            assert chosen_left["_index"] == 1
+
+        with patch("random.choice", side_effect=lambda x: x[2]):  # правая
+            chosen_right = runner._choose_portal_card(12345)
+            assert chosen_right["cx"] == 449 + 305  # 754
+            assert chosen_right["cy"] == 451 - 147
+            assert chosen_right["_index"] == 3
+
+
+def test_find_all_in_gray_scans_multiple_variants():
+    """Проверяет, что find_all_in_gray сканирует все доступные варианты шаблонов.
+
+    Ловит баг, когда find_all_in_gray проверял только templates[0], из-за чего
+    карты тира T4 (хранившиеся в _t4) или альтернативные варианты кнопок игнорировались.
+    """
+    import numpy as np
+    from core import vision
+
+    # Создаем поле с текстурными кнопками (ненулевая дисперсия)
+    haystack = np.zeros((100, 200), dtype=np.uint8)
+
+    tpl1 = np.zeros((20, 20), dtype=np.uint8)
+    tpl1[5:15, 5:15] = 200
+    tpl1[8:12, 8:12] = 100
+
+    tpl2 = np.zeros((20, 20), dtype=np.uint8)
+    tpl2[3:17, 3:17] = 250
+    tpl2[7:13, 7:13] = 50
+
+    haystack[20:40, 20:40] = tpl1
+    haystack[20:40, 120:140] = tpl2
+
+    with patch("core.vision.load_template_grays", return_value=[(tpl1, None), (tpl2, None)]):
+        matches = vision.find_all_in_gray(haystack, "dummy_button", threshold=0.80)
+        # Должны найтись ОБЕ кнопки: и tpl1, и tpl2
+        assert len(matches) == 2
+        xs = sorted(m["cx"] for m in matches)
+        assert xs[0] == 30   # 20 + 10
+        assert xs[1] == 130  # 120 + 10
+
+
+def test_portal_mode_ends_match_promptly_when_chooser_showing():
+    """Проверяет, что при появлении пост-ран экрана порталов матч сразу признается победой.
+
+    Ловит баг долгого ожидания/зависания после боя в режиме порталов, когда баннер Victory
+    уже исчез или не показался, но пост-ран экран (portal_select / chooser) уже на экране.
+    """
+    runner = MacroRunner.__new__(MacroRunner)
+    runner._coords = {}
+    runner._battle_leave_requested = False
+    runner.logs = []
+    runner._log = lambda msg: runner.logs.append(msg)
+    runner._set_status = lambda *args, **kwargs: None
+    runner._checkpoint = MagicMock(return_value=False)
+    runner._infinite_wave_limit = MagicMock(return_value=None)
+    runner._retry_pending_placements = lambda *args: None
+    runner._pulse_battle_status = lambda *args: None
+    runner._choose_portal_card = MagicMock(return_value=None)
+    runner._portal_chooser_showing = MagicMock(return_value=True)
+
+    with patch("core.runner.MATCH_END_CHECK_EVERY", 1), \
+         patch("core.vision.find_image", return_value=None), \
+         patch("time.time", side_effect=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]):
+        stop_event = threading.Event()
+        # В цикле боя при mode="portals" и chooser_showing должен сразу вернуть "win"
+        outcome = runner._wait_for_match_result(
+            12345, stop_event, battle_blocks=[], first_repeat=False, task={"mode": "portals"}
+        )
+        assert outcome == "win"
+        assert any("Post-run portal screen is already visible" in log for log in runner.logs)
