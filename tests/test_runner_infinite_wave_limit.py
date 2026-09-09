@@ -173,3 +173,47 @@ def test_failed_leave_reports_failure_to_match_loop(monkeypatch):
 
     assert runner._check_infinite_wave_limit(
         123, threading.Event(), 10, state) == "failed"
+
+
+def test_infinite_wave_limit_uses_restart_game_when_repeats_remain(monkeypatch):
+    """Ловит баг, когда макрос посреди цепочки повторов выходил в лобби
+    через Leave Stage вместо нажатия Restart Game в настройках, из-за чего
+    терялось время и возникали ложные ошибки возврата в лобби."""
+    runner = _runner()
+    runner._is_last_repeat = False
+
+    clicked_images = []
+    def fake_find_image(_hwnd, name, **_kwargs):
+        if name in ("restart_btn", "restart_icon"):
+            return {"x": 500, "y": 300, "cx": 550, "cy": 320, "score": 0.95}
+        return None
+
+    def fake_click_match(_mouse, _hwnd, match):
+        clicked_images.append(match)
+
+    monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
+    monkeypatch.setattr(runner_module.vision, "click_match", fake_click_match)
+
+    res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
+    assert res == "restarted"
+    assert len(clicked_images) >= 1
+
+
+def test_infinite_wave_limit_leaves_to_lobby_on_last_repeat(monkeypatch):
+    """Ловит баг, когда на последнем повторе макрос ошибочно перезапускал
+    раунд вместо выхода в лобби, оставляя игрока внутри матча после
+    завершения очереди задач."""
+    runner = _runner()
+    runner._is_last_repeat = True
+
+    left = []
+    monkeypatch.setattr(
+        runner, "_click_and_verify_gone",
+        lambda _hwnd, _stop, name, *_args, **_kwargs: left.append(name) or True
+    )
+    monkeypatch.setattr(runner, "_click_return_to_lobby_if_found", lambda *_args: True)
+
+    res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
+    assert res == "wave_limit"
+    assert "leave_stage" in left
+

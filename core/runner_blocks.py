@@ -1101,6 +1101,14 @@ class BlockOps:
         for no reason -- so this checks first_repeat itself regardless of
         the block's own "Once" toggle, same hardcoded skip the old fixed
         pre-step always had."""
+        if getattr(self, "_started_in_game", False):
+            self._log('[Macro] Started while already in-game -- skipping walk to keep your current position.')
+            return
+
+        if block.get("mode") in ("none", "disabled", "manual"):
+            self._log('[Macro] Walk Path is set to manual/disabled -- skipping walk so you can position yourself.')
+            return
+
         if not first_repeat:
             self._log('[Macro] Repeat of the same stage -- skipping the Walk Path block (already walked on entry).')
             return

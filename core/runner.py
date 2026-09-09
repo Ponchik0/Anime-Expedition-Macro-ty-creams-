@@ -1043,13 +1043,20 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # _skip_first_task_setup), picking the run up from where the user
         # already is.
         self._skip_first_task_setup = False
-        try:
-            if vision.find_image(hwnd, "nav_unitmanager") is not None:
-                self._skip_first_task_setup = True
-                self._log("[Macro] Unit Manager is visible -- already in-game, so the first task "
-                           "skips stage entry and starts from Pre Start.")
-        except vision.TemplateNotFound:
-            pass
+        self._started_in_game = False
+        in_match_found = None
+        for img_name, thr in (("leave_stage", 0.80), ("nav_unitmanager", 0.80), ("autoplay_on", 0.80), ("autoplay_off", 0.80)):
+            try:
+                if vision.find_image(hwnd, img_name, threshold=thr) is not None:
+                    in_match_found = img_name
+                    break
+            except vision.TemplateNotFound:
+                continue
+        if in_match_found:
+            self._skip_first_task_setup = True
+            self._started_in_game = True
+            self._log(f'[Macro] In-game HUD detected ("{in_match_found}") -- already in match, '
+                       f'skipping lobby/stage entry and starting directly from the current stage.')
 
         # Bounty and Challenge run ONCE per Start (not once per task-queue
         # pass, see
@@ -1371,6 +1378,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # значило бы соврать уведомлению о прогрессе.
                 if self._timer_expired(task):
                     break
+                self._is_last_repeat = (repeat_index == repeat_total)
                 self._active_task_progress["next_repeat"] = repeat_index
                 self._set_status(current_repeat=f"{repeat_index} / {repeat_total}")
                 battle_started = time.time()
@@ -1383,6 +1391,16 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     task_failed = True
                     break
                 duration = self._format_duration(time.time() - battle_started)
+
+                # Перезапуск прямо из игры через Restart Game в настройках:
+                # мы не выходили в лобби, раунд уже перезапущен на этой же карте,
+                # поэтому следующий повтор начинается сразу без лобби и поиска режима.
+                if result == "restarted":
+                    self._log("[Macro] Match restarted in-game via Settings -> beginning next repeat directly.")
+                    fresh_entry = True
+                    time.sleep(3.0)
+                    continue
+
                 # Both the Infinite wave-limit exit ("wave_limit") and a
                 # "Leave at Minute" battle block ("left") leave the LIVE match
                 # to the lobby themselves -- no Victory/Defeat screen follows,
@@ -2232,48 +2250,97 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except (TypeError, ValueError):
             return DEFAULT_INFINITE_WAVE_LIMIT
 
-    def _leave_infinite_at_wave_limit(self, hwnd, stop_event: threading.Event, limit: int) -> bool:
-        """Leave a live Infinite match after ``limit`` has fully completed.
+    def _leave_infinite_at_wave_limit(self, hwnd, stop_event: threading.Event, limit: int) -> str:
+        """Leave or restart a live Infinite match after ``limit`` has fully completed.
 
         Сначала пробуем кнопку «Restart Game» из меню настроек в игре —
         она возвращает на стартовый экран карты без выхода в лобби.
-        Если кнопка не нашлась (или шаблонов нет), откатываемся на
+        Если кнопка не нашлась (или последний повтор), выходим через
         обычный «Leave Stage» → «Return to Lobby».
         """
         self._release_quick_place_shift()
-        self._set_status(action=f"Wave {limit} complete -- leaving stage...")
+        self._set_status(action=f"Wave {limit} complete -- restarting match...")
         self._log(
             f"[Macro] Infinite wave {limit} completed and wave {limit + 1} began -- "
-            "attempting to restart via Restart Game button."
+            "attempting in-game Restart Game."
         )
 
-        # Пробуем Restart Game (кнопка в меню настроек внутри матча).
-        # Она не выводит в лобби — перезапускает раунд на той же карте,
-        # что позволяет сразу начать следующий повтор без долгого
-        # пути через лобби и экран выбора режима.
-        try:
-            restart_match = vision.find_image(hwnd, "restart_btn")
-        except (vision.TemplateNotFound, Exception):
+        is_last_repeat = getattr(self, "_is_last_repeat", False)
+        if not is_last_repeat:
+            # 1. Проверяем, не открыты ли уже настройки игры (видна ли кнопка restart)
             restart_match = None
+            for name in ("restart_btn", "restart_icon", "restart_btn_text"):
+                try:
+                    restart_match = vision.find_image(hwnd, name, threshold=0.75)
+                    if restart_match:
+                        break
+                except vision.TemplateNotFound:
+                    continue
 
-        if restart_match:
-            debug_path = self._debug_save(hwnd, "restart_btn", restart_match)
-            suffix = f" Debug: {debug_path}" if debug_path else ""
-            self._log(
-                f'[Macro] Found "restart_btn" (score {restart_match["score"]:.2f}) '
-                f"-- clicking Restart Game.{suffix}"
-            )
-            vision.click_match(self._mouse, hwnd, restart_match)
-            return not self._checkpoint(stop_event)
+            # 2. Если настройки не открыты — открываем их через шестерёнку в верхнем баре
+            if not restart_match:
+                self._log("[Macro] Opening in-game Settings to reach Restart Game...")
+                settings_match = None
+                try:
+                    settings_match = vision.find_image(hwnd, "nav_settings", threshold=0.75)
+                except vision.TemplateNotFound:
+                    pass
 
-        # Кнопка Restart не нашлась — идём через Leave Stage как раньше.
-        self._log('[Macro] "restart_btn" not found -- falling back to Leave Stage.')
+                if settings_match:
+                    vision.click_match(self._mouse, hwnd, settings_match)
+                else:
+                    # Координата кнопки шестерёнки в стандартном баре Roblox 1152x756: (273, 30)
+                    self._log("[Macro] nav_settings not matched by image, clicking gear at (273, 30)...")
+                    left, top, _, _ = wm.get_window_rect_screen(hwnd)
+                    self._mouse.click(left + 273, top + 30)
+
+                time.sleep(1.2)  # ждём открытия меню настроек
+
+                # Ищем кнопку Restart Game в открытых настройках
+                for name in ("restart_btn", "restart_icon", "restart_btn_text"):
+                    try:
+                        restart_match = vision.find_image(hwnd, name, threshold=0.75)
+                        if restart_match:
+                            break
+                    except vision.TemplateNotFound:
+                        continue
+
+            # 3. Если кнопка Restart нашлась — нажимаем её!
+            if restart_match:
+                debug_path = self._debug_save(hwnd, "restart_btn", restart_match)
+                suffix = f" Debug: {debug_path}" if debug_path else ""
+                self._log(
+                    f'[Macro] Found Restart Game (score {restart_match["score"]:.2f}) '
+                    f"-- clicking Restart Game.{suffix}"
+                )
+                vision.click_match(self._mouse, hwnd, restart_match)
+                time.sleep(1.0)
+
+                # Проверяем возможное окно подтверждения (Confirm / Yes)
+                for c_name in ("confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
+                    try:
+                        c_match = vision.find_image(hwnd, c_name, threshold=0.75)
+                        if c_match:
+                            self._log(f'[Macro] Found confirmation modal "{c_name}" -- confirming restart.')
+                            vision.click_match(self._mouse, hwnd, c_match)
+                            time.sleep(1.0)
+                            break
+                    except vision.TemplateNotFound:
+                        continue
+
+                self._log("[Macro] Restart Game triggered -- match will reload in-game.")
+                return "restarted"
+
+            self._log('[Macro] "restart_btn" not found in Settings -- falling back to Leave Stage.')
+
+        # Выход в лобби через Leave Stage (если это последний повтор или restart не сработал)
+        self._set_status(action=f"Wave {limit} complete -- leaving stage...")
         if not self._click_and_verify_gone(
                 hwnd, stop_event, "leave_stage", NAV_CLICK_TIMEOUT, success_name="return"):
             self._log('[Macro] "Leave Stage" not found after reaching the Infinite wave limit.')
-            return False
+            return "failed"
         self._click_return_to_lobby_if_found(hwnd, stop_event)
-        return not self._checkpoint(stop_event)
+        return "wave_limit" if not self._checkpoint(stop_event) else "failed"
 
 
     def _check_infinite_wave_limit(self, hwnd, stop_event: threading.Event, limit: int, state: dict):
@@ -2340,9 +2407,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 "confirming on the next read."
             )
             return None
+        exit_result = self._leave_infinite_at_wave_limit(hwnd, stop_event, limit)
+        if exit_result == "restarted":
+            return "restarted"
         return (
             "wave_limit"
-            if self._leave_infinite_at_wave_limit(hwnd, stop_event, limit)
+            if exit_result in ("wave_limit", True)
             else "failed"
         )
 
@@ -2396,8 +2466,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             if infinite_wave_limit is not None:
                 limit_result = self._check_infinite_wave_limit(
                     hwnd, stop_event, infinite_wave_limit, infinite_wave_state)
-                if limit_result == "wave_limit":
-                    return "wave_limit"
+                if limit_result in ("wave_limit", "restarted"):
+                    return limit_result
                 if limit_result == "failed":
                     return None
 
