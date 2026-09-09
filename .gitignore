@@ -34,6 +34,9 @@ settings.json
 
 # Runtime log -- local troubleshooting only, no reason to version it.
 *.log
+*.log.*
+*.zip
+test_img.png
 
 # Python
 __pycache__/

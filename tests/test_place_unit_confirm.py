@@ -256,7 +256,7 @@ def test_click_that_never_registers_is_retried_then_reported(monkeypatch):
     assert landed is False
     on_tile = [c for c in runner.clicks if c == (576, 378)]
     assert len(on_tile) == PLACE_CONFIRM_ATTEMPTS, f"перещёлкиваний: {len(on_tile)}"
-    assert any("не погасла" in m for m in runner.logs), runner.logs
+    assert any("не погасла" in m or "did not clear" in m for m in runner.logs), runner.logs
 
 
 def test_quick_place_never_reclicks(monkeypatch):
@@ -279,12 +279,12 @@ def test_quick_place_never_reclicks(monkeypatch):
 # Итог фазы
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("outcomes,expected", [
-    ([True, True], "расставлено юнитов 2/2"),
-    ([True, False], "расставлено 1, не встало 1"),
-    ([False, False], "НИ ОДИН юнит не встал"),
+@pytest.mark.parametrize("outcomes,expected_options", [
+    ([True, True], ("расставлено юнитов 2/2", "placed units 2/2")),
+    ([True, False], ("расставлено 1, не встало 1", "placed 1, failed 1")),
+    ([False, False], ("НИ ОДИН юнит не встал", "NO units placed")),
 ])
-def test_phase_summary_says_what_actually_happened(outcomes, expected):
+def test_phase_summary_says_what_actually_happened(outcomes, expected_options):
     runner = _Runner()
     runner._reset_placement_tally()
     for i, landed in enumerate(outcomes):
@@ -292,7 +292,7 @@ def test_phase_summary_says_what_actually_happened(outcomes, expected):
 
     runner._log_placement_tally()
 
-    assert any(expected in m for m in runner.logs), runner.logs
+    assert any(any(exp in m for exp in expected_options) for m in runner.logs), runner.logs
 
 
 def test_phase_summary_stays_quiet_with_no_placements():

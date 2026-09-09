@@ -1348,25 +1348,25 @@ class BlockOps:
         if not ok and not failed and not skipped:
             return
         if ok and not failed and not skipped:
-            self._log(f"[Macro] {phase_label}: расставлено юнитов {ok}/{ok}.")
+            self._log(f"[Macro] {phase_label}: placed units {ok}/{ok}.")
             return
         troubles = []
         if failed:
-            troubles.append(f"не встало {failed} ({self._quoted_names(new_failed_names)})")
+            troubles.append(f"failed {failed} ({self._quoted_names(new_failed_names)})")
         if skipped:
-            troubles.append(f"пропущено {skipped} ({self._quoted_names(new_skipped_names)})")
+            troubles.append(f"skipped {skipped} ({self._quoted_names(new_skipped_names)})")
         if not ok and phase_label == PLACEMENT_PHASE_PRESTART:
             # Только для Pre Start это приговор забегу: ноль юнитов на старте =
             # пустое поле. В бою ноль доставленных -- просто «подкрепление не
             # прошло», поле уже не пустое.
-            self._log(f"[Macro] {phase_label}: НИ ОДИН юнит не встал — {'; '.join(troubles)}. "
-                       f"Забег пойдёт с ПУСТЫМ ПОЛЕМ. Если юниты «пропущены» — задай им хоткей и точку "
-                       f"в Macro Manager; если «не встало» — проверь координаты и настройку камеры.")
+            self._log(f"[Macro] {phase_label}: NO units placed -- {'; '.join(troubles)}. "
+                       f"Run starts with EMPTY FIELD. If units skipped -- set hotkey and point "
+                       f"in Macro Manager; if failed -- check coordinates and camera.")
             return
         if not ok:
             self._log(f"[Macro] {phase_label}: {'; '.join(troubles)}.")
             return
-        self._log(f"[Macro] {phase_label}: расставлено {ok}, {', '.join(troubles)}.")
+        self._log(f"[Macro] {phase_label}: placed {ok}, {', '.join(troubles)}.")
 
     @staticmethod
     def _quoted_names(names) -> str:
@@ -1428,8 +1428,8 @@ class BlockOps:
                 return True  # подсветки на клетке больше нет -- клик прошёл
             if attempt == attempts:
                 break
-            self._log(f'[Macro] Place Unit "{name}": подсветка на ({cur_x}, {cur_y}) не погасла — '
-                       f'клик не прошёл, жму ещё раз ({attempt}/{attempts - 1}).')
+            self._log(f'[Macro] Place Unit "{name}": highlight at ({cur_x}, {cur_y}) did not clear -- '
+                       f'click missed, clicking again ({attempt}/{attempts - 1}).')
             self._mouse.move_to(left + cur_x, top + cur_y)
             self._mouse.nudge()  # реальное относительное движение, иначе игра не пересчитает наведение
             time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
@@ -1466,8 +1466,8 @@ class BlockOps:
             # начался).
             "next_at": None,
         })
-        self._log(f'[Macro] Place Unit "{name}": ставлю в очередь на доставку в бою — '
-                   f'скорее всего не хватило денег, попробую ещё раз, когда накопятся.')
+        self._log(f'[Macro] Place Unit "{name}": queued for deferred placement in battle -- '
+                   f'likely insufficient gold, retrying during waves.')
 
     @staticmethod
     def _phantom_recovery_options(block: dict) -> tuple[int, float]:
@@ -1501,8 +1501,8 @@ class BlockOps:
             "macro_name": macro_name, "ordinal": unit_ordinal, "name": name,
             "tries": 0, "max_tries": checks, "delay": delay, "next_at": None,
         })
-        self._log(f'[Macro] Place Unit "{name}": слежу за фантомом — через {delay:g}с '
-                   'проверю, остался ли настоящий юнит.')
+        self._log(f'[Macro] Place Unit "{name}": phantom watch enabled -- in {delay:g}s '
+                   'checking if real unit remains.')
 
     def _placed_unit_still_exists(self, hwnd, stop_event: threading.Event, left: int, top: int,
                                    x: int, y: int, name: str):
@@ -1522,14 +1522,14 @@ class BlockOps:
             exists_match = vision.wait_for_image(hwnd, "unit_exist", timeout=PLACE_UNIT_VERIFY_TIMEOUT)
         except vision.TemplateNotFound:
             self._reset_unit_info_panel(hwnd)
-            self._log(f'[Macro] Phantom check "{name}": нет Assets/ui/unit_exist.png — отключаю проверку.')
+            self._log(f'[Macro] Phantom check "{name}": Assets/ui/unit_exist.png missing -- check disabled.')
             return None
         self._reset_unit_info_panel(hwnd)
         if exists_match is not None:
-            self._log(f'[Macro] Phantom check "{name}": настоящий юнит есть на ({x}, {y}) '
+            self._log(f'[Macro] Phantom check "{name}": real unit present at ({x}, {y}) '
                       f'(score {exists_match["score"]:.2f}).')
             return True
-        self._log(f'[Macro] Phantom check "{name}": юнит исчез с ({x}, {y}).')
+        self._log(f'[Macro] Phantom check "{name}": unit missing from ({x}, {y}).')
         return False
 
     def _retry_phantom_placement(self, hwnd, stop_event: threading.Event, pending: dict,
@@ -1544,21 +1544,21 @@ class BlockOps:
         left, top, _, _ = wm.get_window_rect_screen(hwnd)
         params = pending["block"].get("params") or {}
         x, y = int(params.get("x") or 0), int(params.get("y") or 0)
-        self._log(f'[Macro] Phantom check "{name}": проверка {tries}/{maximum}.')
+        self._log(f'[Macro] Phantom check "{name}": check {tries}/{maximum}.')
         exists = self._placed_unit_still_exists(hwnd, stop_event, left, top, x, y, name)
         if exists is None or exists:
             self._pending_placements.remove(pending)
             return
-        self._log(f'[Macro] Phantom check "{name}": повторяю расстановку после исчезновения.')
+        self._log(f'[Macro] Phantom check "{name}": re-placing after unit disappeared.')
         landed = self._run_place_unit_block(
             hwnd, stop_event, left, top, pending["block"], pending["index"],
             pending["macro_name"], pending["ordinal"], next_is_same_unit=False,
             verify=True, pending_ok=False)
         if landed:
-            self._log(f'[Macro] Phantom check "{name}": юнит восстановлен.')
+            self._log(f'[Macro] Phantom check "{name}": unit restored.')
             self._pending_placements.remove(pending)
         elif tries >= maximum:
-            self._log(f'[Macro] Phantom check "{name}": не удалось восстановить юнит за {tries} проверок.')
+            self._log(f'[Macro] Phantom check "{name}": failed to restore unit after {tries} checks.')
             self._pending_placements.remove(pending)
         else:
             pending["next_at"] = now + pending["delay"]
@@ -1590,9 +1590,9 @@ class BlockOps:
             return  # дать волне начаться и деньгам капнуть
         if now - started > PLACE_PENDING_DEADLINE_S:
             names = self._quoted_names([p["name"] for p in self._pending_placements])
-            self._log(f"[Macro] Догоняющая расстановка: время вышло, так и не встали {names}. "
-                       f"Если это повторяется -- скорее всего юнитов в сборке больше, чем позволяет "
-                       f"стартовый баланс: перенеси лишние блоки Place Unit из Pre Start в Battle.")
+            self._log(f"[Macro] Deferred placement: timed out, unable to place {names}. "
+                       f"If this recurs -- initial unit cost likely exceeds starting balance: "
+                       f"move extra Place Unit blocks from Pre Start to Battle.")
             self._pending_placements = []
             return
 
@@ -1602,8 +1602,8 @@ class BlockOps:
             pending["tries"] += 1
             pending["next_at"] = now + PLACE_PENDING_RETRY_S
             name, tries = pending["name"], pending["tries"]
-            self._log(f'[Macro] Догоняю "{name}": подход {tries}/{PLACE_PENDING_MAX_TRIES} '
-                       f'(не встал до старта).')
+            self._log(f'[Macro] Deferred placement "{name}": attempt {tries}/{PLACE_PENDING_MAX_TRIES} '
+                       f'(did not place pre-start).')
             left, top, _, _ = wm.get_window_rect_screen(hwnd)
             # pending_ok=False -- догоняющая попытка НЕ кладёт себя в очередь
             # заново, иначе очередь никогда не опустеет. Счётчик подходов ведём
@@ -1613,10 +1613,10 @@ class BlockOps:
                 pending["macro_name"], pending["ordinal"],
                 next_is_same_unit=False, verify=False, pending_ok=False)
             if landed:
-                self._log(f'[Macro] Догнал "{name}" — юнит встал.')
+                self._log(f'[Macro] Deferred placement "{name}": unit placed successfully.')
                 self._pending_placements.remove(pending)
             elif tries >= PLACE_PENDING_MAX_TRIES:
-                self._log(f'[Macro] "{name}" не встал и с {tries} подходов — больше не пытаюсь.')
+                self._log(f'[Macro] Deferred placement "{name}": failed after {tries} attempts -- giving up.')
                 self._pending_placements.remove(pending)
             return  # один юнит за вызов, см. докстринг
 
@@ -1665,8 +1665,8 @@ class BlockOps:
                 dist = max(abs(dx), abs(dy))
                 if dist > PLACE_MAX_DRIFT and drift_waits_left > 0:
                     drift_waits_left -= 1
-                    self._log(f'[Macro] Place Unit "{name}": ближайшая клетка в {dist}px от заданной '
-                               f'точки — жду, пока освободится нужная '
+                    self._log(f'[Macro] Place Unit "{name}": closest valid tile is {dist}px away '
+                               f'from target -- waiting for target tile to clear '
                                f'({PLACE_DRIFT_WAIT_TRIES - drift_waits_left}/{PLACE_DRIFT_WAIT_TRIES}).')
                     time.sleep(PLACE_DRIFT_WAIT_S)
                     self._mouse.move_to(left + orig_x, top + orig_y)
@@ -1677,8 +1677,8 @@ class BlockOps:
                     self._mouse.move_to(left + cx, top + cy)
                     time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
                     if dist > PLACE_MAX_DRIFT:
-                        self._log(f'[Macro] Place Unit "{name}": нужная клетка так и не освободилась — '
-                                   f'ставлю в {dist}px от заданной точки, offset ({dx}, {dy}).')
+                        self._log(f'[Macro] Place Unit "{name}": target tile occupied -- '
+                                   f'placing {dist}px away from target point, offset ({dx}, {dy}).')
                     else:
                         self._log(f'[Macro] Place Unit "{name}": aligned to a valid tile at offset ({dx}, {dy}).')
                 return cx, cy
@@ -1926,8 +1926,8 @@ class BlockOps:
                 if block.get("recoverPhantom") and pending_ok:
                     self._remember_phantom_placement(block, index, macro_name, unit_ordinal, name)
             else:
-                self._log(f'[Macro] Place Unit "{name}": НЕ ВСТАЛ на ({cur_x}, {cur_y}) ({reason}) — '
-                           f'подсветка клетки не погасла, клик не зарегистрировался.')
+                self._log(f'[Macro] Place Unit "{name}": failed to place at ({cur_x}, {cur_y}) ({reason}) -- '
+                           f'tile highlight did not clear, click missed.')
                 self._note_placement(name, False)
                 # Клетка была, клик был, юнит не встал -- это тот самый случай
                 # «не хватило денег» (см. _remember_pending_placement).
@@ -1969,8 +1969,8 @@ class BlockOps:
             # unit_exist не подтвердил, но проверка подсветки выше могла уже
             # ответить -- берём её ответ вместо прежнего «placed, но не
             # проверили», чтобы в журнале не оставалось ложного успеха.
-            self._log(f'[Macro] Place Unit "{name}": {"placed at" if landed else "НЕ ВСТАЛ на"} '
-                       f'({cur_x}, {cur_y}), unit_exist не подтвердил '
+            self._log(f'[Macro] Place Unit "{name}": {"placed at" if landed else "failed to place at"} '
+                       f'({cur_x}, {cur_y}), unit_exist not verified '
                        f'-- add Assets/ui/unit_exist.png to enable this check.')
             self._note_placement(name, landed)
             if landed and unit_ordinal is not None:
@@ -2070,7 +2070,7 @@ class BlockOps:
             if self._checkpoint(stop_event):
                 return False
             if not landed:
-                self._log(f'[Macro] Place Unit "{name}": клик не прошёл (попытка {attempt}/{n}) — '
+                self._log(f'[Macro] Place Unit "{name}": click did not register (attempt {attempt}/{n}) -- '
                            f'начинаю расстановку заново.')
                 continue
 

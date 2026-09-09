@@ -786,7 +786,7 @@ class Api:
             try:
                 self._update_info = updater.check_for_update(log=self.push_log)
             except Exception as exc:
-                self.push_log(f"[Обновление] Проверка не удалась: {exc}")
+                self.push_log(f"[Update] Check failed: {exc}")
                 self._update_info = {"available": False, "status": updater.CHECK_OFFLINE,
                                      "reason": str(exc),
                                      "current_version": updater.get_current_version()}
@@ -1131,7 +1131,7 @@ class Api:
         self._session_wins = 0
         self._session_losses = 0
         cfg.update({"run_history": [], "all_time_wins": 0, "all_time_losses": 0})
-        self.push_log("[Статистика] История забегов и счётчики очищены.")
+        self.push_log("[Stats] Run history and counters cleared.")
         return {"ok": True}
 
     def export_run_report_pdf(self) -> dict:
@@ -1165,9 +1165,9 @@ class Api:
         try:
             report_pdf.build(path, stats=self._run_stats_snapshot(), history=history)
         except Exception as exc:
-            self.push_log(f"[Статистика] Отчёт не собрался: {exc}")
+            self.push_log(f"[Stats] Report generation failed: {exc}")
             return {"ok": False, "reason": str(exc)}
-        self.push_log(f"[Статистика] Отчёт сохранён: {path}")
+        self.push_log(f"[Stats] Report saved: {path}")
         return {"ok": True, "path": path}
 
     def get_settings(self) -> dict:
@@ -2487,7 +2487,7 @@ class Api:
             return {"ok": False, "reason": "no_window"}
         res = template_check.check(hwnd)
         for line in template_check.summary(res).splitlines():
-            self.push_log("[Проверка] " + line)
+            self.push_log("[Check] " + line)
         return res
 
     # ================================================ ПРИВАТНЫЙ СЕРВЕР =====
@@ -2501,7 +2501,7 @@ class Api:
         link = joinlink.normalize(link)
         cfg.update({"private_server_link": link})
         info = joinlink.describe(link)
-        self.push_log("[Сервер] " + info["text"])
+        self.push_log("[Server] " + info["text"])
         return {"ok": True, "link": link, **info}
 
     def get_run_mode(self) -> dict:
@@ -2538,7 +2538,7 @@ class Api:
         if mode not in ("auto", "replay"):
             return {"ok": False, "reason": "bad_mode"}
         cfg.update({"run_mode": mode})
-        self.push_log("[Повтор] Режим: " + ("повтор записи" if mode == "replay" else "автоматический"))
+        self.push_log("[Replay] Mode: " + ("replay" if mode == "replay" else "auto"))
         return {"ok": True}
 
     def set_replay_option(self, key: str, value) -> dict:
@@ -2610,7 +2610,7 @@ class Api:
         # момент уже не у кого. Экран «Запись» по-прежнему передаёт имя при
         # остановке, и оно главнее.
         self._pending_rec_name = (name or "").strip()
-        self.push_log("[Повтор] Запись начата — играй как обычно.")
+        self.push_log("[Replay] Recording started -- play normally.")
         return {"ok": True}
 
     def replay_stop_recording(self, name: str = "") -> dict:
@@ -2623,7 +2623,7 @@ class Api:
         self._pending_rec_name = ""
         acts = sum(1 for e in events if e.get("kind") != "move")
         if acts == 0:
-            self.push_log("[Повтор] Записывать нечего: ни одного клика или нажатия.")
+            self.push_log("[Replay] Nothing recorded: no clicks or key presses.")
             return {"ok": False, "reason": "empty"}
         saved = replay.save(name, events, rec.base_w, rec.base_h, rec.duration_ms)
         cfg.update({"replay_file": saved})
@@ -2632,7 +2632,7 @@ class Api:
         # человек ничего не нажимал, а в файл эти минуты всё равно попали, и
         # повтор будет их выжидать (см. граблю №5 в core/replay.py).
         tail = f", из них ждём {st['tail']} с" if st["tail"] >= 1.0 else ""
-        self.push_log(f"[Повтор] Записано «{saved}»: {st['actions']} действий, {st['seconds']} с{tail}.")
+        self.push_log(f"[Replay] Recorded \"{saved}\": {st['actions']} actions, {st['seconds']}s{tail}.")
         return {"ok": True, "name": saved, **st}
 
     def replay_recording_status(self) -> dict:
@@ -2730,7 +2730,7 @@ class Api:
         # без этого переименование тихо ломало бы режим повтора.
         if cfg.load().get("replay_file") == old:
             cfg.update({"replay_file": safe})
-        self.push_log(f"[Повтор] Запись «{old}» переименована в «{safe}».")
+        self.push_log(f"[Replay] Recording \"{old}\" renamed to \"{safe}\".")
         return {"ok": True, "name": safe, "sanitized": safe != new}
 
     def replay_play(self, name: str = "") -> dict:
@@ -2756,10 +2756,10 @@ class Api:
                      start_delay_ms=delay * 1000.0)
         if ok:
             loops = int(data.get("replay_loops", 0) or 0)
-            self.push_log(f"[Повтор] Играю «{name}», кругов: "
+            self.push_log(f"[Replay] Playing \"{name}\", loops: "
                            + ("без конца" if loops == 0 else str(loops)))
             if delay > 0:
-                self.push_log(f"[Повтор] Пауза {delay:g} с — "
+                self.push_log(f"[Replay] Pause {delay:g}s -- "
                                f"жду, пока игра вернётся на экран.")
             # Состояние на Панели — то же табло, что у автомата. Повтор раньше
             # не заполнял его вовсе, и на Дашборде во время повтора висело
@@ -2888,7 +2888,7 @@ class Api:
             return
 
         from core import replay_result
-        self.push_log(f"[Повтор] {self._replay_loss_streak} поражений подряд — "
+        self.push_log(f"[Replay] {self._replay_loss_streak} defeats in a row -- "
                        f"останавливаю прогон. Похоже, запись перестала подходить.")
         # Останавливаем ПЛЕЕР, а не replay_stop(): мы сейчас в потоке
         # наблюдателя, а replay_stop делает join этого самого потока — то есть
@@ -2914,7 +2914,7 @@ class Api:
             w.stop()
         if p:
             p.stop()
-            self.push_log("[Повтор] Остановлено.")
+            self.push_log("[Replay] Stopped.")
         return {"ok": True}
 
     def replay_toggle_pause(self) -> dict:
@@ -3255,13 +3255,13 @@ class Api:
                 keys_[a] = key
             cfg.update({"hotkeys": keys_})
             self._apply_hotkeys(keys_)
-            self.push_log(f"[Клавиши] «{key}» не подходит под привязку — оставил как было.")
+            self.push_log(f"[Hotkeys] \"{key}\" is not a valid key binding -- left unchanged.")
             return {"ok": False, "reason": "bad_key", "hotkeys": keys_, "cleared": []}
 
         label = HOTKEY_LABELS.get(action, action)
-        self.push_log(f"[Клавиши] {label} → " + (key.upper() if key else "не назначено"))
+        self.push_log(f"[Hotkeys] {label} -> " + (key.upper() if key else "unassigned"))
         for a in cleared:
-            self.push_log(f"[Клавиши] {HOTKEY_LABELS.get(a, a)} освобождено: "
+            self.push_log(f"[Hotkeys] {HOTKEY_LABELS.get(a, a)} unassigned: "
                           f"клавиша занята под «{label}».")
         return {"ok": True, "hotkeys": keys_, "cleared": cleared}
 
@@ -3277,7 +3277,7 @@ class Api:
     def reset_hotkeys(self) -> dict:
         cfg.update({"hotkeys": dict(HOTKEY_DEFAULTS)})
         self._apply_hotkeys(dict(HOTKEY_DEFAULTS))
-        self.push_log("[Клавиши] Все привязки возвращены к исходным.")
+        self.push_log("[Hotkeys] All hotkey bindings restored to defaults.")
         return {"ok": True, "hotkeys": dict(HOTKEY_DEFAULTS)}
 
     # Task screen > Export/Import: shares a task queue (plus the Macro Manager
@@ -3649,13 +3649,13 @@ class Api:
             res = webhook.send(url, embed, content=f"<@{mention_id}>" if mention_id else "",
                                 silent=bool(wh.get("silent")))
         except Exception as exc:
-            self.push_log(f"[Статус] Сводка не ушла: {exc}")
+            self.push_log(f"[Status] Summary failed to send: {exc}")
             res = {"ok": False, "reason": str(exc)}
         if res.get("ok"):
-            self.push_log(f"[Статус] Сводка отправлена: {wins}W · {losses}L "
+            self.push_log(f"[Status] Summary sent: {wins}W · {losses}L "
                            f"за {stats_report.format_elapsed(window)}.")
         else:
-            self.push_log(f"[Статус] Сводка не ушла: {res.get('reason')}")
+            self.push_log(f"[Status] Summary failed to send: {res.get('reason')}")
         if reset:
             self._reset_status_window()
         return res
@@ -4189,7 +4189,7 @@ class Api:
             else:
                 import webbrowser
                 webbrowser.open(link)
-            self.push_log("Открываю Roblox: "
+            self.push_log("Opening Roblox: "
                            + ("приватный сервер" if joinlink.is_private() else "общее лобби"))
             return {"ok": True}
         except Exception as exc:
@@ -5259,7 +5259,7 @@ class Api:
         except (OSError, ValueError) as exc:
             return {"ok": False, "reason": str(exc)}
         where = maps.snapshot_variant(variant)
-        self.push_log(f"[Positions] Снимок из игры сохранён для "
+        self.push_log(f"[Positions] Game screenshot saved for "
                       f"{mode}{' · ' + where if where else ' (весь режим)'} — "
                       f"дальше он подставляется сам.")
         return {"ok": True, "category": maps.category_for_mode(mode),
@@ -5272,7 +5272,7 @@ class Api:
         removed = maps.delete_mode_snapshot(mode, variant)
         if removed:
             where = maps.snapshot_variant(variant)
-            self.push_log(f"[Positions] Снимок для "
+            self.push_log(f"[Positions] Screenshot for "
                           f"{mode}{' · ' + where if where else ' (весь режим)'} удалён.")
         return {"ok": True, "removed": removed}
 
@@ -5683,10 +5683,10 @@ def _launch_ui():
         try:
             api._update_info = updater.check_for_update(log=api.push_log)
         except Exception as exc:
-            api.push_log(f"[Обновление] Проверка не удалась: {exc}")
+            api.push_log(f"[Update] Check failed: {exc}")
             return
         if api._update_info.get("available"):
-            api.push_log(f'[Обновление] Доступна версия {api._update_info["version"]}.')
+            api.push_log(f'[Update] New version available: {api._update_info["version"]}.')
             api.push_ui("showUpdateAvailable")
 
     threading.Thread(target=_check_for_update_background, daemon=True).start()

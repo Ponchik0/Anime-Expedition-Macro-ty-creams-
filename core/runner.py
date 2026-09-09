@@ -598,14 +598,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         mins_spent = int(spent // 60)
         if nxt and nxt != "next":
             self._timer_jump_to = nxt
-            self._log(f"[Таймер] На задаче {mins_spent} мин из {minutes:g} — время вышло, "
-                       f"матч доигран. Перехожу к назначенной задаче.")
+            self._log(f"[Timer] Task time {mins_spent}m of {minutes:g}m expired -- "
+                       f"match finished. Switching to configured task.")
         else:
-            # Задача перехода не указана или выбрана «следующая по очереди»
             self._timer_jump_to = None
-            self._log(f"[Таймер] На задаче {mins_spent} мин из {minutes:g} — время вышло, "
-                       f"перехожу к следующей задаче очереди.")
-        self._set_status(action="Таймер задачи вышел — перехожу")
+            self._log(f"[Timer] Task time {mins_spent}m of {minutes:g}m expired -- "
+                       f"moving to next queued task.")
+        self._set_status(action="Task timer expired -- switching")
         return True
 
     def _check_stall(self, stop_event: threading.Event) -> None:
@@ -643,9 +642,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             return
         self._stall_reported = True
         action = self._last_action or "—"
-        self._log(f"[Macro] Ничего не происходит {mins} мин (последнее действие: «{action}»). "
-                   f"Похоже, макрос застрял — останавливаюсь.")
-        self._set_status(action=f"Остановлен: завис на «{action}»")
+        self._log(f"[Macro] No activity for {mins}m (last action: \"{action}\"). "
+                   f"Macro appears stalled -- stopping.")
+        self._set_status(action=f"Stopped: stalled on \"{action}\"")
         try:
             self._send_event_webhook(
                 getattr(self, "_webhook_cfg", None), getattr(self, "_current_task", None),
@@ -1148,9 +1147,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     if self._checkpoint(stop_event):
                         return
                     if task.get("stop_on_failure"):
-                        self._log(f"[Macro] Задача {task_index}/{len(tasks)} прервана из-за ошибки — "
-                                  f"останавливаю макрос (включено «Остановить при сбое»).")
-                        self._set_status(action="Остановлен: ошибка в задаче")
+                        self._log(f"[Macro] Task {task_index}/{len(tasks)} stopped due to error -- "
+                                  f"stopping macro (stop on failure enabled).")
+                        self._set_status(action="Stopped: task error")
                         return
                     # Recovery already returned to the lobby. Skip only this
                     # broken task and let the remaining queue (or its next
@@ -1199,11 +1198,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     target = next((k for k, t in enumerate(tasks)
                                     if str(t.get("id")) == str(jump)), None)
                     if target is None:
-                        self._log("[Таймер] Задача, на которую нужно было перейти, из очереди "
-                                   "пропала — продолжаю по порядку.")
+                        self._log("[Timer] Target task for timer jump was removed from queue -- "
+                                   "continuing sequentially.")
                     else:
                         ti = target
-                        self._log(f"[Таймер] Перехожу к задаче {target + 1}/{len(tasks)}: "
+                        self._log(f"[Timer] Switching to task {target + 1}/{len(tasks)}: "
                                    f'"{tasks[target].get("map") or "—"}".')
                         continue
 
@@ -1213,13 +1212,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if task.get("on_complete_enabled"):
                     action = task.get("on_complete_action") or "next"
                     if action == "stop":
-                        self._log(f"[Macro] Задача {task_index}/{len(tasks)} завершена — "
-                                  f"останавливаю макрос (действие после завершения: «Остановить»).")
+                        self._log(f"[Macro] Task {task_index}/{len(tasks)} completed -- "
+                                  f"stopping macro (on-complete action: \"Stop\").")
                         self._set_status(action="Idle")
                         return
                     elif action == "repeat":
-                        self._log(f"[Macro] Задача {task_index}/{len(tasks)} завершена — "
-                                  f"повторяю эту же задачу (действие после завершения: «Зациклить»).")
+                        self._log(f"[Macro] Task {task_index}/{len(tasks)} completed -- "
+                                  f"repeating this task (on-complete action: \"Repeat\").")
                         ti = task_index - 1
                         continue
                     elif action == "jump":
@@ -1228,13 +1227,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                                         if str(t.get("id")) == str(target_id)), None)
                         if target is not None:
                             ti = target
-                            self._log(f"[Macro] Задача {task_index}/{len(tasks)} завершена — "
-                                      f"перехожу к задаче {target + 1}/{len(tasks)}: "
+                            self._log(f"[Macro] Task {task_index}/{len(tasks)} completed -- "
+                                      f"switching to task {target + 1}/{len(tasks)}: "
                                       f'"{tasks[target].get("map") or "—"}".')
                             continue
                         else:
-                            self._log(f"[Macro] Задача {task_index}/{len(tasks)}: целевая задача для перехода не найдена "
-                                      f"— продолжаю по порядку.")
+                            self._log(f"[Macro] Task {task_index}/{len(tasks)}: target task id \"{target_id}\" not found "
+                                      f"-- continuing sequentially.")
                 if self._current_hwnd and wm.is_window(self._current_hwnd):
                     hwnd = self._current_hwnd
                 if self._checkpoint(stop_event):
@@ -1404,8 +1403,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     if repeat_index == repeat_total:
                         # Последний повтор задачи -- уходим из этапа, иначе
                         # следующая задача начнётся не с лобби, а изнутри этапа.
-                        self._log("[Macro] Последний повтор задачи -- выхожу из этапа в лобби.")
-                        if not self._leave_stage_to_lobby(hwnd, stop_event, "Раунд кончился"):
+                        self._log("[Macro] Last repeat of task -- leaving stage to lobby.")
+                        if not self._leave_stage_to_lobby(hwnd, stop_event, "Round finished"):
                             if stop_event.is_set():
                                 return False
                             task_failed = True
@@ -1424,9 +1423,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # Смерть в Expedition до первого чекпойнта извлечения в эту
                 # серию НЕ идёт -- см. _is_early_expedition_loss.
                 if self._is_early_expedition_loss(task, result):
-                    self._log("[Macro] Поражение в Expedition до первого чекпойнта извлечения — "
-                               "это обычный проигранный забег, а не поломка: серию поражений не считаю "
-                               "и Roblox не перезапускаю.")
+                    self._log("[Macro] Expedition defeat before first extract checkpoint -- "
+                               "counted as normal defeat, skipping Roblox restart.")
                 elif result == "loss" and self._consecutive_loss_map == map_name:
                     self._consecutive_losses += 1
                 elif result == "loss":
@@ -1748,9 +1746,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             f"Task {task_index}/{task_count} still failing after {TASK_RECOVERY_ATTEMPTS} recovery "
             f"attempts -- {fail_action_msg}.", 0xE05A6D, screenshot_path)
         if task.get("stop_on_failure"):
-            self._log(f"[Macro] Задача {task_index}/{task_count} не смогла завершиться — "
-                      f"останавливаю макрос (включено «Остановить при сбое»).")
-            self._set_status(action="Остановлен: сбой задачи")
+            self._log(f"[Macro] Task {task_index}/{task_count} failed to finish -- "
+                      f"stopping macro (stop on failure enabled).")
+            self._set_status(action="Stopped: task failure")
             return False
         return True
 
@@ -2635,19 +2633,19 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             except vision.TemplateNotFound:
                 continue
             if match is not None:
-                self._log(f'[Macro] Матч кончился: вижу кнопку повтора, а «{name}» совпал только на '
-                           f'ослабленном пороге (score {match["score"]:.2f}). Итог: '
-                           f'{"победа" if outcome == "win" else "поражение"}. Если это повторяется — '
-                           f'добавь свою вырезку баннера через Настройки > Общие > Менеджер картинок.')
+                self._log(f'[Macro] Match ended: repeat button visible, "{name}" matched on '
+                           f'relaxed threshold (score {match["score"]:.2f}). Outcome: '
+                           f'{"win" if outcome == "win" else "loss"}. If this recurs -- '
+                           f'add custom banner crop via Settings > General > Image Manager.')
                 return outcome
 
         # Панель результата на экране, но какая именно -- не понять.
         shot = self._save_debug_screenshot_unconditional(hwnd, "match_result_unknown")
-        self._log('[Macro] Матч кончился (на экране кнопка «Repeat Stage»), но какой именно баннер — '
-                   'не распознал: ни «Victory», ни «Defeat» не совпали даже мягко. Продолжаю фарм, '
-                   'но этот матч НЕ пойдёт в статистику. Чтобы исход определялся, добавь свою вырезку '
-                   'баннера через Настройки > Общие > Менеджер картинок'
-                   + (f' (скриншот: {shot})' if shot else '') + '.')
+        self._log('[Macro] Match ended (Repeat Stage visible), but outcome banner '
+                   'not recognized: neither Victory nor Defeat matched. Continuing farm, '
+                   'but this match will NOT count in statistics. To fix, add custom banner crop '
+                   'via Settings > General > Image Manager'
+                   + (f' (screenshot: {shot})' if shot else '') + '.')
         return RESULT_UNKNOWN
 
     def _report_round_ended(self, hwnd, task: dict, duration: str, webhook: dict) -> None:
@@ -2700,8 +2698,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         name, match = self._find_start_game_button(hwnd)
         if match is None:
             return None
-        self._log(f'[Macro] Раунд кончился: экрана результата нет, на экране снова «{name}» — '
-                   f'этап готов к следующему забегу. Начинаю его здесь же, без выхода в лобби.')
+        self._log(f'[Macro] Round ended: no result screen, \"{name}\" visible again -- '
+                   f'stage ready for next run. Starting in-place without returning to lobby.')
         return RESULT_ROUND_ENDED
 
 
@@ -2858,7 +2856,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             # «поражение»). Зато СОБЫТИЕМ сказать надо: человек должен узнать,
             # что баннер не распознаётся, иначе счётчики будут молча
             # недосчитывать матчи.
-            self._log(f"[Macro] {label} ({duration}) -- исход не распознан, в статистику не пишу.")
+            self._log(f"[Macro] {label} ({duration}) -- outcome unrecognized, skipping statistics.")
             # В ПОБЕДЫ И ПОРАЖЕНИЯ не пишем (там пришлось бы соврать), но
             # СОСЧИТАТЬ обязаны: «за ночь кончилось 27 матчей, распознано 3» --
             # это и есть диагноз, и до сих пор его нельзя было получить ниоткуда,
@@ -2944,8 +2942,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # ровно та проверка, которой не хватало.
         expedition_loss = task.get("mode") == "expedition" and result == "loss"
         if repeat and expedition_loss:
-            self._log("[Macro] Поражение в Expedition -- кнопки «Repeat Stage» на этом экране нет, "
-                       "выхожу в лобби и захожу в этап заново.")
+            self._log("[Macro] Expedition defeat -- no \"Repeat Stage\" button on this screen, "
+                       "leaving to lobby for fresh entry.")
             repeat = False
             self._force_fresh_reentry = True
 
@@ -2989,8 +2987,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # попытку восстановления и в итоге снять задачу целиком.
                 # Выход в лобби + повторный заход делают то же самое, только
                 # без потерь -- ниже как раз этот путь, туда и падаем.
-                self._log(f'[Macro] "{repeat_label}" не нашлась -- выхожу в лобби и захожу в этап заново '
-                           '(этот повтор задачи не потерян).')
+                self._log(f'[Macro] "{repeat_label}" not found -- leaving to lobby for fresh stage entry '
+                           '(this repeat attempt is preserved).')
                 self._force_fresh_reentry = True
             else:
                 closing = (label.lower(),) if outcome_known else (MATCH_END_BUTTON_NAME,)
@@ -3992,13 +3990,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         честно встать и сказать.
         """
         if getattr(self, "_hard_restarts", 0) >= HARD_RESTART_MAX:
-            self._log(f"[Macro] Полный перезапуск Roblox уже делался {HARD_RESTART_MAX} раз(а) за этот "
-                       f"забег и не помог — больше не пробую.")
+            self._log(f"[Macro] Full Roblox restart already attempted {HARD_RESTART_MAX} time(s) this "
+                       f"run without success -- giving up.")
             return False
         self._hard_restarts = getattr(self, "_hard_restarts", 0) + 1
-        self._set_status(action="Чёрный экран — перезапускаю Roblox...")
-        self._log(f"[Macro] Похоже на чёрный экран после перезахода: игра запущена, но лобби не "
-                   f"появляется. Полный перезапуск Roblox ({self._hard_restarts}/{HARD_RESTART_MAX}).")
+        self._set_status(action="Black screen detected -- restarting Roblox...")
+        self._log(f"[Macro] Black screen after reconnect: game running, but lobby "
+                   f"never appeared. Full Roblox restart ({self._hard_restarts}/{HARD_RESTART_MAX}).")
 
         killed = False
         for name in ROBLOX_PROCESS_KILL_NAMES:
@@ -4008,7 +4006,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 killed = True
             except Exception as exc:
-                self._log(f"[Macro] Не смог закрыть {name}: {exc}")
+                self._log(f"[Macro] Could not close {name}: {exc}")
         if not killed:
             return False
 
@@ -4023,9 +4021,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             from core import joinlink
             os.startfile(joinlink.get_join_link())
         except OSError as exc:
-            self._log(f"[Macro] Не удалось открыть ссылку после перезапуска: {exc}")
+            self._log(f"[Macro] Could not open join link after restart: {exc}")
             return False
-        self._log("[Macro] Roblox перезапущен — жду загрузку лобби...")
+        self._log("[Macro] Roblox restarted -- waiting for lobby to load...")
 
         deadline = time.time() + HARD_RESTART_TIMEOUT
         while time.time() < deadline:
@@ -4040,10 +4038,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             except vision.TemplateNotFound:
                 match = None
             if match is not None:
-                self._log("[Macro] Лобби на месте — продолжаю.")
+                self._log("[Macro] Lobby reached -- continuing.")
                 self._current_hwnd = current_hwnd
                 return True
-        self._log(f"[Macro] После перезапуска лобби не появилось за {HARD_RESTART_TIMEOUT:.0f}с.")
+        self._log(f"[Macro] Lobby failed to load after restart within {HARD_RESTART_TIMEOUT:.0f}s.")
         return False
 
     def _click_start_and_wait_teleport(self, hwnd, stop_event: threading.Event, webhook: dict = None,

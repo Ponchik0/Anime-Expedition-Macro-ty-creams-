@@ -107,7 +107,7 @@ def test_stop_on_failure_in_run_task_stops_when_attempts_exhausted(monkeypatch):
         12345, stop, task, 1, 1, {}, 1, 1, {}, {}
     )
     assert res is False
-    assert "Остановлен: сбой задачи" in runner._last_action
+    assert "Stopped: task failure" in runner._last_action or "Остановлен: сбой задачи" in runner._last_action
 
 
 def test_stop_on_failure_stops_macro_on_guarded_phase_error(monkeypatch):
@@ -134,7 +134,7 @@ def test_stop_on_failure_stops_macro_on_guarded_phase_error(monkeypatch):
     runner._run(lambda: 12345, lambda: [task1, task2], stop, scroll_power=1, coords={}, scroll_nudges=1, default_walk_paths={}, webhook={})
 
     assert ran_tasks == ["t1"]
-    assert "Остановлен: ошибка в задаче" in runner._last_action
+    assert "Stopped: task error" in runner._last_action or "Остановлен: ошибка в задаче" in runner._last_action
 
 
 def test_on_complete_action_stop_halts_macro(monkeypatch):
@@ -248,7 +248,7 @@ def test_timer_expired_when_enabled_transitions_to_next_or_target():
     task_next = {"timer_minutes": 5, "timer_next_enabled": True, "timer_next": "next"}
     assert runner._timer_expired(task_next) is True
     assert runner._timer_jump_to is None
-    assert runner._last_action == "Таймер задачи вышел — перехожу"
+    assert runner._last_action in ("Task timer expired -- switching", "Таймер задачи вышел — перехожу")
 
     # Включён переход к конкретной целевой задаче
     task_jump = {"timer_minutes": 5, "timer_next_enabled": True, "timer_next": "target_id_42"}

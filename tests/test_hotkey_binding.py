@@ -64,7 +64,7 @@ def test_taking_a_busy_key_frees_it_from_the_other_action(monkeypatch):
     assert res["ok"] and res["cleared"] == ["macro_stop"]
     assert res["hotkeys"]["macro_start"] == "f2"
     assert res["hotkeys"]["macro_stop"] == ""
-    assert any("освобождено" in line for line in api.logs)
+    assert any("unassigned" in line or "освобождено" in line for line in api.logs)
 
 
 def test_rebinding_to_its_own_key_changes_nothing(monkeypatch):
@@ -85,7 +85,7 @@ def test_a_rejected_key_is_rolled_back_not_silently_kept(monkeypatch):
     # Главное: старая привязка на месте и в ответе, и в настройках.
     assert res["hotkeys"]["macro_start"] == "f1"
     assert state["hotkeys"]["macro_start"] == "f1"
-    assert any("не подходит" in line for line in api.logs)
+    assert any("не подходит" in line or "not a valid" in line for line in api.logs)
 
 
 def test_a_rejected_key_gives_back_the_key_it_took_from_someone_else(monkeypatch):

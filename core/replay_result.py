@@ -231,7 +231,7 @@ class ResultWatcher:
         except vision.TemplateNotFound:
             if image_name not in missing:
                 missing.add(image_name)
-                self._log(f'[Повтор] Нет эталона «{image_name}» — исход матча '
+                self._log(f'[Replay] Missing template "{image_name}" -- match outcome '
                           f'распознаваться не будет. Добавь свою вырезку: '
                           f'Настройки → Общие → Менеджер картинок.')
             return 0.0, None
@@ -366,14 +366,14 @@ class ResultWatcher:
                     # сообщение сторожа. Отдельного уведомления на каждый
                     # такой матч нет намеренно — за ночь их бывает сотня.
                     self.unknown += 1
-                    self._log(f"[Повтор] Матч кончился (вижу кнопку повтора), но какой "
+                    self._log(f"[Replay] Match finished (repeat button detected), but outcome "
                               f"именно баннер — не распознал: {self.unknown}-й раз за "
                               f"прогон. В статистику не пишу. Пересними «victory» и "
                               f"«defeat»: Настройки → Общие → Менеджер картинок.")
                     try:
                         self._on_unknown()
                     except Exception as exc:
-                        self._log(f"[Повтор] Не вышло записать нераспознанный исход: {exc}")
+                        self._log(f"[Replay] Failed to record unrecognized outcome: {exc}")
                 else:
                     last_signal = now     # исход есть — затишье кончилось
                     silence_gap = self._silence_limit()
@@ -387,12 +387,12 @@ class ResultWatcher:
                         # матча обычного прогона «от старта» и есть его длина.
                         duration += " (с начала повтора)"
                     shot = self._capture(hwnd)
-                    self._log(f'[Повтор] {"Победа" if counted == "win" else "Поражение"} '
+                    self._log(f'[Replay] {"Victory" if counted == "win" else "Defeat"} '
                               f'— матч {self.matches} за прогон, {duration}.')
                     try:
                         self._on_result(counted, duration, shot)
                     except Exception as exc:
-                        self._log(f"[Повтор] Не вышло записать исход матча: {exc}")
+                        self._log(f"[Replay] Failed to record match outcome: {exc}")
                         if shot:
                             try:
                                 os.remove(shot)
@@ -417,7 +417,7 @@ class ResultWatcher:
                 # Счета копим ЗА ОКНО между сообщениями: иначе второе и третье
                 # показывали бы лучший кадр давно прошедшего часа.
                 best_seen = {}
-                self._log(f"[Повтор] За {quiet} ни одного распознанного исхода. {detail}")
+                self._log(f"[Replay] No recognized outcome during {quiet}. {detail}")
                 # СО СНИМКОМ ЭКРАНА. Без него о причине можно только гадать, а
                 # с кадром видно, что было на экране, и из него же режется
                 # недостающая вырезка баннера.

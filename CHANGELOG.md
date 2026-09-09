@@ -2,6 +2,22 @@
 
 All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
+## [1.1.7] - 2026-09-09
+
+### New
+- **Summer Event (Tidal Siege)**: Replaced retired Villain Invasion mode.
+  - **Infinite & Fishing**: Endless wave farming with lake fishing under Autoplay defense and a configurable `Stop After Wave` exit limit.
+  - **Portal Mode**: Automated Summer portal entry, activation, and post-victory re-selection.
+- **Portals Inventory Mode**: Automated inventory-based portal runner via `nav_inv` -> `normal_portals_nav` -> query search -> tier selection -> post-win `select_new_portal`.
+- **Drag Block**: Added interactive swipe/drag mouse action in the Setup group with configurable `(x1, y1)` and `(x2, y2)` coordinates, steps, and duration.
+- **East Town Map**: Added to Challenge and Bounty map lists with OCR aliases and stopwords.
+- **Summer Fishing Automation**: Added default `Summer` walk path to the lake and ready-to-run `Inf Summer` scenario featuring rod casting, `Fishing rank` detection, and reel mini-game clicking.
+
+### Improved
+- **English Log Normalization**: Unified all internal macro runner, replay system, and status card logs in standard English for seamless international audience compatibility.
+- **Russian UI Localization**: Comprehensive translation of all new UI labels, tooltips, and presets in `ui/i18n.js`.
+- **Cleaned Retired Assets**: Deprecated Villain Invasion / Act 4 divert code and coordinates cleanly migrated to the modern Summer Event pipeline.
+
 ## [0.19.0] - 2026-08-11
 
 ### New

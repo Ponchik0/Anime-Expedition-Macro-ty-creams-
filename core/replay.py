@@ -715,7 +715,7 @@ class Player:
                     # меню, а не тот момент боя, на котором нас прервали.
                     self.index = 0
                     t0 = time.perf_counter()
-                    self._log("[Повтор] Окно Roblox сменилось — начинаю круг заново.")
+                    self._log("[Replay] Roblox window changed -- restarting loop from beginning.")
 
             # Пауза и «жду окно игры» замораживают часы расписания.
             waiting = self._pause.is_set()

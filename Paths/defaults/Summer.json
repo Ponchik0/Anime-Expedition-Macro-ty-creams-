@@ -1,0 +1,15 @@
+{
+  "name": "Summer",
+  "events": [
+    {
+      "t": 0.0,
+      "key": "w",
+      "state": "down"
+    },
+    {
+      "t": 2.5,
+      "key": "w",
+      "state": "up"
+    }
+  ]
+}

@@ -153,7 +153,7 @@ def test_a_pending_unit_is_delivered_once_the_tile_takes_it(sim, monkeypatch):
     sim._retry_pending_placements(1, threading.Event())
 
     assert sim._pending_placements == [], "юнит встал, но остался в очереди"
-    assert any("Догнал" in m for m in sim.logs)
+    assert any("Догнал" in m or "unit placed successfully" in m for m in sim.logs)
 
 
 def test_the_queue_gives_up_after_the_try_cap(sim, monkeypatch):
@@ -170,7 +170,7 @@ def test_the_queue_gives_up_after_the_try_cap(sim, monkeypatch):
         clock["t"] += runner_blocks.PLACE_PENDING_RETRY_S + 1
 
     assert sim._pending_placements == []
-    assert any("больше не пытаюсь" in m for m in sim.logs)
+    assert any("больше не пытаюсь" in m or "giving up" in m for m in sim.logs)
 
 
 def test_attempts_are_spaced_out(sim, monkeypatch):
@@ -204,7 +204,7 @@ def test_the_whole_thing_expires_late_into_the_battle(sim, monkeypatch):
     sim._retry_pending_placements(1, threading.Event())
 
     assert sim._pending_placements == []
-    assert any("время вышло" in m for m in sim.logs)
+    assert any("время вышло" in m or "timed out" in m for m in sim.logs)
 
 
 def test_nothing_happens_before_the_battle_starts(sim):

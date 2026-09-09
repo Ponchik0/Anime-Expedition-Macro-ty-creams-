@@ -98,7 +98,7 @@ def test_start_game_after_a_real_battle_means_the_round_ended(monkeypatch):
     runner = _runner(monkeypatch, on_screen={"nav_start_game"})
 
     assert runner._match_ended_without_a_banner(1) == runner_module.RESULT_ROUND_ENDED
-    assert any("Раунд кончился" in m for m in runner.logs)
+    assert any("Раунд кончился" in m or "Round ended" in m for m in runner.logs)
 
 
 def test_start_game_right_after_the_start_is_not_the_end_of_a_round(monkeypatch):
@@ -136,7 +136,7 @@ def test_a_weak_banner_is_still_classified(monkeypatch, banner, expected):
     runner = _runner(monkeypatch, on_screen={"repeat_stage", banner}, scores={banner: 0.84})
 
     assert runner._match_ended_without_a_banner(1) == expected
-    assert any("ослабленном пороге" in m for m in runner.logs)
+    assert any("ослабленном пороге" in m or "relaxed threshold" in m for m in runner.logs)
     # И статистика не пострадала: исход настоящий, не выдуманный.
     assert runner.shots == [], "зря сохранили скриншот при опознанном исходе"
 
@@ -177,8 +177,8 @@ def test_an_unrecognised_result_saves_a_screenshot_and_says_what_to_do(monkeypat
 
     assert runner.shots == ["match_result_unknown"]
     message = " ".join(runner.logs)
-    assert "Менеджер картинок" in message
-    assert "НЕ пойдёт в статистику" in message
+    assert "Менеджер картинок" in message or "Template Manager" in message or "Image Manager" in message
+    assert "НЕ пойдёт в статистику" in message or "NOT count in statistics" in message
 
 
 def test_ended_is_not_a_loss(monkeypatch):
