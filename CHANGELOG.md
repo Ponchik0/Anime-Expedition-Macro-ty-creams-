@@ -2,7 +2,7 @@
 
 All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
-## [1.1.7] - 2026-09-09
+## [1.1.8] - 2026-09-09
 
 ### New
 - **Summer Event (Tidal Siege)**: Replaced retired Villain Invasion mode.
