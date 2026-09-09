@@ -139,6 +139,16 @@
     'Hard': 'Сложная',
     'Infinite': 'Бесконечная',
     'Mastery': 'Мастерство',
+    'Portal': 'Портал',
+    'Portal Name': 'Имя портала',
+    'The portal to search for in the Inventory > Portals tab (the search query, e.g. "summer")':
+      'Имя портала для поиска во вкладке Инвентарь > Порталы (поисковый запрос, напр. "summer")',
+    'Select the event to enter: Infinite & Fishing, or Portal Mode':
+      'Выберите событие: Бесконечность и рыбалка или Режим порталов',
+    'Select the event to enter': 'Выберите событие',
+    'Infinite & Fishing': 'Бесконечность и рыбалка',
+    'Portal Mode': 'Режим порталов',
+    'Macro Operation (Must be Autoplay)': 'Сценарий (обязательна автоигра)',
     'Portals Then Exit': 'Порталов до выхода',
     'Portal in lobby': 'Портал в лобби',
     'Portal in chooser': 'Портал после забега',
@@ -662,6 +672,19 @@
     'Leave at Minute': 'Выйти на минуте',
     'Setting': 'Настройка игры',
     'Click': 'Клик',
+    'Drag': 'Перетаскивание',
+    'From Position': 'Начало',
+    'To Position': 'Конец',
+    'Steps': 'Шаги',
+    'Duration (ms)': 'Длительность (мс)',
+    'Pick the drag START on a map or your Roblox screen':
+      'Выбрать НАЧАЛО перетаскивания на карте или экране Roblox',
+    'Pick the drag END on a map or your Roblox screen':
+      'Выбрать КОНЕЦ перетаскивания на карте или экране Roblox',
+    'How many interpolated moves the held drag makes -- more = smoother':
+      'Сколько промежуточных шагов делает зажатая мышь (больше = плавнее)',
+    'How long the whole drag takes -- slower registers better in-game':
+      'Сколько миллисекунд длится перетаскивание (медленнее надежнее распознается игрой)',
     'Send Key': 'Нажать клавишу',
     'Detect': 'Если увидит картинку',
     'Counter Detect': 'Детект счётчика',

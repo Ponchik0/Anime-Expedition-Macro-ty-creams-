@@ -306,37 +306,36 @@ ACT_CLICK_BASE = (250, 267)  # Act 1's click point
 ACT_ROW_HEIGHT = 129
 
 # Event mode: reached straight from the lobby via its own nav_event button
-# (NOT through Play like Story/Raid/Expedition/Challenge), then the
-# event_gamemode card, then one of the Act cards (each a villain). There's no
-# map carousel and no difficulty picker -- picking the Act IS the whole
-# selection, so it goes straight from the Act to the Solo/Matchmaking tail
+# (NOT through Play like Story/Raid/Expedition/Challenge), then the Summer
+# event's nav entry, then its gamemode card, then one of the event kind cards.
+# There's no map carousel and no difficulty picker -- picking the kind IS the
+# whole selection, so it goes straight from there to the Solo/Matchmaking tail
 # (nav_select_stage + nav_start, or enter_matchmaking) the other modes share.
-# The image folder names are exactly as they ship under Assets/ui/ -- the
-# mixed "villian"/"villain" spelling is intentional, it matches the real
-# folders. Mirrors TASK_DATA.event.stages in ui/app.js.
-# Act 4 (Villian Invasion "Crow - Dawn") is a relic-gated Act: it costs 1 Crow
-# Relic to enter, so its card shows locked ("0/1x Owned", VILLIAN4_CLOSE_IMAGE)
-# until you've banked one. It's selectable now, and farm tasks can auto-divert
-# to it when a relic drops (see runner._run_act4_diversion / DROP_RELIC_IMAGE).
-EVENT_ACT_ORDER = ["1", "2", "3", "4"]
-# Values are a tuple of candidate crops per Act (any match wins), so an Act
-# card that shows in more than one visual state can be matched in whichever
-# it's currently in.
-EVENT_ACT_IMAGES = {
-    "1": ("villian1",),
-    "2": ("villian2",),
-    "3": ("villain3",),
-    "4": ("villian4",),
+# The image folder names are exactly as they ship under Assets/ui/.
+EVENT_SCREEN_TIMEOUT = 10.0  # how long to wait for each Event screen (nav_event / summer_nav / the gamemode + kind cards) to appear
+
+# The Summer event's gamemode screen offers two cards: "Infinite & Fishing"
+# (waves + fishing) and "Portal Mode" (Tiered & Secret Portals). The user
+# picks which one to enter; this maps that choice to the card image(s) to
+# click. Mirrors TOURNAMENT_TYPE_IMAGES: each value is a tuple of candidate
+# crops (any match wins), so a card that renders in more than one visual
+# state can still be matched. Mirrors TASK_DATA.event.stages in ui/app.js.
+EVENT_KIND_ORDER = ["infinite", "portal"]
+EVENT_KIND_IMAGES = {
+    "infinite": ("summer_event_infinite",),
+    # Portal Mode picks and activates a specific portal before entering, and
+    # its result screen offers "Select Portal" instead of "Repeat Stage" --
+    # see EventOps._select_summer_portal, used at both ends of the run.
+    "portal": ("summer_event_portal",),
 }
-# Acts from this one on can sit below the fold on the Event gamemode screen
-# and only come into view by scrolling the villain list -- picking one of
-# these runs the same wheel-scroll search Story maps use (see
-# _reach_event_act_selected / _scroll_find_and_click). Acts before it are
-# already on screen and get a plain wait-then-click. The scroll search checks
-# what's already visible first, so it's a no-op for an Act that didn't need
-# scrolling anyway.
-EVENT_ACT_SCROLL_FROM_INDEX = 2  # 0-based into EVENT_ACT_ORDER: index 2 == Act "3"
-EVENT_SCREEN_TIMEOUT = 10.0  # how long to wait for each Event screen (nav_event / event_gamemode / the Act card) to appear
+# Fixed regions of the 1152x756 client the portal picker's two elements live
+# in -- the search box and the portal-card list. Boxing the searches keeps the
+# tier-card match off the rest of the screen (the picker's cards look alike),
+# and gives PortalsOp a click point for the search box. (x, y, w, h).
+PORTAL_SEARCHES = {
+    "search": (433, 174, 492 - 433, 188 - 174),
+    "portals": (344, 208, 687 - 344, 296 - 208),
+}
 
 # Tournament mode: reached through Play like Story/Raid -- its nav_tournament
 # button sits on the same gamemode menu (picked instead of Story), NOT via its
@@ -385,15 +384,6 @@ BOUNTY_MYTHIC_REROLL_SETTLE = 0.8
 BOUNTY_MYTHIC_REROLL_VERIFY_TIMEOUT = 4.0
 BOUNTY_MYTHIC_REROLL_POLL = 0.25
 
-# Villian Invasion Act 4 ("Crow - Dawn") relic gate. DROP_RELIC_IMAGE is the
-# Crow Relic reward shown on the Victory screen (relics only drop on a win) --
-# spotting it is what triggers a farm task's optional auto-divert to Act 4.
-# VILLIAN4_CLOSE_IMAGE is Act 4's locked card ("requires 1 Crow Relic / 0/1x
-# Owned"); seeing it means there's no relic to spend, so the divert backs out.
-DROP_RELIC_IMAGE = "drop_relic"
-VILLIAN4_CLOSE_IMAGE = "villian4_close"
-EVENT_ACT4_STAGE = "4"
-
 # Infinite/Mastery are locked to Hard in-game with no picker shown for them
 # (see ui/app.js's TASK_DATA.story comment) -- no difficulty click happens
 # for those stages at all, so there's nothing to look up for them here.
@@ -418,7 +408,29 @@ EXPEDITION_MAP_IMAGES = {
 # scrolling map-CARD search used to pick a map by hand -- these instead
 # confirm which map is already showing). Mirrors main.py's
 # CHALLENGE_STORY_MAPS and ui/app.js's TASK_DATA.story.maps.
-CHALLENGE_STORY_MAPS = ["School Grounds", "Rose Kingdom", "Fairy King Forest", "King's Tomb", "Flower Forest"]
+CHALLENGE_STORY_MAPS = ["School Grounds", "Rose Kingdom", "Fairy King Forest", "King's Tomb", "Flower Forest", "East Town"]
+# Daily Challenge shows its map as a ~10px label rather than the art the
+# image search above needs, so _detect_challenge_map_ocr falls back to
+# reading it. One distinctive lowercase word per map, fuzzy-matched against
+# the OCRed tokens -- a map missing an alias can never be named by that
+# fallback, so this has to cover CHALLENGE_STORY_MAPS entirely.
+# East Town is keyed on "east" rather than "town" deliberately: "town" and
+# "tomb" score about equally against a garbled read of either, which pushes
+# both below the runner-up margin and makes King's Tomb undetectable as
+# collateral (test_challenge_map_ocr_uses_unique_map_words covers that read).
+# Pick the word that no other map shares, not just any word from the name.
+CHALLENGE_MAP_OCR_ALIASES = {
+    "School Grounds": "grounds",
+    "Rose Kingdom": "kingdom",
+    "Fairy King Forest": "fairy",
+    "King's Tomb": "tomb",
+    "Flower Forest": "flower",
+    "East Town": "east",
+}
+# Words the map label carries that never identify a map ("Grounds - Act 1").
+# Scored against an alias they are just noise that can out-rank the real
+# match, so they are dropped before comparison.
+CHALLENGE_MAP_OCR_STOPWORDS = frozenset({"act", "stage", "challenge", "daily"})
 # Mirrors main.py's CHALLENGE_STAGE_SLOTS.
 CHALLENGE_STAGE_SLOTS = ["1", "2", "3"]
 # Fixed click points for the 3 Regular Challenge stage rows -- no image
@@ -630,6 +642,12 @@ SCREEN_MIDDLE_CLICK = (576, 378)  # dead center of the 1152x756 game client area
 # selecting a unit needs a beat to actually open its info panel before the
 # upgradeable/not_upgradeable search means anything.
 BATTLE_BLOCK_CLICK_SETTLE = 0.3
+# Drag block (Macro Manager > Setup > Drag): how many interpolated moves the
+# held-button drag makes, and how long the whole drag takes in ms. Defaults
+# mirror ui/app.js's BLOCK_TYPES.drag params; blocks saved before the params
+# existed (or with them unset) fall back to these.
+DRAG_DEFAULT_STEPS = 30
+DRAG_DEFAULT_DURATION_MS = 600
 # How long an Upgrade Unit block waits before retrying after finding
 # not_upgradeable (not enough gold yet, on cooldown, ...) -- not a failure,
 # just not ready, so it keeps its remaining `times` budget and tries again

@@ -751,22 +751,22 @@ exportTasks().then(() => console.log(JSON.stringify({
   log: logs[logs.length - 1] })));
 """
 
-_ONE_TASK = "[{id:1, mode:'story', macro:'Main Farm', act4_macro:'Act4 Relic Run'}]"
+_ONE_TASK = "[{id:1, mode:'story', macro:'Main Farm'}]"
 
 
-def test_export_bundles_the_act4_macro_too(tmp_path):
-    out = run_js(_TASK_EXPORT_WORLD % (_ONE_TASK, "['Main Farm', 'Act4 Relic Run']"), tmp_path)
-    assert out["bundled"] == ["Act4 Relic Run", "Main Farm"], (
-        "the Act 4 macro was left out of the package again")
+def test_export_bundles_every_macro_a_task_references(tmp_path):
+    out = run_js(_TASK_EXPORT_WORLD % (_ONE_TASK, "['Main Farm', 'Unused']"), tmp_path)
+    assert out["bundled"] == ["Main Farm"], (
+        "the task's macro was left out of the package again")
 
 
 def test_export_stops_when_a_referenced_macro_no_longer_exists(tmp_path):
     """load_template returns an empty object for a name with no file and the
     failure was swallowed, so the export "succeeded" and only broke for
     whoever imported it."""
-    out = run_js(_TASK_EXPORT_WORLD % (_ONE_TASK, "['Main Farm']"), tmp_path)
+    out = run_js(_TASK_EXPORT_WORLD % (_ONE_TASK, "[]"), tmp_path)
     assert out["bundled"] is None, "a package missing one of its macros must not be written"
-    assert "Act4 Relic Run" in out["log"] and "Export stopped" in out["log"]
+    assert "Main Farm" in out["log"] and "Export stopped" in out["log"]
 
 
 _TASK_IMPORT_WORLD = """
@@ -1200,6 +1200,71 @@ def test_both_dock_and_skip_release_it():
         body = src[src.index(f"function {fn}("):]
         body = body[:body.index("\n}\n") + 2]
         assert "runPendingFirstRun()" in body, f"{fn} never releases a queued first-run dialog"
+
+
+def test_show_docked_reasserts_panel_width_on_mac():
+    """macOS: docking (re)arranges the panel back to the narrow strip beside
+    Roblox, and if the user was on a non-Dashboard screen when Roblox
+    appeared (or reappeared after a relaunch) that strip leaves the
+    multi-column editor clipped -- the "Macro Manager shows nothing" report.
+    showDocked must re-assert the width the current screen needs, and only
+    on mac; a Dashboard dock (the common first-ever case) keeps the strip."""
+    src = open(os.path.join(os.path.dirname(INDEX_HTML), "app.js"), encoding="utf-8").read()
+    body = src[src.index("function showDocked("):]
+    body = body[:body.index("\n}\n") + 2]
+    assert "if (IS_MAC) {" in body, "re-assert is not gated on mac"
+    assert "set_panel_expanded(currentScreen !== 'dashboard')" in body, \
+        "showDocked never re-asserts the width a non-Dashboard screen needs"
+
+
+def test_show_docked_reasserts_panel_width_on_mac_behaviorally(tmp_path):
+    """Behavioural twin of the source-contract check above: actually run the
+    shipped showDocked() (lifted by brace-matching) against a stand-in DOM and
+    pywebview bridge, and assert the re-assert fires exactly when it should.
+    A non-Dashboard screen needs the full frame; the Dashboard keeps the strip;
+    and on Windows the call must not happen at all (the bridge method is
+    mac-only)."""
+    out = run_js("""
+        const calls = [];
+        // First dock already happened, so showDocked does not auto-hop to
+        // Dashboard and clobber currentScreen -- we want the re-assert path.
+        let hasAutoShownDashboard = true;
+        let currentScreen = 'manager';
+        function switchScreen() {}
+        function isBlockingOverlayOpen() { return false; }
+        function runPendingFirstRun() {}
+        function stopDockPoll() {}
+        function setDockStep() {}
+        // Any id gets a fresh {style:{}, classList:{add:()=>{}, remove:()=>{}}} so the three display writes land
+        // without a real DOM; show_game/hide_game are no-ops for this test.
+        global.document = { getElementById: id => ({ style: {}, classList: { add: () => {}, remove: () => {} } }) };
+        global.window = { pywebview: {} };
+        global.pywebview = { api: {
+          set_panel_expanded: v => calls.push(v),
+          show_game: () => {},
+          hide_game: () => {},
+        }};
+        global.IS_MAC = true;
+
+        eval(extract('showDocked'));
+
+        showDocked();
+        const managerCall = calls.slice();
+        calls.length = 0;
+        currentScreen = 'dashboard';
+        showDocked();
+        const dashboardCall = calls.slice();
+        calls.length = 0;
+        global.IS_MAC = false;
+        currentScreen = 'manager';
+        showDocked();
+        const nonMacCall = calls.slice();
+
+        console.log(JSON.stringify({ managerCall, dashboardCall, nonMacCall }));
+    """, tmp_path)
+    assert out["managerCall"] == [True], "non-Dashboard screen did not expand the panel on mac"
+    assert out["dashboardCall"] == [False], "Dashboard kept the narrow strip instead of collapsing the panel"
+    assert out["nonMacCall"] == [], "set_panel_expanded fired when not on mac"
 
 
 # ---------------------------------------------------------------------------
@@ -1803,5 +1868,56 @@ def test_poll_dock_state_updates_stage_searching_and_docking_classes(tmp_path):
     assert "is-docking" not in out["idleClasses"]
     assert "is-docking" in out["runningClasses"]
     assert "is-searching" not in out["runningClasses"]
+
+
+# ---------------------------------------------------------------------------
+# Event stage migration: the queue survives Villian Invasion going away
+# ---------------------------------------------------------------------------
+# Event used to mean Villian Invasion, whose stage was an Act number ('1'-'4').
+# That event is gone and the stage now names a Summer event kind
+# ('infinite'/'portal'). An already-saved Act task keeps a stage the picker has
+# no option for, and the runner stops the whole run on it ("Unknown Event kind
+# \"4\""), so refreshTaskQueue has to migrate it on load.
+_EVENT_MIGRATION_WORLD = """
+const logs = [];
+global.addLog = m => logs.push(m);
+global.enteringTaskIds = new Set();
+global.renderTaskList = () => {};
+global.renderTaskBuilder = () => {};
+global.refreshTaskPresets = () => {};
+global.refreshTaskTemplates = async () => {};
+global.saveTaskQueue = () => {};
+global.newTaskId = () => 't1';
+global.DEFAULT_INFINITE_WAVE_LIMIT = 20;
+global.MAX_EXTRACT_AFTER = 20;
+global.TASK_DATA = { story: { maps: ['Rose'] }, event: { stages: ['infinite', 'portal'] } };
+global.taskCards = [];
+global.pywebview = { api: { get_tasks: async () => %s } };
+eval(extract('defaultTask'));
+eval(extract('normalizeExtractAfter'));
+eval(extract('refreshTaskQueue'));
+refreshTaskQueue().then(() => console.log(JSON.stringify({
+  stages: taskCards.map(t => t.stage), logs })));
+"""
+
+
+@pytest.mark.parametrize("saved_stage", ["1", "4"])
+def test_old_villian_invasion_act_tasks_migrate_to_an_event_kind(saved_stage, tmp_path):
+    tasks = json.dumps([{"id": "a", "mode": "event", "map": "Event", "stage": saved_stage}])
+    out = run_js(_EVENT_MIGRATION_WORLD % tasks, tmp_path)
+    assert out["stages"] == ["infinite"], (
+        f'an event task saved on Act {saved_stage} kept a stage the picker has no option for'
+    )
+    assert any("Villian Invasion" in line for line in out["logs"]), (
+        "the migration happened silently -- the user has no idea their task changed"
+    )
+
+
+def test_event_tasks_already_on_a_kind_are_left_alone(tmp_path):
+    tasks = json.dumps([{"id": "a", "mode": "event", "map": "Event", "stage": "portal"}])
+    out = run_js(_EVENT_MIGRATION_WORLD % tasks, tmp_path)
+    assert out["stages"] == ["portal"]
+    assert not any("Villian Invasion" in line for line in out["logs"])
+
 
 
