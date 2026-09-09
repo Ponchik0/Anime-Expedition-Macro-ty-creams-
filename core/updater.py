@@ -47,7 +47,7 @@ from . import constants
 # Именно поэтому их снова можно включить: раньше апдейтер накатывал
 # чужой релиз поверх наших правок в core/ и ui/, теперь он тянет
 # ровно то, что мы сами туда запушили.
-GITHUB_REPO = "Ponchik0/ae"
+GITHUB_REPO = "Ponchik0/Anime-Expedition-Macro-ty-creams-"
 
 # ────────────────────────── ГДЕ ЛЕЖАТ РЕЛИЗЫ ──────────────────────────────
 # Репозиторий ПУБЛИЧНЫЙ, поэтому источник один: и код, и релизы там же, и
@@ -202,8 +202,12 @@ def _latest_release_tag(timeout: float, log=None) -> tuple:
     failure mode first.
     """
     try:
-        with requests.head(RELEASES_PAGE_URL, allow_redirects=False, timeout=timeout) as resp:
-            location = resp.headers.get("Location", "")
+        # allow_redirects=True переходит по редиректам (включая переименование
+        # репозитория 301 и редирект 302 на релиз) до конечной страницы релиза.
+        with requests.head(RELEASES_PAGE_URL, allow_redirects=True, timeout=timeout) as resp:
+            location = getattr(resp, "url", "") or ""
+            if "/releases/tag/" not in location:
+                location = resp.headers.get("Location", "") or location
             status = resp.status_code
     except Exception as exc:
         if log:

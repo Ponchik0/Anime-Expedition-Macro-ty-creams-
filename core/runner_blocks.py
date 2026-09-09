@@ -1333,18 +1333,23 @@ class BlockOps:
         Раньше итог печатался ровно один раз, в конце Pre Start, и всё
         остальное молча пропадало -- то есть именно про непоставленное в бою
         подкрепление в журнале не оставалось ни строки."""
-        tally = self._placement_tally
-        done = tally["reported"]
-        ok = tally["ok"] - done["ok"]
-        failed = tally["failed"] - done["failed"]
-        skipped = tally["skipped"] - done["skipped"]
+        tally = getattr(self, "_placement_tally", None)
+        if not tally:
+            return
+        done = tally.setdefault("reported", {"ok": 0, "failed": 0, "skipped": 0,
+                                             "failed_names": 0, "skipped_names": 0})
+        ok = tally.get("ok", 0) - done.get("ok", 0)
+        failed = tally.get("failed", 0) - done.get("failed", 0)
+        skipped = tally.get("skipped", 0) - done.get("skipped", 0)
         # Имена дедуплицированы и добавляются по порядку, поэтому «новые» --
         # это хвост списка за прошлой отметкой.
-        new_failed_names = tally["failed_names"][done["failed_names"]:]
-        new_skipped_names = tally["skipped_names"][done["skipped_names"]:]
-        done.update({"ok": tally["ok"], "failed": tally["failed"], "skipped": tally["skipped"],
-                     "failed_names": len(tally["failed_names"]),
-                     "skipped_names": len(tally["skipped_names"])})
+        failed_names = tally.get("failed_names", [])
+        skipped_names = tally.get("skipped_names", [])
+        new_failed_names = failed_names[done.get("failed_names", 0):]
+        new_skipped_names = skipped_names[done.get("skipped_names", 0):]
+        done.update({"ok": tally.get("ok", 0), "failed": tally.get("failed", 0), "skipped": tally.get("skipped", 0),
+                     "failed_names": len(failed_names),
+                     "skipped_names": len(skipped_names)})
         if not ok and not failed and not skipped:
             return
         if ok and not failed and not skipped:

@@ -294,7 +294,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # вычитывать по десяткам строк, а НУЛЕВАЯ расстановка -- это заведомо
         # проигранный забег, и о ней надо говорить громко и сразу.
         self._placement_tally = {"ok": 0, "failed": 0, "failed_names": [],
-                                 "skipped": 0, "skipped_names": []}
+                                 "skipped": 0, "skipped_names": [],
+                                 "reported": {"ok": 0, "failed": 0, "skipped": 0,
+                                              "failed_names": 0, "skipped_names": 0}}
         # ДОГОНЯЮЩАЯ РАССТАНОВКА. Блоки Place Unit, которые в Pre Start не
         # встали (см. _remember_pending_placement): почти всегда потому, что
         # на них не хватило стартовых денег. Здесь они ждут боя, где
@@ -2097,6 +2099,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         this stage, not on every repeat (see _run_prestart). Returns
         "win"/"loss", or None on failure/stop."""
         self._portal_offer_selected_this_run = False
+        self._reset_placement_tally()
         self._settle_autoplay_for_match(hwnd, stop_event, task)
         if not self._start_game_or_reset_via_settings(hwnd, stop_event, task.get("play_mode")):
             return None
