@@ -53,7 +53,7 @@ PORTAL_STEP_TIMEOUT = 6
 PORTAL_VERIFY_TIMEOUT = 5
 PORTAL_STEP_ATTEMPTS = 3
 PORTAL_IN_MATCH_IMAGES = ("start_game_prompt", "nav_start_game", "autoplay_on", "autoplay_off")
-AUTOPLAY_MATCH_THRESHOLD = 0.88
+AUTOPLAY_MATCH_THRESHOLD = 0.83  # Summer Event кнопки матчатся с 0.85-0.87, стандартные 0.9+
 AUTOPLAY_BUTTON_TIMEOUT = 8
 AUTOPLAY_TOGGLE_SETTLE = 0.6
 AUTOPLAY_VERIFY_ATTEMPTS = 3
@@ -2233,19 +2233,48 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             return DEFAULT_INFINITE_WAVE_LIMIT
 
     def _leave_infinite_at_wave_limit(self, hwnd, stop_event: threading.Event, limit: int) -> bool:
-        """Leave a live Infinite match after ``limit`` has fully completed."""
+        """Leave a live Infinite match after ``limit`` has fully completed.
+
+        Сначала пробуем кнопку «Restart Game» из меню настроек в игре —
+        она возвращает на стартовый экран карты без выхода в лобби.
+        Если кнопка не нашлась (или шаблонов нет), откатываемся на
+        обычный «Leave Stage» → «Return to Lobby».
+        """
         self._release_quick_place_shift()
         self._set_status(action=f"Wave {limit} complete -- leaving stage...")
         self._log(
             f"[Macro] Infinite wave {limit} completed and wave {limit + 1} began -- "
-            "clicking Leave Stage."
+            "attempting to restart via Restart Game button."
         )
+
+        # Пробуем Restart Game (кнопка в меню настроек внутри матча).
+        # Она не выводит в лобби — перезапускает раунд на той же карте,
+        # что позволяет сразу начать следующий повтор без долгого
+        # пути через лобби и экран выбора режима.
+        try:
+            restart_match = vision.find_image(hwnd, "restart_btn")
+        except (vision.TemplateNotFound, Exception):
+            restart_match = None
+
+        if restart_match:
+            debug_path = self._debug_save(hwnd, "restart_btn", restart_match)
+            suffix = f" Debug: {debug_path}" if debug_path else ""
+            self._log(
+                f'[Macro] Found "restart_btn" (score {restart_match["score"]:.2f}) '
+                f"-- clicking Restart Game.{suffix}"
+            )
+            vision.click_match(self._mouse, hwnd, restart_match)
+            return not self._checkpoint(stop_event)
+
+        # Кнопка Restart не нашлась — идём через Leave Stage как раньше.
+        self._log('[Macro] "restart_btn" not found -- falling back to Leave Stage.')
         if not self._click_and_verify_gone(
                 hwnd, stop_event, "leave_stage", NAV_CLICK_TIMEOUT, success_name="return"):
             self._log('[Macro] "Leave Stage" not found after reaching the Infinite wave limit.')
             return False
         self._click_return_to_lobby_if_found(hwnd, stop_event)
         return not self._checkpoint(stop_event)
+
 
     def _check_infinite_wave_limit(self, hwnd, stop_event: threading.Event, limit: int, state: dict):
         """Poll/confirm the unlimited-wave HUD and leave at ``limit + 1``.
