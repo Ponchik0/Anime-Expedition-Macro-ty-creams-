@@ -2285,26 +2285,24 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             time.sleep(0.3)
 
     def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
-        """Активирует предметы-рыбы (Coopfin, Prize Fish, Fusion Fish, Booster Fish) из хотбара.
+        """Активирует предметы-рыбы и улитки (Coopfin, Prize Fish, Fusion Fish, Booster Fish, Shellphone Snail) из хотбара.
 
-        Ищет только полноразмерные карточки слотов в области хотбара слотов 2-6 с порогом 0.80.
-        Не кликает по слоту 1 удочки, чтобы не убирать её из рук.
+        Ищет оптимизированные шаблоны карточек слотов в области хотбара слотов 2-6 (x=110..610, y=610..730) с порогом 0.75.
         """
         used = 0
         fish_templates = (
-            "coopfin_full", "coopfin", "coopfin_alt",
-            "prize_fish_full", "prize_fish",
-            "fusion_fish", "booster_fish"
+            "coopfin", "prize_fish", "fusion_fish", "booster_fish",
+            "shellphone_snail", "snail"
         )
-        # Область слотов 2-6 хотбара: x=130..750, y=620..730 в разрешении 1152x756
-        hotbar_region = (130, 620, 620, 110)
+        # Область слотов 2-6 хотбара в разрешении 1152x756: (x, y, w, h)
+        hotbar_region = (110, 610, 500, 120)
         for tpl_name in fish_templates:
             try:
-                match = vision.find_image(hwnd, tpl_name, region=hotbar_region, threshold=0.80)
+                match = vision.find_image(hwnd, tpl_name, region=hotbar_region, threshold=0.75)
                 if not match:
                     continue
                 self._log(
-                    f'[Macro] Fish item "{tpl_name}" found in hotbar '
+                    f'[Macro] Hotbar booster item "{tpl_name}" found '
                     f'(score {match["score"]:.2f}) -- activating for bonus coins.'
                 )
                 sx, sy = vision.ref_to_screen(hwnd, match["cx"], match["cy"])
