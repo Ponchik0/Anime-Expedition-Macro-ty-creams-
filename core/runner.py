@@ -2287,7 +2287,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
     def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
         """Активирует предметы-рыбы и улитки (Coopfin, Prize Fish, Fusion Fish, Booster Fish, Shellphone Snail) из хотбара.
 
-        Ищет оптимизированные шаблоны карточек слотов в области хотбара слотов 2-6 (x=110..610, y=610..730) с порогом 0.75.
+        Работает двумя способами:
+        1. Распознавание картинок-шаблонов (threshold 0.75).
+        2. OCR-распознавание текста (содержащего "fish", "snail", "coop", "boost", "prize", "shell" и т.д.).
         """
         used = 0
         fish_templates = (
@@ -2296,24 +2298,51 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         )
         # Область слотов 2-6 хотбара в разрешении 1152x756: (x, y, w, h)
         hotbar_region = (110, 610, 500, 120)
+
+        # 1. Поиск по картинкам-шаблонам
         for tpl_name in fish_templates:
             try:
                 match = vision.find_image(hwnd, tpl_name, region=hotbar_region, threshold=0.75)
-                if not match:
-                    continue
-                self._log(
-                    f'[Macro] Hotbar booster item "{tpl_name}" found '
-                    f'(score {match["score"]:.2f}) -- activating for bonus coins.'
-                )
-                sx, sy = vision.ref_to_screen(hwnd, match["cx"], match["cy"])
-                self._mouse.move_to(sx, sy)
-                time.sleep(0.12)
-                self._mouse.click(sx, sy)
-                time.sleep(0.25)
-                used += 1
-                break  # активируем по 1 предмету за опрос
+                if match:
+                    self._log(
+                        f'[Macro] Hotbar booster item "{tpl_name}" matched by image '
+                        f'(score {match["score"]:.2f}) -- activating for bonus coins.'
+                    )
+                    sx, sy = vision.ref_to_screen(hwnd, match["cx"], match["cy"])
+                    self._mouse.move_to(sx, sy)
+                    time.sleep(0.12)
+                    self._mouse.click(sx, sy)
+                    time.sleep(0.25)
+                    return 1
             except vision.TemplateNotFound:
                 continue
+
+        # 2. Поиск по названию через OCR (для новых предметов с "Fish", "Snail" и т.д.)
+        try:
+            if ocr_windows.is_available():
+                crop_bgr = vision.capture_window_region_bgr(hwnd, hotbar_region)
+                if crop_bgr is not None:
+                    enlarged = cv2.resize(crop_bgr, (0, 0), fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+                    lines = ocr_windows.ocr_lines(enlarged)
+                    keywords = ("fish", "fich", "snail", "snall", "coop", "boost", "prize", "fusion", "shell")
+                    for line in lines or []:
+                        t = line.get("text", "").lower()
+                        if any(kw in t for kw in keywords):
+                            orig_cx = hotbar_region[0] + int(line["cx"] / 3.0)
+                            orig_cy = hotbar_region[1] + int(line["cy"] / 3.0)
+                            self._log(
+                                f'[Macro] Hotbar booster item "{line["text"]}" matched by OCR '
+                                f'-- activating for bonus coins.'
+                            )
+                            sx, sy = vision.ref_to_screen(hwnd, orig_cx, orig_cy)
+                            self._mouse.move_to(sx, sy)
+                            time.sleep(0.12)
+                            self._mouse.click(sx, sy)
+                            time.sleep(0.25)
+                            return 1
+        except Exception:
+            pass
+
         return used
 
     def _find_restart_button(self, hwnd: int) -> dict:
