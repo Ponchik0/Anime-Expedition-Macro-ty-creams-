@@ -548,6 +548,21 @@ def test_run_click_block_clicks_autoplay_when_off():
     assert not any("Auto Play is already active" in log for log in runner.logs)
 
 
+def test_autoplay_state_prefers_higher_score():
+    """Ловит баг ложного 'on', когда совпали оба шаблона (on и off), но у off балл выше."""
+    runner = MacroRunner.__new__(MacroRunner)
+
+    def fake_find_image(_hwnd, name, **_kwargs):
+        if name == "autoplay_on":
+            return {"score": 0.84}
+        if name == "autoplay_off":
+            return {"score": 0.95}
+        return None
+
+    with patch("core.vision.find_image", side_effect=fake_find_image):
+        assert runner._autoplay_state(12345) == "off"
+
+
 def test_choose_portal_card_uses_game_results_fallback():
     """Проверяет запасной механизм выбора карт портала по кнопке Game Results.
 

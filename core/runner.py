@@ -2001,21 +2001,36 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         return not self._checkpoint(stop_event)
 
     def _autoplay_state(self, hwnd):
-        """\"on\" / \"off\" / None (button not on screen).
+        """Возвращает "on" / "off" / None.
 
-        ON is tested first on purpose. The two button images differ only in
-        their label, so when a frame scores close on both, calling it "on"
-        means the worst case is leaving autoplay as it already was; calling
-        it "off" would mean clicking a button that is already on and turning
-        autoplay back off mid-match.
+        Сравнивает результаты поиска шаблонов autoplay_on и autoplay_off.
+        Если оба шаблона дают совпадение, выбирается тот, чей балл (score) выше.
+        Это предотвращает ложноположительное определение "on", когда кнопка на самом
+        деле выключена ("off"), но фон случайно совпал с эталоном "on".
         """
-        for name, state in (("autoplay_on", "on"), ("autoplay_off", "off")):
-            try:
-                if vision.find_image(hwnd, name, threshold=AUTOPLAY_MATCH_THRESHOLD):
-                    return state
-            except vision.TemplateNotFound:
-                continue
-        return None
+        score_on = 0.0
+        score_off = 0.0
+
+        try:
+            match_on = vision.find_image(hwnd, "autoplay_on", threshold=AUTOPLAY_MATCH_THRESHOLD)
+            if match_on:
+                score_on = match_on.get("score", 0.0)
+        except vision.TemplateNotFound:
+            pass
+
+        try:
+            match_off = vision.find_image(hwnd, "autoplay_off", threshold=AUTOPLAY_MATCH_THRESHOLD)
+            if match_off:
+                score_off = match_off.get("score", 0.0)
+        except vision.TemplateNotFound:
+            pass
+
+        if score_on == 0.0 and score_off == 0.0:
+            return None
+
+        if score_off >= score_on and score_off > 0.0:
+            return "off"
+        return "on"
 
     def _ensure_autoplay(self, hwnd, stop_event: threading.Event, want_on: bool):
         """Put the in-match Auto Play button into the state this task wants.
