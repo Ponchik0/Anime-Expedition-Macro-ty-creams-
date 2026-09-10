@@ -2399,11 +2399,29 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     self._mouse.move_to(sx, sy)   # hover — Roblox UI ждёт наведения
                     time.sleep(0.45)              # дать UI подсветить кнопку
                     self._mouse.click(sx, sy)
-                    time.sleep(1.2)               # дать игре обработать рестарт
+                    time.sleep(0.8)               # дать появиться модальному окну
+
+                    # Сразу проверяем появление диалога подтверждения ("Restart Confirmation" / красная кнопка "Restart")
+                    for c_name in ("restart_red_btn", "restart_confirm_title", "confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
+                        try:
+                            c_match = vision.find_image(hwnd, c_name, threshold=0.72)
+                            if c_match:
+                                self._log(f'[Macro] Found confirmation modal "{c_name}" (score {c_match["score"]:.2f}) -- confirming restart.')
+                                vision.click_match(self._mouse, hwnd, c_match)
+                                time.sleep(1.2)
+                                clicked = True
+                                break
+                        except vision.TemplateNotFound:
+                            continue
+
+                    if clicked:
+                        break
+
                     still_visible = bool(self._find_restart_button(hwnd))
                     if not still_visible:
                         clicked = True
                         break
+
                     self._log(
                         f"[Macro] Restart Game button still visible after click {attempt} "
                         f"-- {'retrying' if attempt < 3 else 'giving up'}."
@@ -2419,18 +2437,6 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     if settings_opened:
                         self._close_in_game_settings(hwnd)
                 else:
-                    # Проверяем возможное окно подтверждения (Confirm / Yes)
-                    for c_name in ("confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
-                        try:
-                            c_match = vision.find_image(hwnd, c_name, threshold=0.75)
-                            if c_match:
-                                self._log(f'[Macro] Found confirmation modal "{c_name}" -- confirming restart.')
-                                vision.click_match(self._mouse, hwnd, c_match)
-                                time.sleep(1.0)
-                                break
-                        except vision.TemplateNotFound:
-                            continue
-
                     self._log("[Macro] Restart Game triggered -- match will reload in-game.")
                     return "restarted"
 
