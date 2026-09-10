@@ -2265,6 +2265,25 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except (TypeError, ValueError):
             return DEFAULT_INFINITE_WAVE_LIMIT
 
+    def _is_fishing_rod_equipped(self, hwnd: int) -> bool:
+        """Возвращает True, если удочка экипирована (в правом нижнем углу виден HUD "Fishing EXP" / эмблема)."""
+        hud_region = (750, 600, 400, 150)
+        for tpl_name in ("Fishing rank", "Fishing rank_emblem", "Fishing rank_text", "Fishing rank_alt7"):
+            try:
+                if vision.find_image(hwnd, tpl_name, region=hud_region, threshold=0.70):
+                    return True
+            except vision.TemplateNotFound:
+                continue
+        return False
+
+    def _ensure_fishing_rod_equipped(self, hwnd: int):
+        """Гарантирует, что удочка находится в руках. Кликает слот 1 (74, 670) только если удочка не экипирована."""
+        if not self._is_fishing_rod_equipped(hwnd):
+            self._log("[Macro] Fishing rod is NOT in hand (Fishing EXP HUD missing) -- equipping rod (slot 1)...")
+            rod_x, rod_y = vision.ref_to_screen(hwnd, 74, 670)
+            self._mouse.click(rod_x, rod_y)
+            time.sleep(0.3)
+
     def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
         """Активирует предметы-рыбы (Coopfin, Prize Fish, Fusion Fish, Booster Fish) из хотбара.
 
@@ -2582,6 +2601,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if fish_check_polls >= 5:
                     fish_check_polls = 0
                     self._try_use_fish_hotbar_items(hwnd)
+                    self._ensure_fishing_rod_equipped(hwnd)
 
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)

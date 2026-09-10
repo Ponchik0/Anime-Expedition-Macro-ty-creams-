@@ -295,3 +295,30 @@ def test_try_use_fish_hotbar_items(monkeypatch):
     assert (200, 650) in clicks  # Клик по слоту рыбы в хотбаре
 
 
+def test_ensure_fishing_rod_equipped(monkeypatch):
+    """Проверяет, что макрос берет удочку (слот 1) ТОЛЬКО когда HUD Fishing EXP отсутствует."""
+    runner = _runner()
+
+    hud_visible = {"val": True}
+    clicks = []
+
+    def fake_find_image(_hwnd, name, **_kwargs):
+        if name in ("Fishing rank", "Fishing rank_emblem") and hud_visible["val"]:
+            return {"cx": 900, "cy": 650, "score": 0.90}
+        return None
+
+    monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
+    monkeypatch.setattr(runner_module.vision, "ref_to_screen", lambda _hwnd, cx, cy: (cx, cy))
+    runner._mouse.click = lambda x, y: clicks.append((x, y))
+
+    # 1. Если HUD на экране — удочку в руках, кликать слот 1 не нужно!
+    runner._ensure_fishing_rod_equipped(123)
+    assert len(clicks) == 0
+
+    # 2. Если HUD пропал — удочка убрана, кликает слот 1 (74, 670)
+    hud_visible["val"] = False
+    runner._ensure_fishing_rod_equipped(123)
+    assert len(clicks) == 1
+    assert (74, 670) in clicks
+
+
