@@ -2314,14 +2314,18 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     f"-- clicking Restart Game.{suffix}"
                 )
 
-                # Кнопки Roblox Settings (в т.ч. Restart Game) иногда не срабатывают на
-                # первый клик без hover — используем shuffle_click и повторяем до 3 раз,
-                # пока кнопка пропадёт с экрана (это признак что она сработала).
+                # Кнопка в Roblox Settings — UI-оверлей игры. shuffle_click не работает:
+                # промежуточные движения сбивают фокус. Правильный способ: move_to (hover),
+                # дать UI отрисоваться, затем обычный click через SendInput.
+                # Повторяем до 3 раз; признак успеха — кнопка исчезла с экрана.
                 clicked = False
+                sx, sy = vision.ref_to_screen(hwnd, restart_match["cx"], restart_match["cy"])
                 for attempt in range(1, 4):
-                    vision.click_match(self._mouse, hwnd, restart_match, shuffle=True)
-                    time.sleep(0.8)
-                    # Проверяем: если restart_btn пропала — меню закрылось, клик принят
+                    self._mouse.move_to(sx, sy)   # hover — Roblox UI ждёт наведения
+                    time.sleep(0.45)              # дать UI подсветить кнопку
+                    self._mouse.click(sx, sy)
+                    time.sleep(1.2)               # дать игре обработать рестарт
+                    # Признак успеха: кнопка пропала (меню закрылось / матч перезагружается)
                     still_visible = False
                     try:
                         still_visible = bool(
@@ -2332,27 +2336,34 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     if not still_visible:
                         clicked = True
                         break
-                    if attempt < 3:
-                        self._log(
-                            f"[Macro] Restart Game button still visible after click {attempt} -- retrying."
-                        )
+                    self._log(
+                        f"[Macro] Restart Game button still visible after click {attempt} "
+                        f"-- {'retrying' if attempt < 3 else 'giving up'}."
+                    )
 
-                time.sleep(0.6)
+                if not clicked:
+                    # Все 3 попытки не приняты — кнопка точно не нажалась.
+                    # Возвращаться с "restarted" нельзя: следующий цикл стартует
+                    # пока Settings открыты и матч не перезапущен.
+                    self._log(
+                        "[Macro] Restart Game click failed after 3 attempts -- "
+                        "falling back to Leave Stage."
+                    )
+                else:
+                    # Проверяем возможное окно подтверждения (Confirm / Yes)
+                    for c_name in ("confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
+                        try:
+                            c_match = vision.find_image(hwnd, c_name, threshold=0.75)
+                            if c_match:
+                                self._log(f'[Macro] Found confirmation modal "{c_name}" -- confirming restart.')
+                                vision.click_match(self._mouse, hwnd, c_match)
+                                time.sleep(1.0)
+                                break
+                        except vision.TemplateNotFound:
+                            continue
 
-                # Проверяем возможное окно подтверждения (Confirm / Yes)
-                for c_name in ("confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
-                    try:
-                        c_match = vision.find_image(hwnd, c_name, threshold=0.75)
-                        if c_match:
-                            self._log(f'[Macro] Found confirmation modal "{c_name}" -- confirming restart.')
-                            vision.click_match(self._mouse, hwnd, c_match)
-                            time.sleep(1.0)
-                            break
-                    except vision.TemplateNotFound:
-                        continue
-
-                self._log("[Macro] Restart Game triggered -- match will reload in-game.")
-                return "restarted"
+                    self._log("[Macro] Restart Game triggered -- match will reload in-game.")
+                    return "restarted"
 
             self._log('[Macro] "restart_btn" not found in Settings -- falling back to Leave Stage.')
 

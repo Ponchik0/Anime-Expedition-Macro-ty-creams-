@@ -182,31 +182,78 @@ def test_infinite_wave_limit_uses_restart_game_when_repeats_remain(monkeypatch):
     runner = _runner()
     runner._is_last_repeat = False
 
-    clicked_images = []
-    # После первого клика по restart_btn кнопка должна исчезнуть —
-    # симулируем это флагом: find_image возвращает кнопку только до первого клика.
+    clicks = []
+    # После первого клика restart_btn пропадает — симулируем флагом.
     call_count = {"n": 0}
 
     def fake_find_image(_hwnd, name, **_kwargs):
         if name in ("restart_btn", "restart_icon"):
-            # Первые два вызова (до клика): возвращаем кнопку.
-            # После клика (call_count растёт) — None, чтобы retry-цикл понял «сработало».
+            # Первые два вызова: возвращаем кнопку (до клика).
+            # После клика — None, retry-цикл понимает «сработало».
             if call_count["n"] < 2:
                 return {"x": 500, "y": 300, "cx": 550, "cy": 320, "score": 0.95}
             return None
         return None
 
-    def fake_click_match(_mouse, _hwnd, match, **_kwargs):
-        # **_kwargs принимает shuffle=True и любые будущие аргументы
-        clicked_images.append(match)
+    def fake_ref_to_screen(_hwnd, cx, cy):
+        return (cx + 100, cy + 50)   # любое смещение, главное не падать
+
+    def fake_move_to(sx, sy):
+        pass   # hover — просто не падаем
+
+    def fake_click(sx, sy):
+        clicks.append((sx, sy))
         call_count["n"] += 1
 
     monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
-    monkeypatch.setattr(runner_module.vision, "click_match", fake_click_match)
+    monkeypatch.setattr(runner_module.vision, "ref_to_screen", fake_ref_to_screen)
+    runner._mouse.move_to = fake_move_to
+    runner._mouse.click = fake_click
 
     res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
     assert res == "restarted"
-    assert len(clicked_images) >= 1
+    assert len(clicks) >= 1
+
+
+def test_infinite_wave_limit_falls_back_to_leave_stage_when_restart_click_ignored(monkeypatch):
+    """Ловит баг, когда кнопка Restart найдена (score 1.00), но клик игнорируется
+    игрой — кнопка остаётся видна все 3 попытки. Раньше код возвращал 'restarted'
+    и стартовал следующий цикл, пока настройки ещё открыты."""
+    runner = _runner()
+    runner._is_last_repeat = False
+
+    clicks = []
+
+    def fake_find_image(_hwnd, name, **_kwargs):
+        # Кнопка ВСЕГДА видна — симулируем игнорирование клика
+        if name in ("restart_btn", "restart_icon"):
+            return {"x": 500, "y": 300, "cx": 550, "cy": 320, "score": 1.0}
+        return None
+
+    def fake_ref_to_screen(_hwnd, cx, cy):
+        return (cx + 100, cy + 50)
+
+    def fake_move_to(sx, sy):
+        pass
+
+    def fake_click(sx, sy):
+        clicks.append((sx, sy))
+
+    left = []
+    monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
+    monkeypatch.setattr(runner_module.vision, "ref_to_screen", fake_ref_to_screen)
+    runner._mouse.move_to = fake_move_to
+    runner._mouse.click = fake_click
+    monkeypatch.setattr(
+        runner, "_click_and_verify_gone",
+        lambda _hwnd, _stop, name, *_args, **_kwargs: left.append(name) or True
+    )
+    monkeypatch.setattr(runner, "_click_return_to_lobby_if_found", lambda *_args: True)
+
+    res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
+    # Не должен вернуть "restarted" если кнопка не приняла клик
+    assert res != "restarted"
+    assert "leave_stage" in left, "при провале restart должен уходить через leave_stage"
 
 
 def test_infinite_wave_limit_leaves_to_lobby_on_last_repeat(monkeypatch):
