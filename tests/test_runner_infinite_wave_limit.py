@@ -281,8 +281,8 @@ def test_try_use_fish_hotbar_items(monkeypatch):
 
     clicks = []
     def fake_find_image(_hwnd, name, **_kwargs):
-        if name in ("coopfin_char", "coopfin"):
-            return {"cx": 100, "cy": 600, "score": 0.90}
+        if name in ("coopfin_full", "coopfin"):
+            return {"cx": 200, "cy": 650, "score": 0.90}
         return None
 
     monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
@@ -292,7 +292,6 @@ def test_try_use_fish_hotbar_items(monkeypatch):
 
     used = runner._try_use_fish_hotbar_items(123)
     assert used == 1
-    assert (100, 600) in clicks  # Клик по рыбе
-    assert (74, 670) in clicks   # Возврат выбора на удочку в слоте 1
+    assert (200, 650) in clicks  # Клик по слоту рыбы в хотбаре
 
 

@@ -2268,19 +2268,20 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
     def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
         """Активирует предметы-рыбы (Coopfin, Prize Fish, Fusion Fish, Booster Fish) из хотбара.
 
-        Кликает найденные предметы-рыбы для активации их монетно-бустерного эффекта,
-        после чего восстанавливает выбор удочки в слоте 1 (74, 670).
+        Ищет только полноразмерные карточки слотов в области хотбара слотов 2-6 с порогом 0.80.
+        Не кликает по слоту 1 удочки, чтобы не убирать её из рук.
         """
         used = 0
         fish_templates = (
-            "coopfin_char", "coopfin", "coopfin_full", "coopfin_alt",
-            "prize_fish_char", "prize_fish", "prize_fish_full",
-            "fusion_fish", "fusion_fish_center",
-            "booster_fish"
+            "coopfin_full", "coopfin", "coopfin_alt",
+            "prize_fish_full", "prize_fish",
+            "fusion_fish", "booster_fish"
         )
+        # Область слотов 2-6 хотбара: x=130..750, y=620..730 в разрешении 1152x756
+        hotbar_region = (130, 620, 620, 110)
         for tpl_name in fish_templates:
             try:
-                match = vision.find_image(hwnd, tpl_name, threshold=0.70)
+                match = vision.find_image(hwnd, tpl_name, region=hotbar_region, threshold=0.80)
                 if not match:
                     continue
                 self._log(
@@ -2293,12 +2294,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 self._mouse.click(sx, sy)
                 time.sleep(0.25)
                 used += 1
-
-                # Перевыбираем удочку в слоте 1 (74, 670) чтобы гарантировать продолжение рыбалки
-                rod_x, rod_y = vision.ref_to_screen(hwnd, 74, 670)
-                self._mouse.click(rod_x, rod_y)
-                time.sleep(0.15)
-                break  # активируем по одному предмету за опрос
+                break  # активируем по 1 предмету за опрос
             except vision.TemplateNotFound:
                 continue
         return used
@@ -2583,7 +2579,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if limit_result == "failed":
                     return None
                 fish_check_polls += 1
-                if fish_check_polls >= 2:
+                if fish_check_polls >= 5:
                     fish_check_polls = 0
                     self._try_use_fish_hotbar_items(hwnd)
 
