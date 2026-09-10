@@ -2250,6 +2250,35 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except (TypeError, ValueError):
             return DEFAULT_INFINITE_WAVE_LIMIT
 
+    def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
+        """Активирует предметы с «Fish» в названии из хотбара — дают бонусные монеты.
+
+        Ищет шаблоны fusion_fish и booster_fish во всём окне. Оба имеют характерные
+        оранжевую/красную рамку. Кликает каждый найденный предмет.
+        Возвращает число активированных предметов (0 если ничего не нашлось).
+        Намеренно молчит если шаблоны не нарезаны — не прерывает рыбалку.
+        """
+        used = 0
+        for tpl_name in ("fusion_fish", "booster_fish"):
+            try:
+                match = vision.find_image(hwnd, tpl_name, threshold=0.78)
+                if not match:
+                    continue
+                self._log(
+                    f'[Macro] Fish item "{tpl_name}" found in hotbar '
+                    f'(score {match["score"]:.2f}) -- activating for bonus coins.'
+                )
+                sx, sy = vision.ref_to_screen(hwnd, match["cx"], match["cy"])
+                self._mouse.move_to(sx, sy)
+                time.sleep(0.15)
+                self._mouse.click(sx, sy)
+                time.sleep(0.3)
+                used += 1
+            except vision.TemplateNotFound:
+                # Шаблон не нарезан — молча пропускаем, рыбалка не прерывается
+                continue
+        return used
+
     def _leave_infinite_at_wave_limit(self, hwnd, stop_event: threading.Event, limit: int) -> str:
         """Leave or restart a live Infinite match after ``limit`` has fully completed.
 
@@ -2472,6 +2501,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             deadline = time.time() + MATCH_RESULT_TIMEOUT
         self._battle_status_minute = None  # свежий матч -- свежий такт (см. _pulse_battle_status)
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
+        fish_check_polls = 0  # счётчик для проверки fish-предметов в хотбаре (только инфинит)
         portal_offer_last_check = 0.0
         portal_offer_selected = False
         portal_offer_selected_card = None
@@ -2504,6 +2534,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     return limit_result
                 if limit_result == "failed":
                     return None
+                fish_check_polls += 1
+                if fish_check_polls >= 10:
+                    fish_check_polls = 0
+                    self._try_use_fish_hotbar_items(hwnd)
 
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)
