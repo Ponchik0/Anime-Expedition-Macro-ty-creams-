@@ -183,13 +183,23 @@ def test_infinite_wave_limit_uses_restart_game_when_repeats_remain(monkeypatch):
     runner._is_last_repeat = False
 
     clicked_images = []
+    # После первого клика по restart_btn кнопка должна исчезнуть —
+    # симулируем это флагом: find_image возвращает кнопку только до первого клика.
+    call_count = {"n": 0}
+
     def fake_find_image(_hwnd, name, **_kwargs):
         if name in ("restart_btn", "restart_icon"):
-            return {"x": 500, "y": 300, "cx": 550, "cy": 320, "score": 0.95}
+            # Первые два вызова (до клика): возвращаем кнопку.
+            # После клика (call_count растёт) — None, чтобы retry-цикл понял «сработало».
+            if call_count["n"] < 2:
+                return {"x": 500, "y": 300, "cx": 550, "cy": 320, "score": 0.95}
+            return None
         return None
 
-    def fake_click_match(_mouse, _hwnd, match):
+    def fake_click_match(_mouse, _hwnd, match, **_kwargs):
+        # **_kwargs принимает shuffle=True и любые будущие аргументы
         clicked_images.append(match)
+        call_count["n"] += 1
 
     monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
     monkeypatch.setattr(runner_module.vision, "click_match", fake_click_match)

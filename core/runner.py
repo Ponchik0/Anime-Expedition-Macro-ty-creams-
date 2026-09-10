@@ -2313,8 +2313,31 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     f'[Macro] Found Restart Game (score {restart_match["score"]:.2f}) '
                     f"-- clicking Restart Game.{suffix}"
                 )
-                vision.click_match(self._mouse, hwnd, restart_match)
-                time.sleep(1.0)
+
+                # Кнопки Roblox Settings (в т.ч. Restart Game) иногда не срабатывают на
+                # первый клик без hover — используем shuffle_click и повторяем до 3 раз,
+                # пока кнопка пропадёт с экрана (это признак что она сработала).
+                clicked = False
+                for attempt in range(1, 4):
+                    vision.click_match(self._mouse, hwnd, restart_match, shuffle=True)
+                    time.sleep(0.8)
+                    # Проверяем: если restart_btn пропала — меню закрылось, клик принят
+                    still_visible = False
+                    try:
+                        still_visible = bool(
+                            vision.find_image(hwnd, "restart_btn", threshold=0.75)
+                        )
+                    except vision.TemplateNotFound:
+                        pass
+                    if not still_visible:
+                        clicked = True
+                        break
+                    if attempt < 3:
+                        self._log(
+                            f"[Macro] Restart Game button still visible after click {attempt} -- retrying."
+                        )
+
+                time.sleep(0.6)
 
                 # Проверяем возможное окно подтверждения (Confirm / Yes)
                 for c_name in ("confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
