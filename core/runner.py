@@ -2324,7 +2324,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if crop_bgr is not None:
                     enlarged = cv2.resize(crop_bgr, (0, 0), fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
                     lines = ocr_windows.ocr_lines(enlarged)
-                    keywords = ("fish", "fich", "snail", "snall", "coop", "boost", "prize", "fusion", "shell")
+                    keywords = ("fish", "fich", "snail", "snall", "coop", "fin", "boost", "prize", "fusion", "shell")
                     for line in lines or []:
                         t = line.get("text", "").lower()
                         if any(kw in t for kw in keywords):
