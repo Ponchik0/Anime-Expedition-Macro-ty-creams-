@@ -276,15 +276,13 @@ def test_infinite_wave_limit_leaves_to_lobby_on_last_repeat(monkeypatch):
 
 
 def test_try_use_fish_hotbar_items(monkeypatch):
-    """Проверяет поиск и клик по рыбным бустам (fusion_fish, booster_fish) в хотбаре."""
+    """Проверяет поиск и клик по рыбным бустам (Coopfin, Prize Fish, Fusion Fish) в хотбаре."""
     runner = _runner()
 
     clicks = []
     def fake_find_image(_hwnd, name, **_kwargs):
-        if name == "fusion_fish":
+        if name in ("coopfin_char", "coopfin"):
             return {"cx": 100, "cy": 600, "score": 0.90}
-        if name == "booster_fish":
-            return {"cx": 200, "cy": 600, "score": 0.85}
         return None
 
     monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
@@ -293,8 +291,8 @@ def test_try_use_fish_hotbar_items(monkeypatch):
     runner._mouse.click = lambda x, y: clicks.append((x, y))
 
     used = runner._try_use_fish_hotbar_items(123)
-    assert used == 2
-    assert (100, 600) in clicks
-    assert (200, 600) in clicks
+    assert used == 1
+    assert (100, 600) in clicks  # Клик по рыбе
+    assert (74, 670) in clicks   # Возврат выбора на удочку в слоте 1
 
 

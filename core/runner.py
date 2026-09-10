@@ -2266,17 +2266,21 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             return DEFAULT_INFINITE_WAVE_LIMIT
 
     def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
-        """Активирует предметы с «Fish» в названии из хотбара — дают бонусные монеты.
+        """Активирует предметы-рыбы (Coopfin, Prize Fish, Fusion Fish, Booster Fish) из хотбара.
 
-        Ищет шаблоны fusion_fish и booster_fish во всём окне. Оба имеют характерные
-        оранжевую/красную рамку. Кликает каждый найденный предмет.
-        Возвращает число активированных предметов (0 если ничего не нашлось).
-        Намеренно молчит если шаблоны не нарезаны — не прерывает рыбалку.
+        Кликает найденные предметы-рыбы для активации их монетно-бустерного эффекта,
+        после чего восстанавливает выбор удочки в слоте 1 (74, 670).
         """
         used = 0
-        for tpl_name in ("fusion_fish", "booster_fish"):
+        fish_templates = (
+            "coopfin_char", "coopfin", "coopfin_full", "coopfin_alt",
+            "prize_fish_char", "prize_fish", "prize_fish_full",
+            "fusion_fish", "fusion_fish_center",
+            "booster_fish"
+        )
+        for tpl_name in fish_templates:
             try:
-                match = vision.find_image(hwnd, tpl_name, threshold=0.78)
+                match = vision.find_image(hwnd, tpl_name, threshold=0.70)
                 if not match:
                     continue
                 self._log(
@@ -2285,12 +2289,17 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 )
                 sx, sy = vision.ref_to_screen(hwnd, match["cx"], match["cy"])
                 self._mouse.move_to(sx, sy)
-                time.sleep(0.15)
+                time.sleep(0.12)
                 self._mouse.click(sx, sy)
-                time.sleep(0.3)
+                time.sleep(0.25)
                 used += 1
+
+                # Перевыбираем удочку в слоте 1 (74, 670) чтобы гарантировать продолжение рыбалки
+                rod_x, rod_y = vision.ref_to_screen(hwnd, 74, 670)
+                self._mouse.click(rod_x, rod_y)
+                time.sleep(0.15)
+                break  # активируем по одному предмету за опрос
             except vision.TemplateNotFound:
-                # Шаблон не нарезан — молча пропускаем, рыбалка не прерывается
                 continue
         return used
 
@@ -2568,7 +2577,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if limit_result == "failed":
                     return None
                 fish_check_polls += 1
-                if fish_check_polls >= 10:
+                if fish_check_polls >= 2:
                     fish_check_polls = 0
                     self._try_use_fish_hotbar_items(hwnd)
 
