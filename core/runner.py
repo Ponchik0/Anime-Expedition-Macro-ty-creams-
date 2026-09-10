@@ -1398,7 +1398,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if result == "restarted":
                     self._log("[Macro] Match restarted in-game via Settings -> beginning next repeat directly.")
                     fresh_entry = True
-                    time.sleep(3.0)
+                    time.sleep(5.0)
                     continue
 
                 # Both the Infinite wave-limit exit ("wave_limit") and a
@@ -2279,6 +2279,42 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 continue
         return used
 
+    def _find_restart_button(self, hwnd: int) -> dict:
+        """Ищет кнопку Restart Game в настройках.
+
+        Приоритет у маленьких иконок (restart_icon2, restart_icon) — их центр лежит
+        ровно на жёлтой кнопке. Для широких шаблонов (restart_btn, restart_full_row,
+        restart_btn_text) смещает точку клика (cx) на 30px от правого края, где
+        находится жёлтая кнопка, чтобы не кликать в середину некликабельного текста.
+        """
+        for name in ("restart_icon2", "restart_icon", "restart_btn", "restart_full_row", "restart_btn_text"):
+            try:
+                match = vision.find_image(hwnd, name, threshold=0.75)
+                if match:
+                    if name in ("restart_btn", "restart_full_row", "restart_btn_text") and match.get("w", 0) > 100:
+                        match["cx"] = match["x"] + match["w"] - 30
+                    return match
+            except vision.TemplateNotFound:
+                continue
+        return None
+
+    def _close_in_game_settings(self, hwnd: int):
+        """Закрывает открытое меню настроек Roblox, чтобы не перекрывать экран игры."""
+        try:
+            match = vision.find_image(hwnd, "nav_settings_on", threshold=0.75)
+            if match:
+                vision.click_match(self._mouse, hwnd, match)
+                time.sleep(0.5)
+                return
+        except vision.TemplateNotFound:
+            pass
+        try:
+            left, top, _, _ = wm.get_window_rect_screen(hwnd)
+            self._mouse.click(left + 273, top + 30)
+            time.sleep(0.5)
+        except Exception:
+            pass
+
     def _leave_infinite_at_wave_limit(self, hwnd, stop_event: threading.Event, limit: int) -> str:
         """Leave or restart a live Infinite match after ``limit`` has fully completed.
 
@@ -2296,17 +2332,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
         is_last_repeat = getattr(self, "_is_last_repeat", False)
         if not is_last_repeat:
-            # 1. Проверяем, не открыты ли уже настройки игры (видна ли кнопка restart)
-            restart_match = None
-            for name in ("restart_btn", "restart_icon", "restart_btn_text"):
-                try:
-                    restart_match = vision.find_image(hwnd, name, threshold=0.75)
-                    if restart_match:
-                        break
-                except vision.TemplateNotFound:
-                    continue
+            # 1. Проверяем, не открыты ли уже настройки игры
+            restart_match = self._find_restart_button(hwnd)
 
             # 2. Если настройки не открыты — открываем их через шестерёнку в верхнем баре
+            settings_opened = False
             if not restart_match:
                 self._log("[Macro] Opening in-game Settings to reach Restart Game...")
                 settings_match = None
@@ -2318,21 +2348,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 if settings_match:
                     vision.click_match(self._mouse, hwnd, settings_match)
                 else:
-                    # Координата кнопки шестерёнки в стандартном баре Roblox 1152x756: (273, 30)
                     self._log("[Macro] nav_settings not matched by image, clicking gear at (273, 30)...")
                     left, top, _, _ = wm.get_window_rect_screen(hwnd)
                     self._mouse.click(left + 273, top + 30)
 
-                time.sleep(1.2)  # ждём открытия меню настроек
+                settings_opened = True
+                time.sleep(1.2)
 
                 # Ищем кнопку Restart Game в открытых настройках
-                for name in ("restart_btn", "restart_icon", "restart_btn_text"):
-                    try:
-                        restart_match = vision.find_image(hwnd, name, threshold=0.75)
-                        if restart_match:
-                            break
-                    except vision.TemplateNotFound:
-                        continue
+                restart_match = self._find_restart_button(hwnd)
 
             # 3. Если кнопка Restart нашлась — нажимаем её!
             if restart_match:
@@ -2340,12 +2364,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 suffix = f" Debug: {debug_path}" if debug_path else ""
                 self._log(
                     f'[Macro] Found Restart Game (score {restart_match["score"]:.2f}) '
-                    f"-- clicking Restart Game.{suffix}"
+                    f"-- clicking yellow button at ({restart_match['cx']}, {restart_match['cy']}).{suffix}"
                 )
 
-                # Кнопка в Roblox Settings — UI-оверлей игры. shuffle_click не работает:
-                # промежуточные движения сбивают фокус. Правильный способ: move_to (hover),
-                # дать UI отрисоваться, затем обычный click через SendInput.
+                # Кнопка в Roblox Settings — UI-оверлей игры. Move_to (hover), затем click.
                 # Повторяем до 3 раз; признак успеха — кнопка исчезла с экрана.
                 clicked = False
                 sx, sy = vision.ref_to_screen(hwnd, restart_match["cx"], restart_match["cy"])
@@ -2354,14 +2376,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     time.sleep(0.45)              # дать UI подсветить кнопку
                     self._mouse.click(sx, sy)
                     time.sleep(1.2)               # дать игре обработать рестарт
-                    # Признак успеха: кнопка пропала (меню закрылось / матч перезагружается)
-                    still_visible = False
-                    try:
-                        still_visible = bool(
-                            vision.find_image(hwnd, "restart_btn", threshold=0.75)
-                        )
-                    except vision.TemplateNotFound:
-                        pass
+                    still_visible = bool(self._find_restart_button(hwnd))
                     if not still_visible:
                         clicked = True
                         break
@@ -2371,13 +2386,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     )
 
                 if not clicked:
-                    # Все 3 попытки не приняты — кнопка точно не нажалась.
-                    # Возвращаться с "restarted" нельзя: следующий цикл стартует
-                    # пока Settings открыты и матч не перезапущен.
+                    # Все 3 попытки не приняты — кнопка не нажалась.
+                    # Закрываем настройки, чтобы не сбивать игру и рыбалку!
                     self._log(
                         "[Macro] Restart Game click failed after 3 attempts -- "
-                        "falling back to Leave Stage."
+                        "closing Settings and falling back to Leave Stage."
                     )
+                    if settings_opened:
+                        self._close_in_game_settings(hwnd)
                 else:
                     # Проверяем возможное окно подтверждения (Confirm / Yes)
                     for c_name in ("confirm", "dialogue_yes", "start_game_restart", "confirm_current"):
@@ -2394,7 +2410,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     self._log("[Macro] Restart Game triggered -- match will reload in-game.")
                     return "restarted"
 
-            self._log('[Macro] "restart_btn" not found in Settings -- falling back to Leave Stage.')
+            elif settings_opened:
+                self._log('[Macro] "restart_btn" not found in Settings -- closing Settings and falling back to Leave Stage.')
+                self._close_in_game_settings(hwnd)
 
         # Выход в лобби через Leave Stage (если это последний повтор или restart не сработал)
         self._set_status(action=f"Wave {limit} complete -- leaving stage...")
