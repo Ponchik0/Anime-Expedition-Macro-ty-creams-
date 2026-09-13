@@ -413,6 +413,7 @@ def test_infinite_wave_limit_polls_and_retries_settings_opening_for_restart(monk
 
     monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
     monkeypatch.setattr(runner_module.vision, "ref_to_screen", lambda _hwnd, x, y: (x, y))
+    monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
     runner._mouse.move_to = lambda _x, _y: None
     runner._mouse.click = fake_click
 
@@ -420,6 +421,29 @@ def test_infinite_wave_limit_polls_and_retries_settings_opening_for_restart(monk
     assert res == "restarted"
     assert checks["count"] >= 3
     assert len(clicks) >= 2  # Клик Restart + клик подтверждения red_btn
+
+
+def test_inf_summer_restart_never_leaves_to_lobby_even_on_last_repeat(monkeypatch):
+    """Ловит баг, когда на Inf Summer (рыбалка) при достижении лимита повторов
+    макрос выходил в лобби и возвращал персонажа на спавн вместо бесконечного
+    внутриигрового Restart Game."""
+    runner = _runner()
+    runner._is_last_repeat = True
+    runner._current_task = {"macro": "Inf Summer", "mode": "event", "stage": "infinite"}
+
+    monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(runner, "_trigger_in_game_restart", lambda _hwnd, _stop: True)
+
+    left = []
+    monkeypatch.setattr(
+        runner, "_click_and_verify_gone",
+        lambda _hwnd, _stop, name, *_args, **_kwargs: left.append(name) or True
+    )
+
+    res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
+    assert res == "restarted"
+    assert "leave_stage" not in left, "Inf Summer никогда не должен уходить в лобби через leave_stage"
+
 
 
 

@@ -1289,7 +1289,13 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         """
         map_name = task.get("map")
         mode = task.get("mode") or "story"
+        self._current_task = task
         repeat_total = max(1, int(task.get("repeat") or 1))
+        # Для Inf Summer и бесконечной рыбалки при единственной задаче в очереди
+        # гарантируем непрерывный цикл рестартов без выхода на спавн
+        if (self._is_fishing_task(task) or str(task.get("macro") or "").strip().lower() == "inf summer") and task_count == 1:
+            if repeat_total < 9999:
+                repeat_total = 999999
         if mode == "portals":
             portal_limit = _parse_extract_after(task.get("extract_after"), default=0)
             repeat_total = portal_limit if portal_limit > 0 else PORTAL_CONTINUOUS_REPEATS
@@ -1416,6 +1422,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     self._log("[Macro] Match restarted in-game via Settings -> beginning next repeat directly.")
                     fresh_entry = True
                     time.sleep(5.0)
+                    if (self._is_fishing_task(task) or str(task.get("macro") or "").strip().lower() == "inf summer") and repeat_index >= repeat_total:
+                        repeat_total += 9999
                     continue
 
                 # Both the Infinite wave-limit exit ("wave_limit") and a
@@ -2539,7 +2547,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             "attempting in-game Restart Game."
         )
 
-        is_last_repeat = getattr(self, "_is_last_repeat", False)
+        current_task = getattr(self, "_current_task", None) or {}
+        is_fishing = self._is_fishing_task(current_task) or str(current_task.get("macro") or "").strip().lower() == "inf summer"
+        is_last_repeat = getattr(self, "_is_last_repeat", False) and not is_fishing
         if not is_last_repeat:
             if self._trigger_in_game_restart(hwnd, stop_event):
                 return "restarted"
