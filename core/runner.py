@@ -2290,112 +2290,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except (TypeError, ValueError):
             return DEFAULT_INFINITE_WAVE_LIMIT
 
-    def _is_fishing_rod_equipped(self, hwnd: int) -> bool:
-        """Возвращает True, если удочка экипирована (в правом нижнем углу виден HUD "Fishing EXP" / эмблема)."""
-        hud_region = (750, 600, 400, 150)
-        for tpl_name in ("Fishing rank", "Fishing rank_emblem", "Fishing rank_text", "Fishing rank_alt7"):
-            try:
-                if vision.find_image(hwnd, tpl_name, region=hud_region, threshold=0.70):
-                    return True
-            except vision.TemplateNotFound:
-                continue
-        return False
 
-    def _ensure_fishing_rod_equipped(self, hwnd: int):
-        """Гарантирует, что удочка находится в руках. Кликает слот 1 (74, 670) только если удочка не экипирована."""
-        if not self._is_fishing_rod_equipped(hwnd):
-            self._log("[Macro] Fishing rod is NOT in hand (Fishing EXP HUD missing) -- equipping rod (slot 1)...")
-            rod_x, rod_y = vision.ref_to_screen(hwnd, 74, 670)
-            self._mouse.click(rod_x, rod_y)
-            time.sleep(0.3)
-
-    def _trigger_wave10_hotbar_keys(self, hwnd: int, stop_event: threading.Event = None) -> bool:
-        """Начиная с 10-й волны циклически нажимает клавиши 1-6 хотбара раз в минуту.
-
-        ПОЧЕМУ ЭТО НУЖНО: в процессе бесконечного фарма/рыбалки в хотбар (слоты 2-6)
-        падают пойманные рыбы и улитки-бустеры (Coopfin, Prize Fish, Fusion Fish и др.).
-        Вместо хрупкого распознавания картинок каждого нового вида рыбы, периодическое
-        нажатие клавиш 1-6 гарантированно активирует все накопленные бустеры и способности,
-        а финальное переключение на слот 1 (удочку) возвращает её в руки игрока для продолжения ловли.
-        """
-        wave_num = getattr(self, "_last_detected_wave", 10)
-        self._log(
-            f"[Macro] Wave {wave_num} >= 10: "
-            "cycling hotbar keys 1-6 for fish boosters/abilities, then re-equipping rod."
-        )
-        for key_num in range(1, 7):
-            if stop_event is not None and self._checkpoint(stop_event):
-                return False
-            self._keyboard.tap(ord(str(key_num)))
-            time.sleep(0.12)
-        # Снова жмём слот 1 (удочка) и дополнительно проверяем HUD удочки
-        if stop_event is not None and self._checkpoint(stop_event):
-            return False
-        time.sleep(0.12)
-        self._keyboard.tap(ord("1"))
-        self._ensure_fishing_rod_equipped(hwnd)
-        return True
-
-    def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
-        """Активирует предметы-рыбы и улитки (Coopfin, Prize Fish, Fusion Fish, Booster Fish, Shellphone Snail) из хотбара.
-
-        Работает двумя способами:
-        1. Распознавание картинок-шаблонов (threshold 0.75).
-        2. OCR-распознавание текста (содержащего "fish", "snail", "coop", "boost", "prize", "shell" и т.д.).
-        """
-        used = 0
-        fish_templates = (
-            "coopfin", "prize_fish", "fusion_fish", "booster_fish",
-            "shellphone_snail", "snail"
-        )
-        # Область слотов 2-6 хотбара в разрешении 1152x756: (x, y, w, h)
-        hotbar_region = (110, 610, 500, 120)
-
-        # 1. Поиск по картинкам-шаблонам
-        for tpl_name in fish_templates:
-            try:
-                match = vision.find_image(hwnd, tpl_name, region=hotbar_region, threshold=0.75)
-                if match:
-                    self._log(
-                        f'[Macro] Hotbar booster item "{tpl_name}" matched by image '
-                        f'(score {match["score"]:.2f}) -- activating for bonus coins.'
-                    )
-                    sx, sy = vision.ref_to_screen(hwnd, match["cx"], match["cy"])
-                    self._mouse.move_to(sx, sy)
-                    time.sleep(0.12)
-                    self._mouse.click(sx, sy)
-                    time.sleep(0.25)
-                    return 1
-            except vision.TemplateNotFound:
-                continue
-
-        # 2. Поиск по названию через OCR (для новых предметов с "Fish", "Snail" и т.д.)
-        try:
-            if ocr_windows.is_available():
-                crop_bgr = vision.capture_window_region_bgr(hwnd, hotbar_region)
-                if crop_bgr is not None:
-                    enlarged = cv2.resize(crop_bgr, (0, 0), fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
-                    lines = ocr_windows.ocr_lines(enlarged)
-                    keywords = ("fish", "fich", "snail", "snall", "coop", "fin", "boost", "prize", "fusion", "shell")
-                    for line in lines or []:
-                        t = line.get("text", "").lower()
-                        if any(kw in t for kw in keywords):
-                            orig_cx = hotbar_region[0] + int(line["cx"] / 3.0)
-                            orig_cy = hotbar_region[1] + int(line["cy"] / 3.0)
-                            self._log(
-                                f'[Macro] Hotbar booster item "{line["text"]}" matched by OCR '
-                                f'-- activating for bonus coins.'
-                            )
-                            sx, sy = vision.ref_to_screen(hwnd, orig_cx, orig_cy)
-                            self._mouse.move_to(sx, sy)
-                            time.sleep(0.12)
-                            self._mouse.click(sx, sy)
-                            time.sleep(0.25)
-                            return 1
-        except Exception:
-            pass
-
-        return used
 
     def _find_restart_button(self, hwnd: int) -> dict:
         """Ищет кнопку Restart Game в настройках.
@@ -2644,10 +2539,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             deadline = time.time() + MATCH_RESULT_TIMEOUT
         self._battle_status_minute = None  # свежий матч -- свежий такт (см. _pulse_battle_status)
         self._last_detected_wave = 0
-        last_wave10_keys_pressed_at = 0.0
         next_wave_poll_time = 0.0
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
-        fish_check_polls = 0  # счётчик для проверки fish-предметов в хотбаре (только инфинит)
         portal_offer_last_check = 0.0
         portal_offer_selected = False
         portal_offer_selected_card = None
@@ -2680,11 +2573,6 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     return limit_result
                 if limit_result == "failed":
                     return None
-                fish_check_polls += 1
-                if fish_check_polls >= 5:
-                    fish_check_polls = 0
-                    self._try_use_fish_hotbar_items(hwnd)
-                    self._ensure_fishing_rod_equipped(hwnd)
 
             # Опрос волны каждые 10 секунд, если режим без infinite_wave_limit
             if infinite_wave_limit is None and time.time() >= next_wave_poll_time:
@@ -2698,14 +2586,6 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                             self._last_detected_wave = max(getattr(self, "_last_detected_wave", 0), c_wave)
                 except Exception:
                     pass
-
-            # Начиная с 10 волны: раз в минуту нажимаем 1-6 для активации рыбы/бустеров и выбора удочки
-            if getattr(self, "_last_detected_wave", 0) >= 10:
-                now = time.time()
-                if now - last_wave10_keys_pressed_at >= 60.0:
-                    last_wave10_keys_pressed_at = now
-                    if not self._trigger_wave10_hotbar_keys(hwnd, stop_event):
-                        return None
 
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)

@@ -5,10 +5,10 @@ All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 ## [1.1.9] - 2026-09-13
 
 ### New
-- **Wave 10+ Periodic Hotbar 1–6 Auto-Press**: Once wave 10 is reached in battle, automatically cycles hotbar keys 1 through 6 periodically (~once per minute) to consume caught fish (Coopfin, Prize Fish, Fusion Fish, Booster Fish, Shellphone Snail) and trigger slot abilities, then re-equips the fishing rod (slot 1) to continue fishing seamlessly.
 - **Copy Logs Button**: Added a dedicated "Copy Logs" button to the Dashboard log viewer with visual confirmation.
 
 ### Fixed
+- **Bottom Panel / Hotbar Safety**: Removed automatic bottom hotbar clicks and slot key cycling (1–6) during matches. This prevents targeting/placement mode lockups caused by placeable buff fish items requiring unit placement.
 - **Task Auto-Transition Logic**: Fixed an issue where the runner could advance to the next task even when "Auto Transition" was disabled. Toggling Auto Transition to Off now strictly repeats the current task or stops as selected. Also handles mid-task glitches and recovery safely without skipping tasks.
 - **Resolution Scaling & Event Navigation**:
   - Event mode navigation (`core/runner_event.py`) now dynamically handles pre-selected tabs and screens, eliminated accidental toggling/closing of the Event modal, and uses resolution-tolerant matching thresholds (`0.78`).

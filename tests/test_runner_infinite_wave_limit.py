@@ -275,78 +275,19 @@ def test_infinite_wave_limit_leaves_to_lobby_on_last_repeat(monkeypatch):
     assert "leave_stage" in left
 
 
-def test_try_use_fish_hotbar_items(monkeypatch):
-    """Проверяет поиск и клик по рыбным бустам (Coopfin, Prize Fish, Fusion Fish) в хотбаре."""
+def test_no_hotbar_interaction_during_infinite_match():
+    """Проверяет, что макрос НЕ кликает нижнюю панель хотбара (слоты 1-6) и не жмет клавиши 1-6.
+
+    ПОЧЕМУ ЭТО ВАЖНО: часть пойманных рыб требует применения/установки на юнита.
+    Любые автоматические клики или прожатия хотбара активируют режим прицеливания/размещения,
+    блокируя дальнейшее управление и ломая прогон.
+    """
     runner = _runner()
+    # Убеждаемся, что в объекте раннера нет методов автоматического взаимодействия с хотбаром
+    assert not hasattr(runner, "_trigger_wave10_hotbar_keys")
+    assert not hasattr(runner, "_try_use_fish_hotbar_items")
+    assert not hasattr(runner, "_ensure_fishing_rod_equipped")
 
-    clicks = []
-    def fake_find_image(_hwnd, name, **_kwargs):
-        if name in ("coopfin_full", "coopfin"):
-            return {"cx": 200, "cy": 650, "score": 0.90}
-        return None
-
-    monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
-    monkeypatch.setattr(runner_module.vision, "ref_to_screen", lambda _hwnd, cx, cy: (cx, cy))
-    runner._mouse.move_to = MagicMock()
-    runner._mouse.click = lambda x, y: clicks.append((x, y))
-
-    used = runner._try_use_fish_hotbar_items(123)
-    assert used == 1
-    assert (200, 650) in clicks  # Клик по слоту рыбы в хотбаре
-
-
-def test_ensure_fishing_rod_equipped(monkeypatch):
-    """Проверяет, что макрос берет удочку (слот 1) ТОЛЬКО когда HUD Fishing EXP отсутствует."""
-    runner = _runner()
-
-    hud_visible = {"val": True}
-    clicks = []
-
-    def fake_find_image(_hwnd, name, **_kwargs):
-        if name in ("Fishing rank", "Fishing rank_emblem") and hud_visible["val"]:
-            return {"cx": 900, "cy": 650, "score": 0.90}
-        return None
-
-    monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
-    monkeypatch.setattr(runner_module.vision, "ref_to_screen", lambda _hwnd, cx, cy: (cx, cy))
-    runner._mouse.click = lambda x, y: clicks.append((x, y))
-
-    # 1. Если HUD на экране — удочку в руках, кликать слот 1 не нужно!
-    runner._ensure_fishing_rod_equipped(123)
-    assert len(clicks) == 0
-
-    # 2. Если HUD пропал — удочка убрана, кликает слот 1 (74, 670)
-    hud_visible["val"] = False
-    runner._ensure_fishing_rod_equipped(123)
-    assert len(clicks) == 1
-    assert (74, 670) in clicks
-
-
-def test_trigger_wave10_hotbar_keys(monkeypatch):
-    """Проверяет циклический прожим клавиш 1-6 в хотбаре и перевыбор удочки (слот 1)."""
-    runner = _runner()
-    tapped_keys = []
-    runner._keyboard.tap = lambda vk, **_kwargs: tapped_keys.append(chr(vk))
-    runner._is_fishing_rod_equipped = lambda _hwnd: True
-    runner._last_detected_wave = 15
-
-    ok = runner._trigger_wave10_hotbar_keys(123)
-    assert ok is True
-    # Прожаты слоты 1, 2, 3, 4, 5, 6, а затем снова слот 1 (удочка)
-    assert tapped_keys == ["1", "2", "3", "4", "5", "6", "1"]
-
-
-def test_trigger_wave10_hotbar_keys_stops_promptly():
-    """Проверяет, что прожим хотбара прерывается немедленно при stop_event."""
-    runner = _runner()
-    tapped_keys = []
-    runner._keyboard.tap = lambda vk, **_kwargs: tapped_keys.append(chr(vk))
-    stop_event = threading.Event()
-    stop_event.set()
-
-    ok = runner._trigger_wave10_hotbar_keys(123, stop_event=stop_event)
-    assert ok is False
-    assert len(tapped_keys) == 0
 
 
 
