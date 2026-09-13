@@ -339,3 +339,24 @@ def test_preview_reports_bundled_walk_path_count():
     }
     preview = share.preview_template_code(share.encode_template_code(payload))
     assert preview["walk_paths"] == 1
+
+
+def test_decode_raw_list_of_blocks():
+    """Проверяет декодирование сырого списка блоков без внешней обёртки json."""
+    raw_json = '[{"type": "place_unit", "params": {"name": "Test", "x": 100, "y": 200}}]'
+    result = share.decode_template_code(raw_json)
+    assert result["ok"] is True
+    assert result["type"] == "single"
+    assert "Imported Template" in result["templates"]
+    assert len(result["templates"]["Imported Template"]) == 1
+
+
+def test_decode_phase_dictionary():
+    """Проверяет декодирование словаря фаз (pre_start, battle, loop) без поля blocks."""
+    raw_json = '{"pre_start": [], "battle": [{"type": "upgrade_unit", "params": {"index": 1}}]}'
+    result = share.decode_template_code(raw_json)
+    assert result["ok"] is True
+    assert result["type"] == "single"
+    assert "Imported Template" in result["templates"]
+    assert "battle" in result["templates"]["Imported Template"]
+

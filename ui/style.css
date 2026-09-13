@@ -1907,6 +1907,62 @@ body.compact-mode #compact-strip { display: flex; }
   .dock-step, .dock-step-mark { transition: none; }
 }
 
+/* Кнопки выбора разрешения окна игры (пресеты на экране ожидания и в настройках) */
+.res-preset-btn {
+  padding: 4px 9px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+  user-select: none;
+}
+.res-preset-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-strong);
+}
+.res-preset-btn.active {
+  color: var(--brand);
+  background: rgba(245, 158, 11, 0.12);
+  border-color: var(--brand);
+  font-weight: 600;
+}
+.res-input {
+  width: 58px;
+  padding: 3px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  color: var(--text);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.res-input:focus {
+  border-color: var(--brand);
+}
+.res-apply-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #000;
+  background: var(--brand);
+  border: 1px solid var(--brand);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.res-apply-btn:hover {
+  opacity: 0.9;
+}
+
 .loading-tag {
   display: inline-flex; align-items: center; gap: var(--s2);
   padding: var(--s1) var(--s3);

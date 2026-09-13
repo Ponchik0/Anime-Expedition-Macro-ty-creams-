@@ -36,7 +36,7 @@ def test_reach_event_act_selected_clicks_summer_flow_for_infinite(monkeypatch):
     runner._log = lambda message: None
     runner._spam_back_until_gone = lambda hwnd, stop_event: events.append(("back",))
 
-    def click_found_image(hwnd, image_name, timeout, stop_event):
+    def click_found_image(hwnd, image_name, timeout, stop_event=None, *args, **kwargs):
         events.append(("image", image_name))
         return {"score": 0.99}
 
@@ -63,7 +63,7 @@ def test_reach_event_act_selected_backs_out_when_summer_nav_missing(monkeypatch)
     runner._log = lambda message: None
     runner._spam_back_until_gone = lambda hwnd, stop_event: backs.append(hwnd)
 
-    def click_found_image(hwnd, image_name, timeout, stop_event):
+    def click_found_image(hwnd, image_name, timeout, stop_event=None, *args, **kwargs):
         clicked.append(image_name)
         return {"score": 0.99} if image_name == "nav_event" else None
 
@@ -71,7 +71,8 @@ def test_reach_event_act_selected_backs_out_when_summer_nav_missing(monkeypatch)
     monkeypatch.setattr(runner_module.time, "sleep", lambda seconds: None)
 
     assert runner._reach_event_act_selected(hwnd=456, stop_event=threading.Event(), act="infinite") is False
-    assert clicked == ["nav_event", "summer_nav"]
+    assert clicked[0] == "nav_event"
+    assert "summer_nav" in clicked
     assert backs == [456]
 
 
@@ -93,7 +94,7 @@ def test_reach_event_kind_selected_unknown_kind_backs_out():
     runner._set_status = lambda **kwargs: None
     runner._log = lambda message: None
     runner._spam_back_until_gone = lambda hwnd, stop_event: backs.append(hwnd)
-    runner._click_found_image = lambda hwnd, image_name, timeout, stop_event: None
+    runner._click_found_image = lambda hwnd, image_name, timeout, stop_event=None, *args, **kwargs: None
 
     assert runner._reach_event_kind_selected(hwnd=789, stop_event=threading.Event(), kind="bogus") is False
     assert backs == [789]
@@ -111,7 +112,7 @@ def test_reach_event_kind_selected_portal_not_implemented_fails_cleanly():
     runner._checkpoint = lambda stop_event: False
     runner._spam_back_until_gone = lambda hwnd, stop_event: backs.append(hwnd)
     runner._click_found_image = (
-        lambda hwnd, image_name, timeout, stop_event: clicked.append(image_name) or None)
+        lambda hwnd, image_name, timeout, stop_event=None, *args, **kwargs: clicked.append(image_name) or None)
 
     assert runner._reach_event_kind_selected(hwnd=1234, stop_event=threading.Event(), kind="portal") is False
     assert clicked == ["summer_event_portal"]

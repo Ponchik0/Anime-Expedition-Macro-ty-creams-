@@ -322,3 +322,31 @@ def test_ensure_fishing_rod_equipped(monkeypatch):
     assert (74, 670) in clicks
 
 
+def test_trigger_wave10_hotbar_keys(monkeypatch):
+    """Проверяет циклический прожим клавиш 1-6 в хотбаре и перевыбор удочки (слот 1)."""
+    runner = _runner()
+    tapped_keys = []
+    runner._keyboard.tap = lambda vk, **_kwargs: tapped_keys.append(chr(vk))
+    runner._is_fishing_rod_equipped = lambda _hwnd: True
+    runner._last_detected_wave = 15
+
+    ok = runner._trigger_wave10_hotbar_keys(123)
+    assert ok is True
+    # Прожаты слоты 1, 2, 3, 4, 5, 6, а затем снова слот 1 (удочка)
+    assert tapped_keys == ["1", "2", "3", "4", "5", "6", "1"]
+
+
+def test_trigger_wave10_hotbar_keys_stops_promptly():
+    """Проверяет, что прожим хотбара прерывается немедленно при stop_event."""
+    runner = _runner()
+    tapped_keys = []
+    runner._keyboard.tap = lambda vk, **_kwargs: tapped_keys.append(chr(vk))
+    stop_event = threading.Event()
+    stop_event.set()
+
+    ok = runner._trigger_wave10_hotbar_keys(123, stop_event=stop_event)
+    assert ok is False
+    assert len(tapped_keys) == 0
+
+
+

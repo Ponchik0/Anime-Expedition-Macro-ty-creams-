@@ -47,6 +47,35 @@ from . import window as wm
 # resize entirely, costing one comparison.
 # ---------------------------------------------------------------------------
 
+_last_aspect_corr = 1.0
+
+
+def set_aspect_ratio_correction(corr: float) -> None:
+    """Устанавливает коэффициент горизонтального масштабирования для компенсации искажений."""
+    global _last_aspect_corr
+    try:
+        _last_aspect_corr = float(corr) if corr > 0 else 1.0
+    except (TypeError, ValueError):
+        _last_aspect_corr = 1.0
+
+
+def get_aspect_ratio_correction(hwnd: int = 0) -> float:
+    """Возвращает коэффициент горизонтального искажения пропорций при нормализации
+    окна игры в эталонный размер 1152x756.
+    Для 1152x756: 1.0.
+    Для 1024x768: (1152/1024) / (756/768) ≈ 1.142857.
+    """
+    global _last_aspect_corr
+    if hwnd:
+        try:
+            _, _, sx, sy = _window_geometry(hwnd)
+            if sx > 0 and sy > 0:
+                _last_aspect_corr = sy / sx
+        except Exception:
+            pass
+    return _last_aspect_corr
+
+
 def _window_geometry(hwnd: int):
     """(left, top, sx, sy) for the rendered game client.
 
@@ -55,10 +84,13 @@ def _window_geometry(hwnd: int):
     size together so capture and click conversion cannot disagree when the
     window has a title bar or resize border.
     """
+    global _last_aspect_corr
     left, top, right, bottom = wm.get_client_rect_screen(hwnd)
     w, h = right - left, bottom - top
     sx = (w / config.FIXED_WIN_W) if w > 0 else 1.0
     sy = (h / config.FIXED_WIN_H) if h > 0 else 1.0
+    if sx > 0 and sy > 0:
+        _last_aspect_corr = sy / sx
     return left, top, sx, sy
 
 
@@ -445,6 +477,8 @@ def _capture_window_gray(hwnd: int, region: tuple = None):
     -- see wm.capture_window_rgb), normalized to reference space and
     cropped to `region` exactly like the primary path. Returns None if the
     window couldn't be rendered."""
+    if hwnd:
+        get_aspect_ratio_correction(hwnd)
     result = wm.capture_window_rgb(hwnd)
     if not result:
         return None
@@ -496,6 +530,8 @@ def capture_game_gray(hwnd: int, region: tuple = None) -> np.ndarray:
     # it. Cached background frame, normalized to reference dims and cropped to
     # `region` exactly like the paths below; falls through to the original
     # capture on any miss (no frame yet, WGC unavailable).
+    if hwnd:
+        get_aspect_ratio_correction(hwnd)
     _bgr = None
     try:
         from . import wgc_capture
@@ -599,6 +635,8 @@ def force_window_capture() -> None:
 def _capture_window_bgr(hwnd: int, region: tuple = None):
     """Color twin of _capture_window_gray -- same window-content capture and
     reference-space normalization, minus the grayscale conversion."""
+    if hwnd:
+        get_aspect_ratio_correction(hwnd)
     result = wm.capture_window_rgb(hwnd)
     if not result:
         return None
@@ -780,28 +818,68 @@ def find_in_gray(haystack_gray: np.ndarray, template_gray: np.ndarray, threshold
     return match if match is not None and match["score"] >= threshold else None
 
 
-def _scaled_templates(name: str, template_dir: str, scale: float) -> list:
-    """Every variant of a name (see load_template_grays), resized to one
-    scale factor -- cached per (dir, name, scale) so templates that keep
-    missing at 1x don't get re-resized on every single wait_for_image poll
-    (every ~0.3s)."""
-    if scale == 1.0:
+def _scaled_templates(name: str, template_dir: str, scale_x: float, scale_y: float = None) -> list:
+    """Every variant of a name (see load_template_grays), resized to scale_x, scale_y
+    -- cached per (dir, name, scale_x, scale_y) so templates don't get re-resized
+    on every single poll. Поддерживает раздельное масштабирование ширины и высоты
+    для компенсации искажений при нестандартных разрешениях (например, 1024x768)."""
+    if scale_y is None:
+        scale_y = scale_x
+    if scale_x == 1.0 and scale_y == 1.0:
         return load_template_grays(name, template_dir)
-    cache_key = ("scaled", template_dir, name, scale)
+    cache_key = ("scaled", template_dir, name, round(scale_x, 4), round(scale_y, 4))
     if cache_key in _template_cache:
         return _template_cache[cache_key]
     entries = []
     for gray, mask in load_template_grays(name, template_dir):
         h, w = gray.shape[:2]
-        new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
+        new_w = max(1, round(w * scale_x))
+        new_h = max(1, round(h * scale_y))
         # INTER_AREA is the recommended choice for shrinking (avoids moire/
         # aliasing on fine text/edges); INTER_LINEAR for enlarging.
-        interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        interp = cv2.INTER_AREA if (scale_x < 1 or scale_y < 1) else cv2.INTER_LINEAR
         scaled_gray = cv2.resize(gray, (new_w, new_h), interpolation=interp)
         scaled_mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST) if mask is not None else None
         entries.append((scaled_gray, scaled_mask))
     _template_cache[cache_key] = entries
     return entries
+
+
+def _get_multiscale_pairs() -> list:
+    """Возвращает список кортежей (scale_x, scale_y) для перебора.
+    При стандартных пропорциях (1152x756 или идентичный аспект):
+    [(1.0, 1.0), (0.95, 0.95), (1.05, 1.05), (0.90, 0.90), (1.10, 1.10)].
+    При нестандартных пропорциях (например, 1024x768, где _last_aspect_corr ≈ 1.143):
+    добавляются пары с учетом коэффициента и обратного коэффициента, чтобы
+    компенсировать искажения пиксельных кнопок Roblox при нормализации кадра в 1152x756.
+    """
+    corr = _last_aspect_corr
+    pairs = [(1.0, 1.0)]
+    if abs(corr - 1.0) > 0.03:
+        inv = 1.0 / corr
+        pairs.extend([
+            (corr, 1.0),
+            (1.0, inv),
+            (corr, corr),
+            (inv, 1.0),
+            (1.0, corr),
+            (inv, inv),
+        ])
+    for s in (0.95, 1.05, 0.90, 1.10):
+        pairs.append((s, s))
+        if abs(corr - 1.0) > 0.03:
+            pairs.append((corr * s, s))
+            pairs.append((s, s / corr))
+            pairs.append((s / corr, s))
+    # Устраняем дубликаты, сохраняя порядок
+    seen = set()
+    uniq = []
+    for px, py in pairs:
+        key = (round(px, 3), round(py, 3))
+        if key not in seen:
+            seen.add(key)
+            uniq.append((round(px, 4), round(py, 4)))
+    return uniq
 
 
 def find_in_gray_multiscale(haystack_gray: np.ndarray, name: str, template_dir: str = UI_ASSETS_DIR,
@@ -816,8 +894,8 @@ def find_in_gray_multiscale(haystack_gray: np.ndarray, name: str, template_dir: 
     size, the overwhelmingly common hit) before any rescaling starts, so
     the fallback images cost nothing when the primary one matches and the
     scale sweep only runs when every variant genuinely missed at 1x."""
-    for scale in SCALE_FACTORS:
-        for gray, mask in _scaled_templates(name, template_dir, scale):
+    for sx, sy in _get_multiscale_pairs():
+        for gray, mask in _scaled_templates(name, template_dir, sx, sy):
             match = find_in_gray(haystack_gray, gray, threshold, mask)
             if match is not None:
                 return match
@@ -849,8 +927,8 @@ def best_match_in_gray_multiscale(haystack_gray: np.ndarray, name: str, template
     потерялся бы, и каждый опрос платил бы за полный перебор.
     """
     best = None
-    for scale in SCALE_FACTORS:
-        for gray, mask in _scaled_templates(name, template_dir, scale):
+    for sx, sy in _get_multiscale_pairs():
+        for gray, mask in _scaled_templates(name, template_dir, sx, sy):
             # Порог 0: нам нужен сам счёт, а не ответ «да/нет». Отрицательные
             # счета (TM_CCOEFF_NORMED их даёт) find_in_gray отсеивает сама —
             # это и есть «не похоже ни на что».
@@ -876,8 +954,8 @@ def find_in_gray_multiscale_diagnostic(haystack_gray: np.ndarray, name: str,
     """
     first_match = None
     best = None
-    for scale in SCALE_FACTORS:
-        for gray, mask in _scaled_templates(name, template_dir, scale):
+    for sx, sy in _get_multiscale_pairs():
+        for gray, mask in _scaled_templates(name, template_dir, sx, sy):
             candidate = best_match_in_gray(haystack_gray, gray, mask)
             if candidate is None:
                 continue

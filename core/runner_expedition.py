@@ -119,8 +119,8 @@ class ExpeditionOps:
             # somewhere neutral is cheap and harmless if the first one
             # already worked, but gives a real shot at clearing whatever's
             # actually blocking it if it didn't.
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
-            self._mouse.click(left + self._coords["screen_middle_x"], top + self._coords["screen_middle_y"])
+            mx, my = vision.ref_to_screen(hwnd, self._coords["screen_middle_x"], self._coords["screen_middle_y"])
+            self._mouse.click(mx, my)
             self._note_checkpoint_intercepted()
             return None
 
@@ -206,8 +206,8 @@ class ExpeditionOps:
             # modal's own dismiss animation and the extract/continue button
             # itself both need a beat to actually render, not just the
             # instant this match was found in.
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
-            self._mouse.click(left + self._coords["screen_middle_x"], top + self._coords["screen_middle_y"])
+            mx, my = vision.ref_to_screen(hwnd, self._coords["screen_middle_x"], self._coords["screen_middle_y"])
+            self._mouse.click(mx, my)
             time.sleep(0.5)
 
             if self._expedition_extract_count < self._expedition_extract_accept_at:
@@ -405,7 +405,8 @@ class ExpeditionOps:
             # top of this exact choice -- same unconditional middle-click
             # dismissal (harmless when no card is up) + settle the template
             # path uses, then re-find Continue in case anything shifted.
-            self._mouse.click(left + self._coords["screen_middle_x"], top + self._coords["screen_middle_y"])
+            mx, my = vision.ref_to_screen(hwnd, self._coords["screen_middle_x"], self._coords["screen_middle_y"])
+            self._mouse.click(mx, my)
             time.sleep(0.5)
             refound = vision.find_color_run(hwnd, EXP_COLOR_CONTINUE_BAND, _exp_green, EXP_COLOR_CONTINUE_MIN_RUN)
             if refound is not None:

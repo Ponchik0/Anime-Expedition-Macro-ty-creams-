@@ -107,6 +107,7 @@
     'Pause / Resume Macro': 'Пауза / продолжить',
     'Process Log': 'Журнал',
     'Pop Out': 'В окно',
+    'Copy Logs': 'Скопировать логи',
     'Clear': 'Очистить',
     'new': 'новых',
 
@@ -174,9 +175,12 @@
     'After Completion': 'После завершения',
     'Enable custom action after task completes all repeats':
       'Включить особое действие после выполнения всех повторов задачи',
+    'Auto Transition': 'Автопереход',
+    'Enable or disable transition to next task after all repeats':
+      'Включить или выключить переход к следующей задаче после всех повторов',
     'Action On Finish': 'Действие',
     'What to do when this task finishes cleanly':
-      'Что делать после успешного завершения задачи',
+      'Что делать после завершения повторов этой задачи',
     'Next in queue': 'Следующая по очереди',
     'Stop macro': 'Остановить макрос',
     'Repeat this task': 'Повторять задачу (зациклить)',
@@ -448,6 +452,10 @@
     'Capture the Roblox screen and click the Auto Play button': 'Захватить экран Roblox и кликнуть по кнопке Auto Play',
     "Capture the Roblox screen and click the lobby's close button": 'Захватить экран Roblox и кликнуть по кнопке закрытия в лобби',
     'Roblox Window': 'Окно Roblox',
+    'Game Resolution': 'Разрешение игры',
+    'Custom...': 'Кастомное...',
+    'Sets the docked Roblox client window size. Standard is 1152×756. Choose 1024×768 or custom for smaller screens or laptops. The macro automatically compensates template matching and click coordinates.':
+      'Задаёт размер встроенного окна Roblox. Стандарт — 1152×756. Выбери 1024×768 или кастомное для небольших экранов или ноутбуков. Макрос автоматически компенсирует поиск картинок и клики.',
     'Select Roblox Window': 'Выбрать окно Roblox',
     'Attach Selected Roblox': 'Прикрепить выбранное окно',
     'Un-Attach Roblox': 'Открепить Roblox',

@@ -215,8 +215,13 @@ def remap_recording_names(blocks, rename_map) -> None:
                 params["recording"] = new
 
 
-def _parse_payload(payload: dict) -> dict:
-    """Parses and validates a decoded payload dictionary."""
+def _parse_payload(payload) -> dict:
+    """Parses and validates a decoded payload dictionary or list."""
+    if isinstance(payload, list):
+        # Прямой список блоков без обёртки
+        return {"ok": True, "type": "single", "templates": {"Imported Template": payload},
+                "paths": {}, "recordings": {}}
+
     if not isinstance(payload, dict):
         return {"ok": False, "reason": "Payload is not a valid JSON object."}
 
@@ -251,6 +256,14 @@ def _parse_payload(payload: dict) -> dict:
         name = str(payload.get("name", "Imported Template"))
         blocks = payload.get("blocks", {})
         templates[name] = blocks
+        return {"ok": True, "type": "single", "templates": templates,
+                "paths": bundled_paths, "recordings": bundled_recordings}
+
+    # Phase dictionary: {"pre_start": [...], "battle": [...]} or {"prestart": [...]}
+    phase_keys = ("pre_start", "prestart", "battle", "loop", "loop_a", "loop_b", "during", "after", "before")
+    if any(k in payload for k in phase_keys):
+        name = str(payload.get("name", "Imported Template"))
+        templates[name] = payload
         return {"ok": True, "type": "single", "templates": templates,
                 "paths": bundled_paths, "recordings": bundled_recordings}
 

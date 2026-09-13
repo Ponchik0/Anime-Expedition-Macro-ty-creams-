@@ -846,8 +846,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         debug_path = self._debug_save(hwnd, "select upgrade card", match)
         suffix = f" Debug: {debug_path}" if debug_path else ""
         self._log(f'[Macro] Found "select upgrade card" (score {match["score"]:.2f}) -- clicking it.{suffix}')
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + self._coords["screen_middle_x"], top + self._coords["screen_middle_y"])
+        mx, my = vision.ref_to_screen(hwnd, self._coords["screen_middle_x"], self._coords["screen_middle_y"])
+        self._mouse.click(mx, my)
         return True
 
     def _clear_result_obtainment_modal(self, hwnd, stop_event: threading.Event = None) -> bool:
@@ -1160,6 +1160,18 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                                   f"stopping macro (stop on failure enabled).")
                         self._set_status(action="Stopped: task error")
                         return
+                    # Если автопереход выключен (зацикливание задачи или останов):
+                    # при сбое НЕ прыгаем на следующую задачу, а соблюдаем настройку задачи.
+                    action = task.get("on_complete_action")
+                    if action == "repeat":
+                        self._log(f"[Macro] Task {task_index}/{len(tasks)} hit an error, but auto-transition is disabled "
+                                  f"(repeating this task) -- retrying from lobby.")
+                        ti = task_index - 1
+                        continue
+                    elif action == "stop":
+                        self._log(f"[Macro] Task {task_index}/{len(tasks)} stopped due to error (auto-transition disabled).")
+                        self._set_status(action="Stopped: task error")
+                        return
                     # Recovery already returned to the lobby. Skip only this
                     # broken task and let the remaining queue (or its next
                     # pass) continue instead of ending the runner thread.
@@ -1218,19 +1230,21 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # Переход после завершения задачи: выбор дальнейшего действия
                 # (следующая по очереди, остановить макрос, повторить/зациклить задачу
                 # или перейти к конкретной задаче).
-                if task.get("on_complete_enabled"):
-                    action = task.get("on_complete_action") or "next"
-                    if action == "stop":
+                action = task.get("on_complete_action")
+                on_complete_on = task.get("on_complete_enabled")
+                if action in ("stop", "repeat", "jump") or on_complete_on:
+                    act = action or "next"
+                    if act == "stop":
                         self._log(f"[Macro] Task {task_index}/{len(tasks)} completed -- "
                                   f"stopping macro (on-complete action: \"Stop\").")
                         self._set_status(action="Idle")
                         return
-                    elif action == "repeat":
+                    elif act == "repeat":
                         self._log(f"[Macro] Task {task_index}/{len(tasks)} completed -- "
                                   f"repeating this task (on-complete action: \"Repeat\").")
                         ti = task_index - 1
                         continue
-                    elif action == "jump":
+                    elif act == "jump":
                         target_id = task.get("on_complete_target")
                         target = next((k for k, t in enumerate(tasks)
                                         if str(t.get("id")) == str(target_id)), None)
@@ -1242,7 +1256,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                             continue
                         else:
                             self._log(f"[Macro] Task {task_index}/{len(tasks)}: target task id \"{target_id}\" not found "
-                                      f"-- continuing sequentially.")
+                                      f"-- repeating this task to avoid unintended transition.")
+                            ti = task_index - 1
+                            continue
                 if self._current_hwnd and wm.is_window(self._current_hwnd):
                     hwnd = self._current_hwnd
                 if self._checkpoint(stop_event):
@@ -1760,7 +1776,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._log(f'[Macro] Task {task_index}/{task_count} still failing after '
                    f'{TASK_RECOVERY_ATTEMPTS} attempts -- giving up on it.')
         screenshot_path = self._save_debug_screenshot_unconditional(hwnd, "task_gave_up")
-        fail_action_msg = "stopping macro" if task.get("stop_on_failure") else "moving on to the next task"
+        fail_action_msg = "stopping macro" if task.get("stop_on_failure") else ("repeating this task" if task.get("on_complete_action") == "repeat" else "moving on to the next task")
         self._send_event_webhook(
             webhook, task, "Task Gave Up",
             f"Task {task_index}/{task_count} still failing after {TASK_RECOVERY_ATTEMPTS} recovery "
@@ -1967,16 +1983,25 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # tail below click nav_start. See EventOps._select_summer_portal.
         portal_ready = (mode == "portals") or (mode == "event" and task.get("stage") == "portal")
         if task.get("play_mode") != "matchmaking" and not portal_ready:
-            if mode == "tournament":
-                confirm_image = "nav_entertournament"
-            elif mode == "expedition":
-                confirm_image = "exp_select_stage"
-            else:
-                confirm_image = "nav_select_stage"
-            self._set_status(action="Clicking Select Stage...")
-            if not self._click_and_verify_gone(hwnd, stop_event, confirm_image, STAGE_SCREEN_TIMEOUT):
-                self._log(f'[Macro] "{confirm_image}" never showed up -- stopping.')
-                return False
+            start_already_visible = False
+            try:
+                start_already_visible = vision.find_image(hwnd, "nav_start", threshold=0.78) is not None
+            except Exception:
+                start_already_visible = False
+
+            if not start_already_visible:
+                if mode == "tournament":
+                    confirm_image = "nav_entertournament"
+                elif mode == "expedition":
+                    confirm_image = "exp_select_stage"
+                else:
+                    confirm_image = "nav_select_stage"
+                self._set_status(action="Clicking Select Stage...")
+                if not self._click_and_verify_gone(hwnd, stop_event, confirm_image, STAGE_SCREEN_TIMEOUT, threshold=0.80):
+                    # Если кнопка выбора этапа не найдена, проверяем, не видна ли уже кнопка Start
+                    if vision.find_image(hwnd, "nav_start", threshold=0.78) is None:
+                        self._log(f'[Macro] "{confirm_image}" never showed up -- stopping.')
+                        return False
         if self._checkpoint(stop_event):
             return False
 
@@ -2284,6 +2309,33 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             self._mouse.click(rod_x, rod_y)
             time.sleep(0.3)
 
+    def _trigger_wave10_hotbar_keys(self, hwnd: int, stop_event: threading.Event = None) -> bool:
+        """Начиная с 10-й волны циклически нажимает клавиши 1-6 хотбара раз в минуту.
+
+        ПОЧЕМУ ЭТО НУЖНО: в процессе бесконечного фарма/рыбалки в хотбар (слоты 2-6)
+        падают пойманные рыбы и улитки-бустеры (Coopfin, Prize Fish, Fusion Fish и др.).
+        Вместо хрупкого распознавания картинок каждого нового вида рыбы, периодическое
+        нажатие клавиш 1-6 гарантированно активирует все накопленные бустеры и способности,
+        а финальное переключение на слот 1 (удочку) возвращает её в руки игрока для продолжения ловли.
+        """
+        wave_num = getattr(self, "_last_detected_wave", 10)
+        self._log(
+            f"[Macro] Wave {wave_num} >= 10: "
+            "cycling hotbar keys 1-6 for fish boosters/abilities, then re-equipping rod."
+        )
+        for key_num in range(1, 7):
+            if stop_event is not None and self._checkpoint(stop_event):
+                return False
+            self._keyboard.tap(ord(str(key_num)))
+            time.sleep(0.12)
+        # Снова жмём слот 1 (удочка) и дополнительно проверяем HUD удочки
+        if stop_event is not None and self._checkpoint(stop_event):
+            return False
+        time.sleep(0.12)
+        self._keyboard.tap(ord("1"))
+        self._ensure_fishing_rod_equipped(hwnd)
+        return True
+
     def _try_use_fish_hotbar_items(self, hwnd: int) -> int:
         """Активирует предметы-рыбы и улитки (Coopfin, Prize Fish, Fusion Fish, Booster Fish, Shellphone Snail) из хотбара.
 
@@ -2525,6 +2577,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if current is None or maximum is not None:
             state.pop("confirmations", None)
             return None
+        self._last_detected_wave = max(getattr(self, "_last_detected_wave", 0), current)
         state.pop("read_error_logged", None)
         self._set_status(action=f"Infinite wave {current} -- leaving after wave {limit}...")
 
@@ -2590,6 +2643,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         else:
             deadline = time.time() + MATCH_RESULT_TIMEOUT
         self._battle_status_minute = None  # свежий матч -- свежий такт (см. _pulse_battle_status)
+        self._last_detected_wave = 0
+        last_wave10_keys_pressed_at = 0.0
+        next_wave_poll_time = 0.0
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
         fish_check_polls = 0  # счётчик для проверки fish-предметов в хотбаре (только инфинит)
         portal_offer_last_check = 0.0
@@ -2629,6 +2685,27 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     fish_check_polls = 0
                     self._try_use_fish_hotbar_items(hwnd)
                     self._ensure_fishing_rod_equipped(hwnd)
+
+            # Опрос волны каждые 10 секунд, если режим без infinite_wave_limit
+            if infinite_wave_limit is None and time.time() >= next_wave_poll_time:
+                next_wave_poll_time = time.time() + 10.0
+                try:
+                    from core import wave as wave_module
+                    w_img = vision.capture_window_region_bgr(hwnd, WAVE_REGION)
+                    if w_img is not None and w_img.size > 0:
+                        c_wave, _ = wave_module.read_wave(w_img)
+                        if c_wave is not None:
+                            self._last_detected_wave = max(getattr(self, "_last_detected_wave", 0), c_wave)
+                except Exception:
+                    pass
+
+            # Начиная с 10 волны: раз в минуту нажимаем 1-6 для активации рыбы/бустеров и выбора удочки
+            if getattr(self, "_last_detected_wave", 0) >= 10:
+                now = time.time()
+                if now - last_wave10_keys_pressed_at >= 60.0:
+                    last_wave10_keys_pressed_at = now
+                    if not self._trigger_wave10_hotbar_keys(hwnd, stop_event):
+                        return None
 
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)
@@ -3145,8 +3222,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # _reset_unit_info_panel uses first, so a leftover hover
         # state/tooltip from whatever was under the cursor can't throw off
         # whichever button gets clicked next.
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.move_to(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+        reset_x, reset_y = vision.ref_to_screen(hwnd, self._coords["unit_info_reset_x"], self._coords["unit_info_reset_y"])
+        self._mouse.move_to(reset_x, reset_y)
         time.sleep(0.1)
 
         # A level-up reward-card modal can land exactly as the match ends
@@ -3171,7 +3248,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             # back to the same near-empty corner used above before this
             # loop ever ran, so that hover state doesn't linger into the
             # repeat_stage/leave_stage search below.
-            self._mouse.move_to(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+            self._mouse.move_to(reset_x, reset_y)
             time.sleep(0.1)
 
         if result == "win" and not self._clear_result_obtainment_modal(hwnd, stop_event):
@@ -4335,7 +4412,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             # useful signal about whether it's really gone.
             try:
                 start_match, start_name = vision.wait_for_image_any(
-                    hwnd, NAV_START_IMAGE_NAMES, timeout=SOLO_START_TIMEOUT, stop_event=stop_event)
+                    hwnd, NAV_START_IMAGE_NAMES, timeout=SOLO_START_TIMEOUT, threshold=0.78, stop_event=stop_event)
             except vision.TemplateNotFound as exc:
                 self._log(f"[Macro] {exc}")
                 return False
@@ -4411,12 +4488,15 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         debug_path = self._debug_save(hwnd, name, match)
         suffix = f" Debug: {debug_path}" if debug_path else ""
         self._log(f'[Macro] Found "{name}" (score {match["score"]:.2f}) -- clicking it.{suffix}')
+        if name in ("nav_event", "nav_events"):
+            shuffle = True
         vision.click_match(self._mouse, hwnd, match, shuffle=shuffle)
         return match
 
     def _click_and_verify_gone(self, hwnd, stop_event: threading.Event, name: str, timeout: float,
                                  retry_attempts: int = 3, verify_settle: float = 1.0,
-                                 success_name: str = None) -> bool:
+                                 success_name: str = None,
+                                 threshold: float = vision.DEFAULT_THRESHOLD) -> bool:
         """Like _click_found_image, but re-checks the button actually
         disappeared afterward and re-clicks (with a focus reassert) if it's
         still there, up to retry_attempts times -- same "click found it but
@@ -4436,7 +4516,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         match = None
         for attempt in range(1, retry_attempts + 1):
             try:
-                match = vision.wait_for_image(hwnd, name, timeout=timeout, stop_event=stop_event)
+                match = vision.wait_for_image(hwnd, name, timeout=timeout, threshold=threshold, stop_event=stop_event)
             except vision.TemplateNotFound as exc:
                 self._log(f"[Macro] {exc}")
                 return False
@@ -4465,7 +4545,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     return True
 
             try:
-                still_there = vision.find_image(hwnd, name)
+                still_there = vision.find_image(hwnd, name, threshold=threshold)
             except vision.TemplateNotFound:
                 still_there = None
             if still_there is None:
@@ -4766,8 +4846,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         x, y = coords[f"{key_prefix}_x"], coords[f"{key_prefix}_y"]
         self._log(f'[Macro] Clicking difficulty "{difficulty}" at ({x}, {y}).')
         self._set_status(action=f'Clicking difficulty "{difficulty}"...')
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + x, top + y)
+        diff_x, diff_y = vision.ref_to_screen(hwnd, x, y)
+        self._mouse.click(diff_x, diff_y)
 
 
     def _click_enter_matchmaking(self, hwnd, stop_event: threading.Event, coords: dict, mode: str = None) -> bool:
@@ -4851,17 +4931,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         y = base[1] + idx * row_height
         self._log(f'[Macro] Stage screen open -- double-clicking {label} "{stage}" at ({x}, {y}).')
         self._set_status(action=f'Clicking {label} "{stage}"...')
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        # A single click was sometimes not registering as the row's own
-        # "selected" state (confirmed from real reports on both Story and
-        # Raid) -- a double-click reliably does. The stage-detail panel
-        # (Story's difficulty toggle, or straight to the Select Stage
-        # confirm button for Raid/Infinite/Mastery, which have no
-        # difficulty toggle at all) then animates in, same as the map click
-        # before it -- settled here UNCONDITIONALLY, not just on the
-        # difficulty-click path, since Raid/locked stages used to go
-        # straight from this click into Select Stage with no wait at all.
-        self._mouse.double_click(left + x, top + y)
+        stage_x, stage_y = vision.ref_to_screen(hwnd, x, y)
+        self._mouse.double_click(stage_x, stage_y)
         time.sleep(DIFFICULTY_CLICK_DELAY)
         return True
 

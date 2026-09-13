@@ -12,6 +12,8 @@ import threading
 import time
 
 from . import keys
+from . import window as wm
+from . import vision
 from .runner_constants import *  # noqa: F401,F403 -- the shared constants namespace
 
 
@@ -47,7 +49,11 @@ class EventOps:
         # focus-safe verify via _click_found_image, and each screen animates
         # in, so a short settle follows before searching the next one.
         self._set_status(action="Clicking Event...")
-        if self._click_found_image(hwnd, "nav_event", EVENT_SCREEN_TIMEOUT, stop_event) is None:
+        try:
+            wm.activate_window(hwnd)
+        except Exception:
+            pass
+        if self._click_found_image(hwnd, "nav_event", EVENT_SCREEN_TIMEOUT, stop_event, shuffle=True) is None:
             self._spam_back_until_gone(hwnd, stop_event)
             return False
         if self._checkpoint(stop_event):
@@ -56,7 +62,7 @@ class EventOps:
 
         # (1) Click the Summer event's own nav entry from the event menu
         self._set_status(action="Clicking Summer Nav...")
-        match = self._click_found_image(hwnd, "summer_nav", EVENT_SCREEN_TIMEOUT, stop_event)
+        match = self._click_found_image(hwnd, "summer_nav", EVENT_SCREEN_TIMEOUT, stop_event, threshold=0.78)
         if match is None:
             self._spam_back_until_gone(hwnd, stop_event)
             return False
@@ -65,10 +71,9 @@ class EventOps:
         time.sleep(SETTLE_DELAY)
 
         # (2) Then the summer_event_gamemode card (the button that opens the
-        # Infinite & Fishing / Portal Mode picker) -- found and clicked by
-        # image search. Its absence after the card click is the sign the card
-        # click failed (spam back + retry from lobby).
-        if self._click_found_image(hwnd, "summer_event_gamemode", EVENT_SCREEN_TIMEOUT, stop_event) is None:
+        # Infinite & Fishing / Portal Mode picker)
+        self._set_status(action="Clicking Summer Gamemode...")
+        if self._click_found_image(hwnd, "summer_event_gamemode", EVENT_SCREEN_TIMEOUT, stop_event, threshold=0.78) is None:
             self._spam_back_until_gone(hwnd, stop_event)
             return False
         if self._checkpoint(stop_event):
@@ -130,7 +135,7 @@ class EventOps:
         # Any candidate crop that matches wins; later entries are fallbacks
         # for a card that shows in more than one visual state.
         for candidate in kind_images:
-            if self._click_found_image(hwnd, candidate, EVENT_SCREEN_TIMEOUT, stop_event) is not None:
+            if self._click_found_image(hwnd, candidate, EVENT_SCREEN_TIMEOUT, stop_event, threshold=0.76) is not None:
                 return not self._checkpoint(stop_event)
 
         self._log(f'[Macro] Could not find the "{kind}" event card.')

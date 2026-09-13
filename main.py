@@ -53,6 +53,19 @@ wm.set_dpi_aware()
 # core.window_win.disable_mss_captureblt).
 wm.disable_mss_captureblt()
 
+# Гарантируем существование всех пользовательских директорий при запуске (для новых пользователей .exe)
+for _dir_path in (
+    os.path.join(constants.APP_DIR, "Templates"),
+    os.path.join(constants.APP_DIR, "Templates", "Tasks"),
+    os.path.join(constants.APP_DIR, "Recordings"),
+    os.path.join(constants.APP_DIR, "Paths"),
+    os.path.join(constants.APP_DIR, "debug"),
+):
+    try:
+        os.makedirs(_dir_path, exist_ok=True)
+    except OSError:
+        pass
+
 
 def _debug_dir() -> str:
     # Every Settings > Debug capture (screenshot, reward-region preview)
@@ -535,6 +548,10 @@ class Api:
         # applied before any search runs.
         from core import vision as _vision
         _vision.set_name_thresholds(_cfg.get("image_thresholds", {}))
+        self.game_width = int(_cfg.get("game_width", config.FIXED_WIN_W) or config.FIXED_WIN_W)
+        self.game_height = int(_cfg.get("game_height", config.FIXED_WIN_H) or config.FIXED_WIN_H)
+        if self.game_width > 0 and self.game_height > 0:
+            _vision.set_aspect_ratio_correction((config.FIXED_WIN_W / self.game_width) / (config.FIXED_WIN_H / self.game_height))
         self.game_cutout = sys.platform != "darwin" and bool(_cfg.get("game_cutout", False))
         # WGC capture (see core/wgc_capture.py) fixes black-frame capture on
         # hardware-accelerated / flip-model Roblox. Opt-in (default off): it
@@ -2407,9 +2424,14 @@ class Api:
         # запускать заведомо мёртвый прогон вместо внятного отказа.
         preflight = self.run_preflight_check()
         if preflight.get("has_blocker", False):
-            self.push_log("[Preflight] Start blocked due to environment/configuration issue.")
+            blockers = [c for c in preflight.get("checks", []) if not c.get("ok") and c.get("blocker")]
+            reasons = "; ".join(f"{c['message']} ({c['action']})" if c.get("action") else c["message"] for c in blockers)
+            if reasons:
+                self.push_log(f"[Preflight] Start blocked due to environment/configuration issue: {reasons}")
+            else:
+                self.push_log("[Preflight] Start blocked due to environment/configuration issue.")
             self.reset_run_status("Idle")
-            return {"ok": False, "reason": "preflight_blocker", "preflight": preflight}
+            return {"ok": False, "reason": "preflight_blocker", "message": reasons, "preflight": preflight}
 
         # Окружение в порядке — теперь решаем, ЧТО запускать.
         # В режиме «Повтор» кнопка «Старт» крутит запись, а не очередь задач.
@@ -3325,16 +3347,28 @@ class Api:
         os.makedirs(transfer_dir, exist_ok=True)
         dialog_type = getattr(getattr(webview, "FileDialog", None), "OPEN", getattr(webview, "OPEN_DIALOG", 1))
         result = self._window.create_file_dialog(
-            dialog_type, directory=transfer_dir, file_types=("JSON files (*.json)",))
+            dialog_type, directory=transfer_dir, file_types=("JSON files (*.json)", "All files (*.*)"))
         if not result:
             return {"ok": False, "reason": "cancelled"}
         path = result[0] if isinstance(result, (list, tuple)) else result
+        if not path or not os.path.isfile(path):
+            return {"ok": False, "reason": "cancelled"}
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                content = f.read()
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # User may have selected a text or JSON file containing a raw CREAM share code
+                from core import share
+                decoded = share.decode_template_code(content.strip())
+                if decoded.get("ok"):
+                    data = decoded
+                else:
+                    return {"ok": False, "reason": "File is not a valid JSON or template code."}
+        except OSError as exc:
             return {"ok": False, "reason": str(exc)}
-        return {"ok": True, "data": data}
+        return {"ok": True, "data": data, "path": path, "filename": os.path.basename(path)}
 
     def load_walk_path(self, name: str) -> dict:
         from core import paths
@@ -3885,6 +3919,9 @@ class Api:
         win.events.closed += _on_closed
         return {"ok": True}
 
+    def get_log_history(self) -> str:
+        return "\n".join(self._log_history)
+
     def read_current_wave(self) -> dict:
         """Polled by the Wave Monitor pop-out: reads the wave HUD from
         Roblox's OWN window contents (works while tabbed out -- see
@@ -3959,7 +3996,9 @@ class Api:
         if self.game_cutout:
             self._cutout_game_visible = True
             if self.docker.docked and self.game_hwnd and wm.is_window(self.game_hwnd) and self.gui_hwnd:
-                self.docker.dock(self.game_hwnd, self.gui_hwnd, x=0, y=TITLEBAR_H)
+                self.docker.dock(self.game_hwnd, self.gui_hwnd, x=0, y=TITLEBAR_H,
+                                 width=getattr(self, "game_width", config.FIXED_WIN_W),
+                                 height=getattr(self, "game_height", config.FIXED_WIN_H))
             return
         if self.game_hwnd and wm.is_window(self.game_hwnd):
             wm.show_window(self.game_hwnd)
@@ -4106,6 +4145,60 @@ class Api:
             except Exception as exc:
                 self.push_log(f"[Compact] native resize failed: {exc}")
 
+    def get_game_resolution(self) -> dict:
+        """Возвращает текущее целевое разрешение окна игры."""
+        return {
+            "width": getattr(self, "game_width", config.FIXED_WIN_W),
+            "height": getattr(self, "game_height", config.FIXED_WIN_H),
+        }
+
+    def set_game_resolution(self, width: int, height: int) -> dict:
+        """Устанавливает новое целевое разрешение окна игры (например, 1024x768).
+        Сохраняет его в settings.json, перестраивает окно макроса и при необходимости
+        изменяет размер и позицию встроенного окна Roblox."""
+        try:
+            width = max(640, min(2560, int(width)))
+            height = max(480, min(1440, int(height)))
+        except (TypeError, ValueError):
+            return {"success": False, "error": "Invalid width/height"}
+
+        self.game_width = width
+        self.game_height = height
+        cfg.update({"game_width": width, "game_height": height})
+
+        # Обновляем aspect ratio в vision, чтобы шаблоны сразу искались с учетом нового размера
+        from core import vision as _v
+        if width > 0 and height > 0:
+            _v.set_aspect_ratio_correction((config.FIXED_WIN_W / width) / (config.FIXED_WIN_H / height))
+
+        # Подстраиваем внешнее окно макроса на Windows
+        if sys.platform != "darwin" and self._window:
+            new_gui_w = width + PANEL_WIDTH
+            new_gui_h = TITLEBAR_H + height + LOGS_H
+            screen_w, screen_h = wm.get_screen_size()
+            if screen_w > 0 and new_gui_w > screen_w:
+                new_gui_w = screen_w
+            if screen_h > 0 and new_gui_h > screen_h:
+                new_gui_h = screen_h
+            try:
+                self._window.resize(new_gui_w, new_gui_h)
+            except Exception:
+                pass
+
+        # Если Roblox уже найден и встроен, обновляем его клиентский размер и передокаем
+        if self.game_hwnd and wm.is_window(self.game_hwnd) and self.gui_hwnd:
+            try:
+                roblox_wm = WindowManager(config.ROBLOX_WINDOW_TITLE)
+                roblox_wm.hwnd = self.game_hwnd
+                roblox_wm.resize_client_to(width, height)
+                self.docker.dock(self.game_hwnd, self.gui_hwnd, x=0, y=TITLEBAR_H, width=width, height=height)
+            except Exception as exc:
+                self.push_log(f"[Macro] Error resizing Roblox window: {exc}")
+
+        self.push_log(f"[Macro] Game resolution set to {width}x{height}.")
+        self.push_ui("loadResolutionUI")
+        return {"success": True, "width": width, "height": height}
+
     def enter_compact(self) -> None:
         """F7 compact view: trim the window down to just the docked game plus
         the bottom control strip (drops the empty side column + log gap). The
@@ -4118,22 +4211,25 @@ class Api:
             # there's no empty in-window column to trim -- the CSS-hidden
             # panels are the whole effect there.
             return
-        self._resize_gui_keep_pos(GUI_WIDTH_COMPACT_FIT, GUI_HEIGHT_COMPACT_FIT)
+        compact_w = getattr(self, "game_width", config.FIXED_WIN_W)
+        compact_h = TITLEBAR_H + getattr(self, "game_height", config.FIXED_WIN_H) + COMPACT_STRIP_H
+        self._resize_gui_keep_pos(compact_w, compact_h)
 
     def exit_compact(self) -> None:
         """Undo enter_compact: grow the window back to full size so the side
         panel + log have room again."""
         if not self._window or sys.platform == "darwin":
             return
-        self._resize_gui_keep_pos(GUI_WIDTH_FULL, GUI_HEIGHT_FULL)
+        full_w = getattr(self, "game_width", config.FIXED_WIN_W) + PANEL_WIDTH
+        full_h = TITLEBAR_H + getattr(self, "game_height", config.FIXED_WIN_H) + LOGS_H
+        self._resize_gui_keep_pos(full_w, full_h)
 
     def skip_waiting(self):
         # Lets the panel be used (config, etc.) before Roblox is even open.
         # The window has to actually resize to full size here, not just in
         # JS/CSS, since the two-column layout is wider than the compact
-        # window (see index.html's #main-layout comment -- it's 1552px
-        # wide and assumes it never gets shown without that resize having
-        # actually happened first).
+        # window (see index.html's #main-layout comment -- it assumes it never
+        # gets shown without that resize having actually happened first).
         if sys.platform == "darwin" and self._window:
             # macOS never uses the 1552px two-column size: there is no game
             # inside the window to leave room for. Skipping straight past
@@ -4159,19 +4255,21 @@ class Api:
             # verify the resize actually took, falling back to a native
             # MoveWindow if it didn't -- otherwise every screen except the
             # waiting placeholder renders squeezed into ~400px.
+            target_w = getattr(self, "game_width", config.FIXED_WIN_W) + PANEL_WIDTH
+            target_h = TITLEBAR_H + getattr(self, "game_height", config.FIXED_WIN_H) + LOGS_H
             self._window.restore()
             time.sleep(0.2)
-            self._window.resize(GUI_WIDTH_FULL, GUI_HEIGHT_FULL)
+            self._window.resize(target_w, target_h)
             self._window.move(0, 0)
             time.sleep(0.3)
             gui_hwnd = WindowManager(GUI_TITLE).find()
             if gui_hwnd:
                 left, top, right, bottom = wm.get_window_rect_screen(gui_hwnd)
-                if (right - left, bottom - top) != (GUI_WIDTH_FULL, GUI_HEIGHT_FULL):
-                    wm.move_window(gui_hwnd, 0, 0, GUI_WIDTH_FULL, GUI_HEIGHT_FULL)
+                if (right - left, bottom - top) != (target_w, target_h):
+                    wm.move_window(gui_hwnd, 0, 0, target_w, target_h)
                     time.sleep(0.2)
                     left, top, right, bottom = wm.get_window_rect_screen(gui_hwnd)
-                    if (right - left, bottom - top) != (GUI_WIDTH_FULL, GUI_HEIGHT_FULL):
+                    if (right - left, bottom - top) != (target_w, target_h):
                         self.push_log("Warning: the window didn't fully resize -- some screens may look "
                                       "cramped. Try resizing or maximizing it by hand.")
         self.push_log("Skipped waiting for Roblox.")
@@ -5580,6 +5678,17 @@ def _launch_ui():
     webview.settings['DRAG_REGION_DIRECT_TARGET_ONLY'] = True
 
     api = Api()
+    for _d in (
+        os.path.join(constants.APP_DIR, "Templates"),
+        os.path.join(constants.APP_DIR, "Templates", "Tasks"),
+        os.path.join(constants.APP_DIR, "Paths"),
+        os.path.join(constants.APP_DIR, "Recordings"),
+        os.path.join(constants.APP_DIR, "debug"),
+    ):
+        try:
+            os.makedirs(_d, exist_ok=True)
+        except OSError:
+            pass
     # First line of every session's debug.log on purpose -- exactly which
     # tagged version AND which exact source revision (for anyone running
     # from source between releases, which is most of this app's own
@@ -5639,7 +5748,12 @@ def _launch_ui():
                 f"placed partly or fully off-screen. Fix: System Settings > Displays > select a scaled "
                 f"resolution with \"More Space\" (a higher point resolution, not necessarily higher "
                 f"physical res) so it's at least that wide.")
-    start_w, start_h = GUI_WIDTH_FULL, GUI_HEIGHT_FULL
+    start_w = api.game_width + PANEL_WIDTH
+    start_h = TITLEBAR_H + api.game_height + LOGS_H
+    if screen_w > 0 and start_w > screen_w:
+        start_w = screen_w
+    if screen_h > 0 and start_h > screen_h:
+        start_h = screen_h
     start_x = 0
     start_y = 0
 
@@ -5823,7 +5937,7 @@ def _launch_ui():
                         continue
 
                     roblox_wm.hwnd = hwnd
-                    roblox_wm.resize_client_to()
+                    roblox_wm.resize_client_to(api.game_width, api.game_height)
 
                     if sys.platform == "darwin":
                         # macOS can't embed another app's window (no
@@ -5851,7 +5965,8 @@ def _launch_ui():
                                 api._apply_panel_geometry(
                                     layout["x"], layout["y"], layout["panel_w"], layout["panel_h"])
                                 api._mac_panel_ready = True
-                            api.docker.dock(hwnd, gui_hwnd, x=layout["game_x"], y=layout["game_y"])
+                            api.docker.dock(hwnd, gui_hwnd, x=layout["game_x"], y=layout["game_y"],
+                                            width=api.game_width, height=api.game_height)
                             api.pinned_hwnd = None
                             api.push_ui("showDocked")
                             api.push_log(
@@ -5867,9 +5982,11 @@ def _launch_ui():
                     # minimized window is silently dropped and it restores at the
                     # old compact size (verified against pywebview 6.2.1), which
                     # docked Roblox into a 400px-wide window. Restore first.
+                    target_gui_w = api.game_width + PANEL_WIDTH
+                    target_gui_h = TITLEBAR_H + api.game_height + LOGS_H
                     window.restore()
                     time.sleep(0.2)
-                    window.resize(GUI_WIDTH_FULL, GUI_HEIGHT_FULL)
+                    window.resize(target_gui_w, target_gui_h)
                     window.move(0, 0)
                     time.sleep(0.3)
                     gui_hwnd = gui_wm.find()
@@ -5880,17 +5997,17 @@ def _launch_ui():
                         # dock into a still-compact window.
                         gui_wm.hwnd = gui_hwnd
                         l, t, r, b = wm.get_window_rect_screen(gui_hwnd)
-                        if (r - l, b - t) != (GUI_WIDTH_FULL, GUI_HEIGHT_FULL):
-                            wm.move_window(gui_hwnd, 0, 0, GUI_WIDTH_FULL, GUI_HEIGHT_FULL)
+                        if (r - l, b - t) != (target_gui_w, target_gui_h):
+                            wm.move_window(gui_hwnd, 0, 0, target_gui_w, target_gui_h)
                             time.sleep(0.2)
                             l, t, r, b = wm.get_window_rect_screen(gui_hwnd)
                             if (r - l) <= GUI_WIDTH_COMPACT + 50:
                                 api.push_log("Macro window still compact, retrying dock...")
                                 time.sleep(2)
                                 continue
-                            elif (r - l, b - t) != (GUI_WIDTH_FULL, GUI_HEIGHT_FULL):
+                            elif (r - l, b - t) != (target_gui_w, target_gui_h):
                                 api.push_log(f"Warning: Macro window size ({r - l}x{b - t}) is smaller than requested "
-                                             f"({GUI_WIDTH_FULL}x{GUI_HEIGHT_FULL}) due to display resolution or DPI scaling. Docking anyway.")
+                                             f"({target_gui_w}x{target_gui_h}) due to display resolution or DPI scaling. Docking anyway.")
                         api.gui_hwnd = gui_hwnd
                         # Final stopping re-check: several sleeps have passed
                         # since the one guarding this branch, and a dock()
@@ -5899,7 +6016,7 @@ def _launch_ui():
                         # the cascade the whole close path exists to prevent.
                         if api.stopping.is_set():
                             return
-                        api.docker.dock(hwnd, gui_hwnd, x=0, y=TITLEBAR_H)
+                        api.docker.dock(hwnd, gui_hwnd, x=0, y=TITLEBAR_H, width=api.game_width, height=api.game_height)
                         # Stay hidden until the JS side explicitly shows it for the Task
                         # screen (showDocked() does that) — Info/Settings/Macro Manager are the
                         # default/other screens now, and Roblox is a native window that
@@ -5929,7 +6046,8 @@ def _launch_ui():
                         and api._cutout_game_visible
                         and api.game_hwnd and wm.is_window(api.game_hwnd)
                         and api.gui_hwnd and wm.is_window(api.gui_hwnd)):
-                    api.docker.dock(api.game_hwnd, api.gui_hwnd, x=0, y=TITLEBAR_H)
+                    api.docker.dock(api.game_hwnd, api.gui_hwnd, x=0, y=TITLEBAR_H,
+                                    width=api.game_width, height=api.game_height)
             except Exception:
                 pass
 

@@ -255,3 +255,126 @@ def test_timer_expired_when_enabled_transitions_to_next_or_target():
     assert runner._timer_expired(task_jump) is True
     assert runner._timer_jump_to == "target_id_42"
 
+
+def test_auto_transition_off_repeats_task_even_if_on_complete_enabled_is_false(monkeypatch):
+    """Ловит баг: пользователь выключил автопереход (on_complete_action='repeat'),
+    но флаг on_complete_enabled остался False, из-за чего макрос всё равно переходил
+    к следующей задаче очереди вместо зацикливания текущей."""
+    runner = _make_runner()
+    stop = threading.Event()
+
+    task1 = {
+        "id": "t1", "mode": "story", "map": "Summer",
+        "on_complete_enabled": False, "on_complete_action": "repeat"
+    }
+    task2 = {"id": "t2", "mode": "story", "map": "Raid"}
+
+    runs = 0
+
+    def fake_run_task(hwnd, stop_event, task, *a, **k):
+        nonlocal runs
+        runs += 1
+        assert task["id"] == "t1", f"Expected task t1, but switched to {task['id']}!"
+        if runs >= 3:
+            stop_event.set()
+        return True
+
+    monkeypatch.setattr(runner, "_run_task", fake_run_task)
+    monkeypatch.setattr(wm, "is_window", lambda hwnd: True)
+
+    runner._run(lambda: 12345, lambda: [task1, task2], stop, scroll_power=1, coords={}, scroll_nudges=1, default_walk_paths={}, webhook={})
+
+    assert runs == 3
+
+
+def test_mid_task_error_with_repeat_action_does_not_jump_to_next_task(monkeypatch):
+    """Ловит баг («бывают случаи»): посреди выполнения задачи t1 произошёл сбой (not task_ok),
+    и макрос безусловно перескакивал на t2 (continue), игнорируя то, что автопереход выключен
+    (on_complete_action='repeat') и задача t1 должна повторяться/перезапускаться."""
+    runner = _make_runner()
+    stop = threading.Event()
+
+    task1 = {
+        "id": "t1", "mode": "story", "map": "Summer",
+        "on_complete_action": "repeat", "stop_on_failure": False
+    }
+    task2 = {"id": "t2", "mode": "story", "map": "Raid"}
+
+    runs = 0
+
+    def fake_run_task(hwnd, stop_event, task, *a, **k):
+        nonlocal runs
+        runs += 1
+        assert task["id"] == "t1", f"Error caused unintended jump to {task['id']}!"
+        if runs == 1:
+            raise RuntimeError("Transient glitch in match")
+        stop_event.set()
+        return True
+
+    monkeypatch.setattr(runner, "_run_task", fake_run_task)
+    monkeypatch.setattr(runner, "_recover_to_lobby", lambda *a, **k: True)
+    monkeypatch.setattr(wm, "is_window", lambda hwnd: True)
+
+    runner._run(lambda: 12345, lambda: [task1, task2], stop, scroll_power=1, coords={}, scroll_nudges=1, default_walk_paths={}, webhook={})
+
+    assert runs == 2
+
+
+def test_mid_task_error_with_stop_action_halts_macro(monkeypatch):
+    """Проверяет, что при сбое в задаче с действием 'stop' (автопереход выключен на останов)
+    макрос останавливается, а не перескакивает на следующую задачу очереди."""
+    runner = _make_runner()
+    stop = threading.Event()
+
+    task1 = {
+        "id": "t1", "mode": "story", "map": "Summer",
+        "on_complete_action": "stop", "stop_on_failure": False
+    }
+    task2 = {"id": "t2", "mode": "story", "map": "Raid"}
+
+    ran = []
+
+    def fake_run_task(hwnd, stop_event, task, *a, **k):
+        ran.append(task["id"])
+        raise RuntimeError("Glitch in task 1")
+
+    monkeypatch.setattr(runner, "_run_task", fake_run_task)
+    monkeypatch.setattr(runner, "_recover_to_lobby", lambda *a, **k: True)
+    monkeypatch.setattr(wm, "is_window", lambda hwnd: True)
+
+    runner._run(lambda: 12345, lambda: [task1, task2], stop, scroll_power=1, coords={}, scroll_nudges=1, default_walk_paths={}, webhook={})
+
+    assert ran == ["t1"]
+    assert "Stopped" in runner._last_action or "Остановлен" in runner._last_action
+
+
+def test_on_complete_jump_with_missing_target_repeats_safely(monkeypatch):
+    """Проверяет, что если целевая задача jump удалена из очереди, макрос безопасно
+    зацикливает текущую задачу вместо нежелательного перехода к следующей."""
+    runner = _make_runner()
+    stop = threading.Event()
+
+    task1 = {
+        "id": "t1", "mode": "story", "map": "Map1",
+        "on_complete_action": "jump", "on_complete_target": "deleted_task_id"
+    }
+    task2 = {"id": "t2", "mode": "story", "map": "Map2"}
+
+    runs = 0
+
+    def fake_run_task(hwnd, stop_event, task, *a, **k):
+        nonlocal runs
+        runs += 1
+        assert task["id"] == "t1"
+        if runs >= 2:
+            stop_event.set()
+        return True
+
+    monkeypatch.setattr(runner, "_run_task", fake_run_task)
+    monkeypatch.setattr(wm, "is_window", lambda hwnd: True)
+
+    runner._run(lambda: 12345, lambda: [task1, task2], stop, scroll_power=1, coords={}, scroll_nudges=1, default_walk_paths={}, webhook={})
+
+    assert runs == 2
+
+

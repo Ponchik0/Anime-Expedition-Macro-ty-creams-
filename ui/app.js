@@ -115,6 +115,57 @@ function popOutLogs() {
   try { window.pywebview && pywebview.api.pop_out_logs(); } catch (e) {}
 }
 
+async function copyAllLogs(btn) {
+  let text = '';
+  try {
+    text = await pywebview.api.get_log_history();
+  } catch (e) {}
+  if (!text) {
+    const list = document.getElementById('log-list');
+    if (list) {
+      text = Array.from(list.querySelectorAll('div'))
+        .map(el => el.textContent.trim())
+        .filter(Boolean)
+        .join('\n');
+    }
+  }
+  if (!text) {
+    text = 'No logs yet.';
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (err) {}
+    document.body.removeChild(ta);
+  }
+  if (typeof showToast === 'function') {
+    showToast('Logs copied to clipboard!');
+  }
+  if (btn) {
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = `<span style="color: var(--teal); font-weight: 600;">✓ Copied!</span>`;
+    setTimeout(() => { btn.innerHTML = originalHtml; }, 1800);
+  }
+}
+
+function showToast(msg) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const t = document.createElement('div');
+  t.className = 'rp-toast';
+  t.textContent = msg;
+  container.appendChild(t);
+  setTimeout(() => {
+    try { container.removeChild(t); } catch (e) {}
+  }, 3000);
+}
+
 // ---------------------------------------------------------------------------
 // Session / All Time timers
 // ---------------------------------------------------------------------------
@@ -1063,7 +1114,8 @@ async function startMacro() {
     const result = await pywebview.api.start_macro();
     if (!result.ok) {
       setMacroButtons(false, false);
-      addLog(`[Macro] Couldn't start: ${result.reason === 'already_running' ? 'already running.' : (result.reason || 'error')}`);
+      const msg = result.message || (result.reason === 'already_running' ? 'already running.' : (result.reason || 'error'));
+      addLog(`[Macro] Couldn't start: ${msg}`);
     }
   } catch (e) { setMacroButtons(false, false); }
 }
@@ -1810,6 +1862,119 @@ async function loadSettingsUI() {
   loadWebhookUI();
   refreshRobloxWindowList();
   refreshDebugMacroOpSelect();
+  loadResolutionUI();
+}
+
+// ---------------------------------------------------------------------------
+// Game Resolution Selector
+// ---------------------------------------------------------------------------
+function updateResolutionUI(w, h) {
+  w = parseInt(w, 10);
+  h = parseInt(h, 10);
+  if (isNaN(w) || isNaN(h)) return;
+
+  const col = document.getElementById('game-column');
+  if (col) col.style.width = w + 'px';
+  const slot = document.getElementById('game-slot');
+  if (slot) slot.style.height = h + 'px';
+  const stage = document.getElementById('game-slot-stage');
+  if (stage) {
+    stage.style.maxWidth = w + 'px';
+    stage.style.setProperty('--scan-h', h + 'px');
+  }
+  const label = document.getElementById('stage-size-label');
+  if (label) label.textContent = `${w} × ${h}`;
+
+  const customW = document.getElementById('res-custom-w');
+  const customH = document.getElementById('res-custom-h');
+  if (customW) customW.value = w;
+  if (customH) customH.value = h;
+
+  const setW = document.getElementById('settings-res-w');
+  const setH = document.getElementById('settings-res-h');
+  if (setW) setW.value = w;
+  if (setH) setH.value = h;
+
+  let matchedPreset = false;
+  const pillContainers = [
+    document.getElementById('res-preset-pills'),
+    document.getElementById('settings-res-pills')
+  ];
+
+  pillContainers.forEach(container => {
+    if (!container) return;
+    const buttons = container.querySelectorAll('.res-preset-btn[data-w]');
+    buttons.forEach(btn => {
+      const bw = parseInt(btn.getAttribute('data-w'), 10);
+      const bh = parseInt(btn.getAttribute('data-h'), 10);
+      const isMatch = (bw === w && bh === h);
+      btn.classList.toggle('active', isMatch);
+      if (isMatch) matchedPreset = true;
+    });
+  });
+
+  const customToggle = document.getElementById('res-custom-toggle');
+  if (customToggle) {
+    customToggle.classList.toggle('active', !matchedPreset);
+  }
+  const customBox = document.getElementById('res-custom-box');
+  if (customBox && !matchedPreset) {
+    customBox.style.display = 'flex';
+  }
+}
+
+async function chooseResolution(w, h, btn) {
+  w = parseInt(w, 10);
+  h = parseInt(h, 10);
+  if (isNaN(w) || isNaN(h)) return;
+
+  updateResolutionUI(w, h);
+
+  try {
+    if (window.pywebview && pywebview.api && pywebview.api.set_game_resolution) {
+      await pywebview.api.set_game_resolution(w, h);
+    }
+  } catch (e) {
+    console.error('Failed to set game resolution:', e);
+  }
+}
+
+function toggleCustomResInput() {
+  const box = document.getElementById('res-custom-box');
+  const toggleBtn = document.getElementById('res-custom-toggle');
+  if (!box) return;
+  const isHidden = box.style.display === 'none' || !box.style.display;
+  box.style.display = isHidden ? 'flex' : 'none';
+  if (toggleBtn) {
+    toggleBtn.classList.toggle('active', isHidden);
+  }
+}
+
+function applyCustomResolution(source) {
+  const wEl = document.getElementById(source === 'settings' ? 'settings-res-w' : 'res-custom-w');
+  const hEl = document.getElementById(source === 'settings' ? 'settings-res-h' : 'res-custom-h');
+  if (!wEl || !hEl) return;
+  let w = parseInt(wEl.value, 10);
+  let h = parseInt(hEl.value, 10);
+  if (isNaN(w) || isNaN(h)) return;
+  w = Math.max(640, Math.min(2560, w));
+  h = Math.max(480, Math.min(1440, h));
+  wEl.value = w;
+  hEl.value = h;
+  chooseResolution(w, h);
+}
+
+async function loadResolutionUI() {
+  try {
+    if (window.pywebview && pywebview.api && pywebview.api.get_game_resolution) {
+      const res = await pywebview.api.get_game_resolution();
+      if (res && res.width && res.height) {
+        updateResolutionUI(res.width, res.height);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load game resolution:', e);
+  }
 }
 
 // Settings > Debug > "Test Pre Start"/"Test Battle" -- same list_templates()
@@ -2860,7 +3025,7 @@ function defaultTask() {
     // Остановка при ошибке / сбое задачи:
     stop_on_failure: false,
     // Действие после завершения задачи:
-    on_complete_enabled: false,
+    on_complete_enabled: true,
     on_complete_action: 'next',
     on_complete_target: '',
   };
@@ -3009,21 +3174,26 @@ async function exportSettings() {
 
 async function importSettings() {
   try {
-    const result = await pywebview.api.import_tasks_file();
+    const result = await pywebview.api.import_tasks_file('settings');
     if (!result || !result.ok) {
       if (result && result.reason !== 'cancelled') addLog(`[Settings] Import failed: ${result.reason || 'error'}`);
       return;
     }
     const data = result.data || {};
-    if (data.kind !== 'anime-expeditions-settings' || !data.settings) {
-      addLog('[Settings] Import failed: file is not a valid settings export.');
+    const settings = (data.settings && typeof data.settings === 'object')
+      ? data.settings
+      : (typeof data === 'object' && !Array.isArray(data) ? data : null);
+    if (!settings || Object.keys(settings).length === 0) {
+      addLog('[Settings] Import failed: file does not contain valid settings.');
       return;
     }
-    for (const [key, val] of Object.entries(data.settings)) {
+    for (const [key, val] of Object.entries(settings)) {
+      if (key === 'kind' || key === 'version' || key === 'exported') continue;
       try { await pywebview.api.set_setting(key, val); } catch (e) {}
     }
     await loadSettingsUI();
     addLog('[Settings] Successfully imported and applied settings.');
+    if (typeof showToast === 'function') showToast('Settings imported successfully.');
   } catch (e) {
     addLog(`[Settings] Import failed: ${e.message || e}`);
   }
@@ -3076,6 +3246,91 @@ async function exportTasks() {
   else if (result && result.reason !== 'cancelled') addLog(`[Task] Export failed: ${result.reason || 'error'}`);
 }
 
+function getFreeTemplateName(name, existingList) {
+  if (!existingList.includes(name)) return name;
+  const match = name.match(/^(.*?) \((\d+)\)$/);
+  const base = match ? match[1] : (name.endsWith(' (Imported)') ? name.slice(0, -11) : name);
+  let candidate = `${base} (Imported)`;
+  if (!existingList.includes(candidate)) return candidate;
+  let n = 2;
+  while (existingList.includes(`${base} (${n})`)) {
+    n++;
+  }
+  return `${base} (${n})`;
+}
+
+function normalizeTemplateImportData(data, fallbackName) {
+  if (!data || typeof data !== 'object') return null;
+
+  const result = {
+    templates: {},
+    paths: data.paths || {},
+    recordings: data.recordings || {}
+  };
+
+  // Case 1: Bundle / pack with `templates` dict:
+  if (data.templates && typeof data.templates === 'object' && !Array.isArray(data.templates)) {
+    for (const [name, t] of Object.entries(data.templates)) {
+      if (!t) continue;
+      if (t.blocks != null) {
+        result.templates[name] = { blocks: t.blocks };
+      } else if (typeof t === 'object') {
+        result.templates[name] = { blocks: t };
+      }
+    }
+    if (Object.keys(result.templates).length > 0) return result;
+  }
+
+  // Case 2: Single template with `blocks` field:
+  if (data.blocks != null) {
+    const name = (data.name && String(data.name).trim()) || fallbackName || 'Imported Template';
+    result.templates[name] = { blocks: data.blocks };
+    return result;
+  }
+
+  // Case 3: Object with phase keys: prestart, battle, team, equipment, loop_a, loop_b
+  if (data.prestart != null || data.battle != null || data.team != null || data.loop_a != null) {
+    const name = (data.name && String(data.name).trim()) || fallbackName || 'Imported Template';
+    const blocks = {
+      team: Array.isArray(data.team) ? data.team : [],
+      equipment: Array.isArray(data.equipment) ? data.equipment : [],
+      prestart: Array.isArray(data.prestart) ? data.prestart : [],
+      battle: Array.isArray(data.battle) ? data.battle : []
+    };
+    if (Array.isArray(data.loop_a)) blocks.loop_a = data.loop_a;
+    if (Array.isArray(data.loop_b)) blocks.loop_b = data.loop_b;
+    result.templates[name] = { blocks };
+    return result;
+  }
+
+  // Case 4: Array of blocks or array of templates
+  if (Array.isArray(data)) {
+    if (data.length === 0) return null;
+    if (data[0] && typeof data[0] === 'object' && ('type' in data[0] || 'params' in data[0])) {
+      const name = fallbackName || 'Imported Template';
+      result.templates[name] = { blocks: data };
+      return result;
+    }
+    let anyFound = false;
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      if (item && typeof item === 'object') {
+        const name = (item.name && String(item.name).trim()) || `${fallbackName || 'Template'} ${i + 1}`;
+        if (item.blocks != null) {
+          result.templates[name] = { blocks: item.blocks };
+          anyFound = true;
+        } else if (item.prestart != null || item.battle != null) {
+          result.templates[name] = { blocks: item };
+          anyFound = true;
+        }
+      }
+    }
+    if (anyFound) return result;
+  }
+
+  return null;
+}
+
 async function importTasks() {
   let result = null;
   try { result = await pywebview.api.import_tasks_file('tasks'); } catch (e) {}
@@ -3083,20 +3338,16 @@ async function importTasks() {
     if (result && result.reason !== 'cancelled') addLog(`[Task] Import failed: ${result.reason || 'error'}`);
     return;
   }
-  const data = result.data || {};
-  // importSettings/importTemplates both check what kind of file this is before
-  // trusting its contents; this one only ever checked for a `tasks` array, so
-  // any JSON with that key was accepted as a task export.
-  if (data.kind && data.kind !== 'anime-expeditions-tasks') {
+  let data = result.data || {};
+
+  if (Array.isArray(data)) {
+    data = { tasks: data };
+  } else if (data.kind && data.kind !== 'anime-expeditions-tasks') {
     addLog('[Task] Import failed: that file is not a task export.');
     return;
   }
   if (!Array.isArray(data.tasks)) { addLog('[Task] Import failed: that file is not a task export.'); return; }
-  // A bundled macro whose name you already use was skipped in silence, so
-  // the imported task quietly pointed at YOUR macro of that name and ran
-  // something other than what the sender built. Ask, and treat Cancel as
-  // cancelling the whole import: keeping the tasks while declining their
-  // macros is exactly the mismatch this is here to prevent.
+
   let existing = [];
   try { existing = await pywebview.api.list_templates(); } catch (e) {}
   const bundled = Object.entries(data.templates || {}).filter(([, t]) => t && t.blocks != null);
@@ -3114,13 +3365,6 @@ async function importTasks() {
   let tplAdded = 0;
   try {
     for (const [name, t] of bundled) {
-      // `t.blocks` is an OBJECT ({team, equipment, prestart, battle}) for every
-      // template saved since Pre Start/Battle phases existed -- Array.isArray
-      // is only true for the oldest flat-list format, so this silently dropped
-      // every modern template. exportTasks bundles them precisely so a shared
-      // queue does not arrive pointing at macros the recipient does not have,
-      // and the whole point was being lost with no message. importTemplates
-      // (same file) has always used the `!= null` form.
       try { await pywebview.api.save_template(name, t.blocks); tplAdded++; } catch (e) {}
     }
   } catch (e) {}
@@ -3132,11 +3376,15 @@ async function importTasks() {
     enteringTaskIds.add(newTask.id);
     added++;
   }
+
   await refreshTaskTemplates();
   renderTaskList();
   renderTaskBuilder();
   saveTaskQueue();
   addLog(`[Task] Imported ${added} task(s)${tplAdded ? `, ${tplAdded} macro template(s)` : ''}${pathAdded ? `, ${pathAdded} custom path(s)` : ''}${recordingAdded ? `, and ${recordingAdded} recording(s)` : ''}.`);
+  if (typeof showToast === 'function') {
+    showToast(`Imported ${added} task(s) into queue.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3538,28 +3786,34 @@ function renderTaskBuilder() {
   // ── Таймер задачи (бета) ──────────────────────────────────────────
   // Отсчитывает ВРЕМЯ НА ЗАДАЧЕ и обнуляется при каждом заходе в неё.
   // Срабатывает между матчами, поэтому начатый бой всегда доигрывается.
-  const timerNextOn = t.timer_next_enabled === true || (t.timer_next_enabled === undefined && !!t.timer_next && t.timer_next !== 'off');
-  const timerNextControl = `
-    <div class="flex items-center gap-2" style="width: 100%;">
-      <div class="seg-toggle" style="flex-shrink: 0;">
-        <button type="button" class="seg-btn ${timerNextOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'timer_next_enabled', true); renderTaskBuilder()">On</button>
-        <button type="button" class="seg-btn ${!timerNextOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'timer_next_enabled', false); renderTaskBuilder()">Off</button>
-      </div>
-      ${timerNextOn ? `
-        <select class="task-select" style="flex: 1;" onchange="setTaskProp('${t.id}', 'timer_next', this.value)" data-tooltip="Куда перейти, когда таймер выйдет">
-          <option value=""${!t.timer_next || t.timer_next === 'next' ? ' selected' : ''}>следующей по очереди</option>
-          ${taskCards.filter(o => o.id !== t.id).map(o => {
-            const idx = taskCards.indexOf(o) + 1;
-            return `<option value="${o.id}"${o.id === t.timer_next ? ' selected' : ''}>${idx}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'задача')}</option>`;
-          }).join('')}
-        </select>
-      ` : `<span style="font-size: 11px; opacity: .6;">выключено</span>`}
-    </div>`;
+  const timerMins = Number(t.timer_minutes) || 0;
+  let timerNextControl;
+  if (timerMins <= 0) {
+    timerNextControl = `<span style="font-size: 11px; opacity: .6;">Таймер выключен (0 мин)</span>`;
+  } else {
+    const timerNextOn = t.timer_next_enabled === true || (t.timer_next_enabled === undefined && !!t.timer_next && t.timer_next !== 'off');
+    timerNextControl = `
+      <div class="flex items-center gap-2" style="width: 100%;">
+        <div class="seg-toggle" style="flex-shrink: 0;">
+          <button type="button" class="seg-btn ${timerNextOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'timer_next_enabled', true); renderTaskBuilder()">On</button>
+          <button type="button" class="seg-btn ${!timerNextOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'timer_next_enabled', false); renderTaskBuilder()">Off</button>
+        </div>
+        ${timerNextOn ? `
+          <select class="task-select" style="flex: 1;" onchange="setTaskProp('${t.id}', 'timer_next', this.value)" data-tooltip="Куда перейти, когда таймер выйдет">
+            <option value=""${!t.timer_next || t.timer_next === 'next' ? ' selected' : ''}>следующей по очереди</option>
+            ${taskCards.filter(o => o.id !== t.id).map(o => {
+              const idx = taskCards.indexOf(o) + 1;
+              return `<option value="${o.id}"${o.id === t.timer_next ? ' selected' : ''}>${idx}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'задача')}</option>`;
+            }).join('')}
+          </select>
+        ` : `<span style="font-size: 11px; opacity: .6;">выключено</span>`}
+      </div>`;
+  }
 
   fields.push(
     field('Таймер, мин <span style="opacity:.6">бета</span>',
       `<input type="number" min="0" class="task-field-input" value="${t.timer_minutes || 0}"
-        oninput="setTaskProp('${t.id}', 'timer_minutes', Math.max(0, parseInt(this.value, 10) || 0))">`,
+        oninput="setTaskProp('${t.id}', 'timer_minutes', Math.max(0, parseInt(this.value, 10) || 0)); renderTaskBuilder()">`,
       '0 — выключен. Иначе: столько минут на этой задаче, потом переход. Текущий матч всегда доигрывается.'),
     field('Потом перейти к', timerNextControl, 'Куда перейти, когда таймер выйдет. Можно выключить.')
   );
@@ -3659,37 +3913,44 @@ function renderTaskBuilder() {
     </div>`;
   fields.push(field('Stop On Failure', stopOnFailSeg, 'Stop macro if this task fails or encounters an error'));
 
-  // Особый переход после успешного завершения задачи
-  const onComp = !!t.on_complete_enabled;
-  const onCompSeg = `
-    <div class="seg-toggle" data-tooltip="Enable custom action after task completes all repeats">
-      <button type="button" class="seg-btn ${onComp ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'on_complete_enabled', true); renderTaskBuilder()">On</button>
-      <button type="button" class="seg-btn ${!onComp ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'on_complete_enabled', false); renderTaskBuilder()">Off</button>
+  // Действие после завершения задачи / автопереход
+  // Если действие 'repeat' или 'stop' — автопереход выключен (Off, остаёмся на этой задаче).
+  // Если 'next' или 'jump' — автопереход включён (On, переходим по очереди или прыгаем).
+  const curAct = t.on_complete_action || 'next';
+  const autoTransitionOn = curAct === 'next' || curAct === 'jump';
+  const autoTransSeg = `
+    <div class="seg-toggle" data-tooltip="Enable or disable transition to next task after all repeats">
+      <button type="button" class="seg-btn ${autoTransitionOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'on_complete_action', 'next'); setTaskProp('${t.id}', 'on_complete_enabled', true); renderTaskBuilder()">On</button>
+      <button type="button" class="seg-btn ${!autoTransitionOn ? 'active' : ''}" onclick="setTaskProp('${t.id}', 'on_complete_action', 'repeat'); setTaskProp('${t.id}', 'on_complete_enabled', true); renderTaskBuilder()">Off</button>
     </div>`;
-  fields.push(field('After Completion', onCompSeg, 'Enable custom action after task completes all repeats'));
+  fields.push(field('Auto Transition', autoTransSeg, 'Enable or disable transition to next task after all repeats'));
 
-  if (onComp) {
-    const act = t.on_complete_action || 'next';
-    const actSel = `
-      <select class="task-select" onchange="setTaskProp('${t.id}', 'on_complete_action', this.value); renderTaskBuilder()" data-tooltip="What to do when this task finishes cleanly">
-        <option value="next"${act === 'next' ? ' selected' : ''}>Next in queue</option>
-        <option value="stop"${act === 'stop' ? ' selected' : ''}>Stop macro</option>
-        <option value="repeat"${act === 'repeat' ? ' selected' : ''}>Repeat this task</option>
-        <option value="jump"${act === 'jump' ? ' selected' : ''}>Jump to task</option>
+  const actOpts = autoTransitionOn
+    ? [
+        { val: 'next', label: 'Next in queue' },
+        { val: 'jump', label: 'Jump to task' },
+      ]
+    : [
+        { val: 'repeat', label: 'Repeat this task' },
+        { val: 'stop', label: 'Stop macro' },
+      ];
+
+  const actSel = `
+    <select class="task-select" onchange="setTaskProp('${t.id}', 'on_complete_action', this.value); renderTaskBuilder()" data-tooltip="What to do when this task finishes cleanly">
+      ${actOpts.map(o => `<option value="${o.val}"${curAct === o.val ? ' selected' : ''}>${o.label}</option>`).join('')}
+    </select>`;
+  fields.push(field('Action On Finish', actSel, 'What to do when this task finishes cleanly'));
+
+  if (curAct === 'jump' && autoTransitionOn) {
+    const targetSel = `
+      <select class="task-select" onchange="setTaskProp('${t.id}', 'on_complete_target', this.value)" data-tooltip="Task to jump to after completion">
+        <option value="">Select task...</option>
+        ${taskCards.filter(o => o.id !== t.id).map(o => {
+          const idx = taskCards.indexOf(o) + 1;
+          return `<option value="${o.id}"${o.id === t.on_complete_target ? ' selected' : ''}>${idx}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'task')}</option>`;
+        }).join('')}
       </select>`;
-    fields.push(field('Action On Finish', actSel, 'What to do when this task finishes cleanly'));
-
-    if (act === 'jump') {
-      const targetSel = `
-        <select class="task-select" onchange="setTaskProp('${t.id}', 'on_complete_target', this.value)" data-tooltip="Task to jump to after completion">
-          <option value="">Select task...</option>
-          ${taskCards.filter(o => o.id !== t.id).map(o => {
-            const idx = taskCards.indexOf(o) + 1;
-            return `<option value="${o.id}"${o.id === t.on_complete_target ? ' selected' : ''}>${idx}. ${escapeHtml(o.map || TASK_DATA[o.mode]?.label || 'task')}</option>`;
-          }).join('')}
-        </select>`;
-      fields.push(field('Target Task', targetSel, 'Task to jump to after completion'));
-    }
+    fields.push(field('Target Task', targetSel, 'Task to jump to after completion'));
   }
 
   const extractHint = t.mode === 'expedition'
@@ -8150,7 +8411,22 @@ async function importTemplates() {
     if (result && result.reason !== 'cancelled') addLog(`[Macro Manager] Import failed: ${result.reason || 'error'}`);
     return;
   }
-  const data = result.data || {};
+  let data = result.data || {};
+  if (!data.templates && data.blocks != null) {
+    const name = (data.name && String(data.name).trim()) || (result.filename ? result.filename.replace(/\.json$/i, '') : '') || 'Imported Template';
+    data = { templates: { [name]: { blocks: data.blocks } }, paths: data.paths, recordings: data.recordings };
+  } else if (!data.templates && (data.pre_start || data.prestart || data.battle || data.loop || data.loop_a || data.loop_b)) {
+    const name = (data.name && String(data.name).trim()) || (result.filename ? result.filename.replace(/\.json$/i, '') : '') || 'Imported Template';
+    const blocks = {
+      pre_start: data.pre_start || data.prestart || [],
+      battle: data.battle || [],
+      loop: data.loop || [],
+    };
+    data = { templates: { [name]: { blocks } }, paths: data.paths, recordings: data.recordings };
+  } else if (!data.templates && Array.isArray(data) && data.length > 0 && (data[0].type || data[0].params)) {
+    const name = (result.filename ? result.filename.replace(/\.json$/i, '') : '') || 'Imported Template';
+    data = { templates: { [name]: { blocks: data } } };
+  }
   const templates = data.templates && typeof data.templates === 'object' ? data.templates : null;
   if (!templates) { addLog('[Macro Manager] Import failed: that file is not a template export.'); return; }
   const entries = Object.entries(templates).filter(([, t]) => t && t.blocks != null);
@@ -8208,6 +8484,9 @@ async function importTemplates() {
     + `${kept ? `; kept your existing ${kept}` : ''}`
     + `${pathAdded ? `, ${pathAdded} custom path(s)` : ''}`
     + `${recordingAdded ? `, and ${recordingAdded} recording(s)` : ''}.`);
+  if (typeof showToast === 'function') {
+    showToast(`Imported ${imported.length} macro(s).`);
+  }
 }
 
 async function refreshTemplateList() {

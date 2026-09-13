@@ -2,6 +2,24 @@
 
 All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
+## [1.1.9] - 2026-09-13
+
+### New
+- **Wave 10+ Periodic Hotbar 1–6 Auto-Press**: Once wave 10 is reached in battle, automatically cycles hotbar keys 1 through 6 periodically (~once per minute) to consume caught fish (Coopfin, Prize Fish, Fusion Fish, Booster Fish, Shellphone Snail) and trigger slot abilities, then re-equips the fishing rod (slot 1) to continue fishing seamlessly.
+- **Copy Logs Button**: Added a dedicated "Copy Logs" button to the Dashboard log viewer with visual confirmation.
+
+### Fixed
+- **Task Auto-Transition Logic**: Fixed an issue where the runner could advance to the next task even when "Auto Transition" was disabled. Toggling Auto Transition to Off now strictly repeats the current task or stops as selected. Also handles mid-task glitches and recovery safely without skipping tasks.
+- **Resolution Scaling & Event Navigation**:
+  - Event mode navigation (`core/runner_event.py`) now dynamically handles pre-selected tabs and screens, eliminated accidental toggling/closing of the Event modal, and uses resolution-tolerant matching thresholds (`0.78`).
+  - Stage confirmation checks whether `nav_start` is already visible before attempting to find and click `nav_select_stage`.
+  - Aspect ratio distortion correction is now refreshed across all capture paths (`_capture_window_gray`, `_capture_window_bgr`), ensuring pixel-perfect clicks on non-standard resolutions (such as 1024x768).
+
+### Improved
+- **Newcomer .exe Experience & Import/Export**:
+  - Standard user folders (`Templates/`, `Templates/Tasks/`, `Recordings/`, `Paths/`, `debug/`) are automatically created on startup for fresh .exe installs, eliminating missing directory errors.
+  - Template and task import now accepts raw arrays, direct phase dictionaries (`{ pre_start, battle, loop }`), single-template JSONs, and CREAM share codes.
+
 ## [1.1.8] - 2026-09-09
 
 ### New
