@@ -238,13 +238,41 @@ git merge upstream/main
 
 ### Выпуск релиза
 
+**ВАЖНО: Формат описания релиза строго стандартизирован.**
+Никаких пустых релизов и однострочников. GitHub Actions читает текст тега (`git tag -a vX.Y.Z -m "..."`) и публикует его как описание релиза. Стиль оформления строго как в `v1.1.7` / `v1.1.11`:
+
+```markdown
+## vX.Y.Z — Главная тема релиза через тире
+
+### Название первой темы/модуля
+- `new` **Название фичи** — подробное описание на английском (или русском), что добавлено.
+- `fix` **Название бага** — что именно исправлено и почему больше не падает.
+
+### Название второй темы/модуля
+- `new` **...** — ...
+- `fix` **...** — ...
+
+### Quality & Bugfixes
+- `fix` **100% Test Coverage** — прохождение тестов, валидация синтаксиса.
+
+---
+
+### How to update:
+- **In-app:** Settings → "Check for Updates".
+- **Direct download:** Download `Anime Expeditions Macro Setup.exe` from the release assets below.
+
+> [!IMPORTANT]
+> When updating manually from a `.zip` archive, make sure the `Assets` folder is placed next to the `.exe` file. The automatic installer updates all files preserving your settings.
+```
+
+**Команды для релиза:**
 ```bash
 # 1. номер в VERSION = номеру тега. Это одно и то же число, разными словами:
 #    VERSION — «что стоит у меня», тег — «что вышло», и сравниваются именно они
 echo 1.1.1 > VERSION && git commit -am "Bump VERSION to 1.1.1" && git push
 
-# 2. текст тега становится описанием релиза — пиши для людей
-git tag -a v1.1.1 -m "Что нового в этой версии..."
+# 2. Текст тега — строго в формате выше (через файл с флагом --cleanup=verbatim, иначе git вырежет все заголовки с # как комментарии!):
+git tag --cleanup=verbatim -a v1.1.1 -F release_notes.txt
 git push origin v1.1.1
 ```
 

@@ -3037,6 +3037,17 @@ class Api:
             return {"ok": False, "reason": str(exc)}
         return {"ok": True}
 
+    def open_templates_folder(self) -> dict:
+        """Macro screen > "Folder". Presets and macros are plain .json files,
+        so editing, copying or backing them up is just file management."""
+        try:
+            os.makedirs(tpl.TEMPLATES_DIR, exist_ok=True)
+            self._open_in_file_manager(tpl.TEMPLATES_DIR)
+        except OSError as exc:
+            self.push_log(f"[Macro] Couldn't open the templates folder: {exc}")
+            return {"ok": False, "reason": str(exc)}
+        return {"ok": True}
+
     @staticmethod
     def _open_in_file_manager(path: str) -> None:
         """Reveal a folder in the OS file manager. os.startfile is

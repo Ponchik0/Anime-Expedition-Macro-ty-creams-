@@ -8527,6 +8527,17 @@ async function exportTemplates() {
   else if (result && result.reason !== 'cancelled') addLog(`[Macro Manager] Export failed: ${result.reason || 'error'}`);
 }
 
+async function openTemplatesFolder() {
+  try {
+    if (window.pywebview && pywebview.api && pywebview.api.open_templates_folder) {
+      await pywebview.api.open_templates_folder();
+    }
+  } catch (e) {
+    console.error('Failed to open templates folder:', e);
+  }
+  await refreshTemplateList();
+}
+
 async function importTemplates() {
   let result = null;
   try { result = await pywebview.api.import_tasks_file('templates'); } catch (e) {}
