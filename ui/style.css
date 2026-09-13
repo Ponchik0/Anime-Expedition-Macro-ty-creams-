@@ -391,6 +391,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 #screen-replay,
 #screen-settings {
   padding-right: var(--rail-w);
+  box-sizing: border-box;
+  max-width: 100vw;
+  overflow: hidden;
 }
 
 /* Компактный режим (F7) прячет всё лишнее — рельс тоже. */
@@ -626,12 +629,34 @@ body.compact-mode #screen-dashboard { padding-right: 0 !important; }
 }
 .rp-controls .rp-btn-start { grid-column: 1 / -1; }
 
+#dash-side {
+  container-type: inline-size;
+}
+
+@container (max-width: 320px) {
+  .rp-controls {
+    grid-template-columns: 1fr !important;
+  }
+  .rp-btn-start,
+  .rp-btn-pause,
+  .rp-btn-stop {
+    grid-column: span 1 !important;
+    width: 100% !important;
+  }
+}
+
 /* При уменьшенном разрешении (1080p с масштабированием, 1366x768 и т.д.)
    кнопки Пауза и Стоп выстраиваются в одну колонку, чтобы кнопка Стоп
    не смещалась в правую колонку под навигационный рельс. */
 @media (max-width: 1520px) {
   .rp-controls {
     grid-template-columns: 1fr;
+  }
+  .rp-btn-start,
+  .rp-btn-pause,
+  .rp-btn-stop {
+    grid-column: span 1;
+    width: 100%;
   }
 }
 
