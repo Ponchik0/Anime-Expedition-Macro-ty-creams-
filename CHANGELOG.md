@@ -9,9 +9,9 @@ All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 - `fix` **Task Auto-Transition Enforcement** — fixed edge cases where the macro could transition to the next task even when Auto Transition was disabled. Toggling Auto Transition Off now strictly repeats or terminates the current task safely.
 
 ### UI & Layout Scalability
-- `new` **Top-Anchored Dashboard Controls** — Start, Pause, and Stop controls are now permanently pinned to the top of the sidebar dashboard, ensuring they remain immediately accessible and never pushed off-screen.
+- `new` **Horizontal Top Navigation Header** — moved screen navigation from the right vertical rail into a centered horizontal bar in the titlebar. Frees up 76px of width across all screens, completely eliminates navigation rail overlap, and compacts cleanly to icons on smaller screens.
 - `new` **Dynamic Resolution Auto-Layout** — the embedded Roblox frame and game column dynamically scale to the selected game resolution (1152×768, 1024×768, 800×600), automatically reclaiming 130–350px of horizontal room on compact monitor setups.
-- `fix` **Navigation Rail Overlap Protection** — added responsive layout breakpoints so that action buttons (Start, Pause, Stop) vertically stack across the full sidebar width on narrow or high-DPI displays, completely eliminating overlap from the right navigation rail.
+- `fix` **Adaptive Controls & Overlap Protection** — Start, Pause, and Stop controls are positioned comfortably above Run History and dynamically adapt with container queries, stacking full-width on narrow panels so buttons are never clipped.
 
 ### Combat, Hotbar & Fishing Reliability
 - `new` **Ironclad Multi-Rank Fishing Rod Verification** — multi-layer verification for equipped fishing rods supporting all ranks (Novice through Grandmaster) and low graphic settings via 11 reference templates and 2.5x OCR keyword parsing. Automatically draws slot 1 if missing.
