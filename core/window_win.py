@@ -327,6 +327,15 @@ def disable_mss_captureblt() -> None:
 
 
 def get_screen_size():
+    try:
+        rect = RECT()
+        if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA (рабочая область без панели задач)
+            w = rect.right - rect.left
+            h = rect.bottom - rect.top
+            if w > 0 and h > 0:
+                return w, h
+    except Exception:
+        pass
     return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
 

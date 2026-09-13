@@ -65,10 +65,9 @@ def find_and_click_map(mouse, hwnd, map_name: str, log, stop_event=None, scroll_
     """
     scroll_step = -120 * max(1, scroll_power)
     scroll_nudges = max(0, scroll_nudges)
-    left, top, _, _ = wm.get_window_rect_screen(hwnd)
 
     def to_screen(pt):
-        return left + pt[0], top + pt[1]
+        return vision.ref_to_screen(hwnd, pt[0], pt[1])
 
     for attempt in range(1, MAX_PASSES + 1):
         if stop_event is not None and stop_event.is_set():

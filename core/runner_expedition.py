@@ -423,7 +423,7 @@ class ExpeditionOps:
         else:
             self._log(f'[Macro] Wave Continue found (x={cont["cx"]}) -- clicking it.')
 
-        self._mouse.click(left + cont["cx"], top + cont["cy"])
+        self._mouse.click(*vision.ref_to_screen(hwnd, cont["cx"], cont["cy"]))
         time.sleep(0.5)
         # The smaller follow-up Continue confirms the transition actually
         # advanced -- hunted for the same window the template path gave
@@ -441,12 +441,12 @@ class ExpeditionOps:
                                             EXP_COLOR_FOLLOWUP_MIN_RUN)
             if follow is not None:
                 self._log(f'[Macro] Follow-up Continue found at ({follow["cx"]}, {follow["cy"]}) -- clicking it.')
-                self._mouse.click(left + follow["cx"], top + follow["cy"])
+                self._mouse.click(*vision.ref_to_screen(hwnd, follow["cx"], follow["cy"]))
                 break
             still = vision.find_color_run(hwnd, EXP_COLOR_CONTINUE_BAND, _exp_green,
                                            EXP_COLOR_CONTINUE_MIN_RUN)
             if still is not None:
-                self._mouse.click(left + still["cx"], top + still["cy"])
+                self._mouse.click(*vision.ref_to_screen(hwnd, still["cx"], still["cy"]))
             time.sleep(0.25)
         self._interruptible_sleep(EXP_COLOR_CONTINUE_SETTLE, stop_event)
         return None
@@ -474,7 +474,7 @@ class ExpeditionOps:
         for _ in range(1, 5):
             if self._checkpoint(stop_event):
                 return False
-            self._mouse.click(left + ex, top + ey)
+            self._mouse.click(*vision.ref_to_screen(hwnd, ex, ey))
             time.sleep(0.45)
             deadline = time.time() + 2.2
             while time.time() < deadline:
@@ -494,7 +494,7 @@ class ExpeditionOps:
                     if tmpl is not None:
                         confirm = {"cx": tmpl["cx"], "cy": tmpl["cy"]}
                 if confirm is not None:
-                    self._mouse.click(left + confirm["cx"], top + confirm["cy"])
+                    self._mouse.click(*vision.ref_to_screen(hwnd, confirm["cx"], confirm["cy"]))
                     time.sleep(0.45)
                     try:
                         second_confirm = vision.find_image(hwnd, "extract_confirm")
@@ -614,8 +614,7 @@ class ExpeditionOps:
         self._log(f'[Macro] Clicking difficulty "+" {clicks} time(s) at ({plus_x}, {plus_y}) '
                    f'for difficulty {difficulty}.')
         self._set_status(action=f'Setting difficulty {difficulty}...')
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        x, y = left + plus_x, top + plus_y
+        x, y = vision.ref_to_screen(hwnd, plus_x, plus_y)
         for _ in range(clicks):
             if stop_event.is_set():
                 return
@@ -762,10 +761,9 @@ class ExpeditionOps:
             cont = vision.find_color_run(hwnd, EXP_COLOR_CONTINUE_BAND, _exp_green,
                                           EXP_COLOR_CONTINUE_MIN_RUN)
             if cont is not None:
-                left, top, _, _ = wm.get_window_rect_screen(hwnd)
                 self._log(f'[Macro] Encounter offers Continue (x={cont["cx"]}) -- clicking it, '
                           f'no walk needed.')
-                self._mouse.click(left + cont["cx"], top + cont["cy"])
+                self._mouse.click(*vision.ref_to_screen(hwnd, cont["cx"], cont["cy"]))
                 self._interruptible_sleep(ENCOUNTER_STEP_SETTLE, stop_event)
                 return True
             time.sleep(ENCOUNTER_MODAL_POLL)
@@ -907,6 +905,7 @@ class ExpeditionOps:
             self._log("[Macro] Settings didn't actually open (something took the click) -- "
                        "skipping this encounter rather than clicking blind.")
             return self._encounter_done(state)
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._mouse.click(left + ENCOUNTER_TELEPORT_SPAWN_CLICK[0],
                           top + ENCOUNTER_TELEPORT_SPAWN_CLICK[1])
         time.sleep(ENCOUNTER_STEP_SETTLE)

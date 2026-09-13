@@ -477,12 +477,11 @@ class BlockOps:
         if pos is None:
             return True
 
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+        self._mouse.click(*vision.ref_to_screen(hwnd, self._coords["unit_info_reset_x"], self._coords["unit_info_reset_y"]))
         time.sleep(0.1)
 
         self._set_status(action=f"Upgrading unit ({state['remaining']} left)...")
-        self._mouse.click(left + pos[0], top + pos[1])
+        self._mouse.click(*vision.ref_to_screen(hwnd, pos[0], pos[1]))
         time.sleep(BATTLE_BLOCK_CLICK_SETTLE)
         if self._checkpoint(stop_event):
             return True
@@ -527,7 +526,7 @@ class BlockOps:
             # that runs (another attempt on this same unit, or whatever
             # Battle block comes after it) doesn't have to fight a leftover
             # panel/tooltip still covering the screen.
-            self._mouse.click(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+            self._mouse.click(*vision.ref_to_screen(hwnd, self._coords["unit_info_reset_x"], self._coords["unit_info_reset_y"]))
             state["remaining"] -= 1
             state["next_attempt"] = 0.0
             # Gold is clearly coming in, so the give-up count starts over --
@@ -572,12 +571,11 @@ class BlockOps:
         if pos is None:
             return True
 
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+        self._mouse.click(*vision.ref_to_screen(hwnd, self._coords["unit_info_reset_x"], self._coords["unit_info_reset_y"]))
         time.sleep(0.1)
 
         self._set_status(action="Selling unit...")
-        self._mouse.click(left + pos[0], top + pos[1])
+        self._mouse.click(*vision.ref_to_screen(hwnd, pos[0], pos[1]))
         time.sleep(BATTLE_BLOCK_CLICK_SETTLE)
         if self._checkpoint(stop_event):
             return True
@@ -595,13 +593,12 @@ class BlockOps:
         if pos is None:
             return True
 
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+        self._mouse.click(*vision.ref_to_screen(hwnd, self._coords["unit_info_reset_x"], self._coords["unit_info_reset_y"]))
         time.sleep(0.1)
 
         priority = str(block.get("params", {}).get("priority") or "Boss")
         self._set_status(action=f"Setting target priority ({priority})...")
-        self._mouse.click(left + pos[0], top + pos[1])
+        self._mouse.click(*vision.ref_to_screen(hwnd, pos[0], pos[1]))
         time.sleep(BATTLE_BLOCK_CLICK_SETTLE)
         if self._checkpoint(stop_event):
             return True
@@ -791,8 +788,8 @@ class BlockOps:
             except ValueError:
                 steps = 1
 
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._set_status(action="Setting auto-upgrade priority...")
+        left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._mouse.click(left + pos[0], top + pos[1])
         time.sleep(AUTO_UPGRADE_CLICK_SETTLE)
         if self._checkpoint(stop_event):
@@ -830,10 +827,7 @@ class BlockOps:
                     if self._checkpoint(stop_event):
                         return True
             time.sleep(AUTO_UPGRADE_CLICK_SETTLE)
-            self._mouse.click(
-                left + self._coords["unit_info_reset_x"],
-                top + self._coords["unit_info_reset_y"],
-            )
+            self._mouse.click(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
             return True
 
         try:
@@ -860,8 +854,7 @@ class BlockOps:
         # What it actually is: each left click advances the priority by one,
         # so priority N is N clicks on the icon itself, and one click past
         # the last priority wraps it back to off.
-        cx = left + priority_match["cx"]
-        cy = top + priority_match["cy"]
+        cx, cy = vision.ref_to_screen(hwnd, priority_match["cx"], priority_match["cy"])
 
         if priority == "None":
             clicks = steps
@@ -1406,7 +1399,7 @@ class BlockOps:
         что вложенные кавычки внутри f-строки читаются отвратительно."""
         return ", ".join(f'"{n}"' for n in names)
 
-    def _tile_still_highlighted(self, left: int, top: int, x: int, y: int) -> bool:
+    def _tile_still_highlighted(self, left: int, top: int, x: int, y: int, hwnd: int = None) -> bool:
         """Горит ли подсветка ПРЯМО ПОД КУРСОРОМ в (x, y) -- координаты
         клиентской области окна. Снимает пятачок PLACE_CONFIRM_PROBE_SIZE и
         отвечает «да», если белого в нём не меньше PLACE_CONFIRM_PROBE_RATIO.
@@ -1420,9 +1413,14 @@ class BlockOps:
         from core.ocr import capture_region
         size = PLACE_CONFIRM_PROBE_SIZE
         half = size // 2
-        box_x = max(0, min(x - half, FIXED_WIN_W - size))
-        box_y = max(0, min(y - half, FIXED_WIN_H - size))
-        patch = capture_region(left + box_x, top + box_y, size, size)
+        if hwnd:
+            sx, sy = vision.ref_to_screen(hwnd, x, y)
+            screen_x, screen_y = sx - half, sy - half
+        else:
+            box_x = max(0, min(x - half, FIXED_WIN_W - size))
+            box_y = max(0, min(y - half, FIXED_WIN_H - size))
+            screen_x, screen_y = left + box_x, top + box_y
+        patch = capture_region(screen_x, screen_y, size, size)
         b, g, r = patch[:, :, 0].astype(int), patch[:, :, 1].astype(int), patch[:, :, 2].astype(int)
         floor = 255 - PLACE_VALID_PIXEL_TOLERANCE
         white = (r >= floor) & (g >= floor) & (b >= floor)
@@ -1449,23 +1447,23 @@ class BlockOps:
         _reset_unit_info_panel). А вот при удержанном Shift (quick-place)
         юнит остаётся выбранным, и повторный клик поставил бы второго --
         поэтому там allow_retry=False и мы только честно пишем в журнал."""
-        self._mouse.click(left + cur_x, top + cur_y)
+        self._mouse.click(*vision.ref_to_screen(hwnd, cur_x, cur_y))
         time.sleep(PLACE_UNIT_CLICK_SETTLE)
         attempts = PLACE_CONFIRM_ATTEMPTS if allow_retry else 1
         for attempt in range(1, attempts + 1):
             if self._checkpoint(stop_event):
                 return False
             time.sleep(PLACE_CONFIRM_SETTLE)
-            if not self._tile_still_highlighted(left, top, cur_x, cur_y):
+            if not self._tile_still_highlighted(left, top, cur_x, cur_y, hwnd=hwnd):
                 return True  # подсветки на клетке больше нет -- клик прошёл
             if attempt == attempts:
                 break
             self._log(f'[Macro] Place Unit "{name}": highlight at ({cur_x}, {cur_y}) did not clear -- '
                        f'click missed, clicking again ({attempt}/{attempts - 1}).')
-            self._mouse.move_to(left + cur_x, top + cur_y)
+            self._mouse.move_to(*vision.ref_to_screen(hwnd, cur_x, cur_y))
             self._mouse.nudge()  # реальное относительное движение, иначе игра не пересчитает наведение
             time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
-            self._mouse.click(left + cur_x, top + cur_y)
+            self._mouse.click(*vision.ref_to_screen(hwnd, cur_x, cur_y))
             time.sleep(PLACE_UNIT_CLICK_SETTLE)
         if allow_retry:
             # Могли попасть по уже стоящему юниту и открыть его панель --
@@ -1548,7 +1546,7 @@ class BlockOps:
             return None
         self._keyboard.tap(ord("Z"))
         time.sleep(0.1)
-        self._mouse.click(left + x, top + y)
+        self._mouse.click(*vision.ref_to_screen(hwnd, x, y))
         time.sleep(0.3)
         try:
             exists_match = vision.wait_for_image(hwnd, "unit_exist", timeout=PLACE_UNIT_VERIFY_TIMEOUT)
@@ -1665,7 +1663,7 @@ class BlockOps:
         moving/hovering there before it renders at all, not just land on a
         coordinate. Returns the (x, y) window-client offset it settled on,
         or None if nothing valid ever showed up in time."""
-        self._mouse.move_to(left + orig_x, top + orig_y)
+        self._mouse.move_to(*vision.ref_to_screen(hwnd, orig_x, orig_y))
         time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
 
         deadline = time.time() + PLACE_SEARCH_WIGGLE_TIMEOUT
@@ -1701,12 +1699,12 @@ class BlockOps:
                                f'from target -- waiting for target tile to clear '
                                f'({PLACE_DRIFT_WAIT_TRIES - drift_waits_left}/{PLACE_DRIFT_WAIT_TRIES}).')
                     time.sleep(PLACE_DRIFT_WAIT_S)
-                    self._mouse.move_to(left + orig_x, top + orig_y)
+                    self._mouse.move_to(*vision.ref_to_screen(hwnd, orig_x, orig_y))
                     time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
                     continue
                 cx, cy = orig_x + dx, orig_y + dy
                 if (dx, dy) != (0, 0):
-                    self._mouse.move_to(left + cx, top + cy)
+                    self._mouse.move_to(*vision.ref_to_screen(hwnd, cx, cy))
                     time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
                     if dist > PLACE_MAX_DRIFT:
                         self._log(f'[Macro] Place Unit "{name}": target tile occupied -- '
@@ -1749,14 +1747,14 @@ class BlockOps:
                 if not (PLACE_SPIRAL_MARGIN <= px <= FIXED_WIN_W - PLACE_SPIRAL_MARGIN
                         and PLACE_SPIRAL_MARGIN <= py <= FIXED_WIN_H - PLACE_SPIRAL_MARGIN):
                     continue
-                self._mouse.move_to(left + px, top + py)
+                self._mouse.move_to(*vision.ref_to_screen(hwnd, px, py))
                 self._mouse.nudge()  # the highlight needs real relative motion to render
                 time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
                 found = self._scan_place_search_box(hwnd, left, top, px, py)
                 if found is not None:
                     dx, dy = found
                     cx, cy = px + dx, py + dy
-                    self._mouse.move_to(left + cx, top + cy)
+                    self._mouse.move_to(*vision.ref_to_screen(hwnd, cx, cy))
                     time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
                     self._log(f'[Macro] Place Unit "{name}": found a valid tile at ({cx}, {cy}) '
                                f'({radius}px out from the saved spot).')
@@ -1887,7 +1885,7 @@ class BlockOps:
             # directly, same as before the search existed at all. For a
             # spot where the highlight doesn't reliably show/detect,
             # searching for it is worse than just trusting the coordinate.
-            self._mouse.move_to(left + orig_x, top + orig_y)
+            self._mouse.move_to(*vision.ref_to_screen(hwnd, orig_x, orig_y))
             time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
             spot = (orig_x, orig_y)
         else:
@@ -1978,7 +1976,7 @@ class BlockOps:
             if self._checkpoint(stop_event):
                 return False
             if verify_attempt > 1:
-                self._mouse.click(left + cur_x, top + cur_y)
+                self._mouse.click(*vision.ref_to_screen(hwnd, cur_x, cur_y))
                 clicked_to_verify = True
                 time.sleep(0.3)  # let the info panel actually render before checking for it
             try:
@@ -2084,7 +2082,7 @@ class BlockOps:
             time.sleep(PLACE_HOTKEY_SETTLE)
 
             if block.get("ignoreHighlight"):
-                self._mouse.move_to(left + orig_x, top + orig_y)
+                self._mouse.move_to(*vision.ref_to_screen(hwnd, orig_x, orig_y))
                 time.sleep(PLACE_PIXEL_SEARCH_SETTLE)
                 spot = (orig_x, orig_y)
             else:
@@ -2123,7 +2121,7 @@ class BlockOps:
                 if self._checkpoint(stop_event):
                     return False
                 if va > 1:
-                    self._mouse.click(left + cur_x, top + cur_y)
+                    self._mouse.click(*vision.ref_to_screen(hwnd, cur_x, cur_y))
                     clicked_to_verify = True
                     time.sleep(0.3)
                 try:
@@ -2161,13 +2159,12 @@ class BlockOps:
     def _reset_unit_info_panel(self, hwnd) -> None:
         # Closes whatever info panel double-clicking a placed unit opened
         # (see the verify step above) -- Z first (same deselect pressed
-        # before every placement), then a click on a near-empty corner of
+        # перед every placement), then a click on a near-empty corner of
         # the Roblox screen, (3, 3), well clear of any real UI so it can't
         # be mistaken for a live game action.
         self._keyboard.tap(ord("Z"))
         time.sleep(0.1)
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + self._coords["unit_info_reset_x"], top + self._coords["unit_info_reset_y"])
+        self._mouse.click(*vision.ref_to_screen(hwnd, self._coords["unit_info_reset_x"], self._coords["unit_info_reset_y"]))
 
     # Windows/Meta-style keys are blocked from the Setting block's custom
     # hotkey box -- letting a macro send these could minimize the game,

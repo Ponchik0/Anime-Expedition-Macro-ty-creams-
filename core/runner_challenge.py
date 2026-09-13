@@ -421,8 +421,7 @@ class ChallengeOps:
         x, y = self._cxy(f"challenge_stage_{slot}")
         self._log(f'[Macro] Challenge screen loaded -- clicking stage slot #{slot} at ({x}, {y}).')
         self._set_status(action=f"Clicking Challenge #{slot}...")
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + x, top + y)
+        self._mouse.click(*vision.ref_to_screen(hwnd, x, y))
         if self._checkpoint(stop_event):
             return False
         return self._enter_selected_challenge(hwnd, stop_event, play_mode, coords, webhook, daily=False)
@@ -454,8 +453,7 @@ class ChallengeOps:
             # Fallback: click Daily Challenge tab on left sidebar
             tab_x, tab_y = self._cxy("daily_challenge_tab")
             self._log(f'[Macro] "daily_challenge_available" template missed -- using fallback tab click at ({tab_x}, {tab_y}).')
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
-            self._mouse.click(left + tab_x, top + tab_y)
+            self._mouse.click(*vision.ref_to_screen(hwnd, tab_x, tab_y))
             time.sleep(0.5)
 
         if self._checkpoint(stop_event):
@@ -469,8 +467,7 @@ class ChallengeOps:
             # Fallback: click Daily Challenge stage card on right panel
             card_x, card_y = self._cxy("daily_challenge_stage")
             self._log(f'[Macro] "daily_challenge_stage" template missed -- using fallback card click at ({card_x}, {card_y}).')
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
-            self._mouse.click(left + card_x, top + card_y)
+            self._mouse.click(*vision.ref_to_screen(hwnd, card_x, card_y))
             time.sleep(0.5)
 
         if self._checkpoint(stop_event):

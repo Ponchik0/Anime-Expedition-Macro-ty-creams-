@@ -2421,8 +2421,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except vision.TemplateNotFound:
             pass
         try:
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
-            self._mouse.click(left + 273, top + 30)
+            self._mouse.click(*vision.ref_to_screen(hwnd, 273, 30))
             time.sleep(0.5)
         except Exception:
             pass
@@ -2461,8 +2460,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     vision.click_match(self._mouse, hwnd, settings_match)
                 else:
                     self._log("[Macro] nav_settings not matched by image, clicking gear at (273, 30)...")
-                    left, top, _, _ = wm.get_window_rect_screen(hwnd)
-                    self._mouse.click(left + 273, top + 30)
+                    self._mouse.click(*vision.ref_to_screen(hwnd, 273, 30))
 
                 settings_opened = True
                 time.sleep(1.2)
@@ -4695,8 +4693,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             return None
         if self._checkpoint(stop_event):
             return None
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        return (left + search_match["cx"], top + search_match["cy"])
+        return vision.ref_to_screen(hwnd, search_match["cx"], search_match["cy"])
 
     def _search_and_set_toggle(self, hwnd, stop_event: threading.Event, search_box_pos, setting_name: str,
                                  desired_on: bool) -> bool:
@@ -5006,7 +5003,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 f'({match["cx"]}, {match["cy"]}) '
                 f'(attempt {attempt}/{STORY_STAGE_CLICK_ATTEMPTS}).'
             )
-            self._mouse.double_click(left + match["cx"], top + match["cy"])
+            self._mouse.double_click(*vision.ref_to_screen(hwnd, match["cx"], match["cy"]))
 
             deadline = time.time() + STORY_STAGE_SELECTED_VERIFY_TIMEOUT
             while time.time() < deadline:
@@ -5188,8 +5185,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         """
         x, y = self._cxy(prefix)
         self._log(f"[Macro] {label} -- clicking the calibrated point ({x}, {y}).")
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._hover_click(left + x, top + y, hwnd)
+        sx, sy = vision.ref_to_screen(hwnd, x, y)
+        self._hover_click(sx, sy, hwnd)
 
     def _hover_click(self, sx: int, sy: int, hwnd=None):
         """Click a screen point the way the game actually accepts.
@@ -5219,8 +5216,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         The conversion from client space to screen space is identical.
         """
         self._log(f"[Macro] {label} -- clicking ({x}, {y}).")
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._hover_click(left + int(x), top + int(y), hwnd)
+        sx, sy = vision.ref_to_screen(hwnd, int(x), int(y))
+        self._hover_click(sx, sy, hwnd)
 
     @staticmethod
     def _portal_task_point(task: dict, which: str):
@@ -5249,8 +5246,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         """
         if timeout > 0:
             try:
-                left, top, _, _ = wm.get_window_rect_screen(hwnd)
-                self._mouse.move_to(left + 3, top + 3)
+                self._mouse.move_to(*vision.ref_to_screen(hwnd, 3, 3))
                 time.sleep(0.05)
             except Exception:
                 pass
@@ -5505,8 +5501,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if not wm.activate_window(hwnd):
             self._log("[Macro] Couldn't confirm focus before picking the portal from the chooser.")
         self._log(f"[Macro] Picking the portal from the chooser -- clicking {chooser_point}.")
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        self._mouse.click(left + chooser_point[0], top + chooser_point[1])
+        self._mouse.click(*vision.ref_to_screen(hwnd, chooser_point[0], chooser_point[1]))
         self._interruptible_sleep(0.25, stop_event)
         if self._checkpoint(stop_event):
             return False
@@ -5853,8 +5848,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         nudges = scroll_nudges if scroll_nudges is not None else stage_select.SCROLL_NUDGES_PER_PASS
         scroll_step = -120 * max(1, int(power))
         nudges = max(0, int(nudges))
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
-        cx, cy = left + stage_select.SCROLL_CENTER[0], top + stage_select.SCROLL_CENTER[1]
+        cx, cy = vision.ref_to_screen(hwnd, *stage_select.SCROLL_CENTER)
 
         for pass_no in range(1, stage_select.MAX_PASSES + 1):
             if self._checkpoint(stop_event):
@@ -6135,10 +6129,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if match is None:
             return last_clicked_at
 
-        left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._log(f'[Macro] In the AFK Chamber (score {match["score"]:.2f}) -- clicking out of it.')
         self._set_status(action="Leaving the AFK Chamber...")
-        self._mouse.click(left + AFK_CHAMBER_EXIT_CLICK[0], top + AFK_CHAMBER_EXIT_CLICK[1])
+        self._mouse.click(*vision.ref_to_screen(hwnd, *AFK_CHAMBER_EXIT_CLICK))
         return time.time()
 
     def _find_gamemode_card(self, hwnd, stop_event: threading.Event, names, label: str):
@@ -6295,9 +6288,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 return False
             story_x, story_y = self._cxy("story_click")
             self._log(f"[Macro] Story card not found by image search -- falling back to fixed coordinate ({story_x}, {story_y}).")
-            left, top, _, _ = wm.get_window_rect_screen(hwnd)
             clicked = self._click_gamemode_target(
-                hwnd, stop_event, "Story", lambda: self._mouse.click(left + story_x, top + story_y))
+                hwnd, stop_event, "Story", lambda: self._mouse.click(*vision.ref_to_screen(hwnd, story_x, story_y)))
         if not clicked:
             return False
         # Unlike Raid/Expedition/Challenge (which wait_for_image their own

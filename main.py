@@ -4233,8 +4233,13 @@ class Api:
         panel + log have room again."""
         if not self._window or sys.platform == "darwin":
             return
+        screen_w, screen_h = wm.get_screen_size()
         full_w = getattr(self, "game_width", config.FIXED_WIN_W) + PANEL_WIDTH
         full_h = TITLEBAR_H + getattr(self, "game_height", config.FIXED_WIN_H) + LOGS_H
+        if screen_w > 0 and full_w > screen_w:
+            full_w = screen_w
+        if screen_h > 0 and full_h > screen_h:
+            full_h = screen_h
         self._resize_gui_keep_pos(full_w, full_h)
 
     def skip_waiting(self):
@@ -4268,8 +4273,13 @@ class Api:
             # verify the resize actually took, falling back to a native
             # MoveWindow if it didn't -- otherwise every screen except the
             # waiting placeholder renders squeezed into ~400px.
+            screen_w, screen_h = wm.get_screen_size()
             target_w = getattr(self, "game_width", config.FIXED_WIN_W) + PANEL_WIDTH
             target_h = TITLEBAR_H + getattr(self, "game_height", config.FIXED_WIN_H) + LOGS_H
+            if screen_w > 0 and target_w > screen_w:
+                target_w = screen_w
+            if screen_h > 0 and target_h > screen_h:
+                target_h = screen_h
             self._window.restore()
             time.sleep(0.2)
             self._window.resize(target_w, target_h)
@@ -5995,8 +6005,13 @@ def _launch_ui():
                     # minimized window is silently dropped and it restores at the
                     # old compact size (verified against pywebview 6.2.1), which
                     # docked Roblox into a 400px-wide window. Restore first.
+                    screen_w, screen_h = wm.get_screen_size()
                     target_gui_w = api.game_width + PANEL_WIDTH
                     target_gui_h = TITLEBAR_H + api.game_height + LOGS_H
+                    if screen_w > 0 and target_gui_w > screen_w:
+                        target_gui_w = screen_w
+                    if screen_h > 0 and target_gui_h > screen_h:
+                        target_gui_h = screen_h
                     window.restore()
                     time.sleep(0.2)
                     window.resize(target_gui_w, target_gui_h)
@@ -6019,8 +6034,7 @@ def _launch_ui():
                                 time.sleep(2)
                                 continue
                             elif (r - l, b - t) != (target_gui_w, target_gui_h):
-                                api.push_log(f"Warning: Macro window size ({r - l}x{b - t}) is smaller than requested "
-                                             f"({target_gui_w}x{target_gui_h}) due to display resolution or DPI scaling. Docking anyway.")
+                                api.push_log(f"[Macro] Window adjusted to available display area: {r - l}x{b - t}.")
                         api.gui_hwnd = gui_hwnd
                         # Final stopping re-check: several sleeps have passed
                         # since the one guarding this branch, and a dock()
