@@ -83,6 +83,7 @@ jobs:
           New-Item -ItemType Directory -Force package | Out-Null
           Copy-Item "dist/Anime Expeditions Macro.exe" package/
           Copy-Item Assets package/Assets -Recurse
+          Copy-Item Templates package/Templates -Recurse
           Compress-Archive -Path package/* -DestinationPath "dist/Anime-Expeditions-Macro-Windows.zip"
 
       # Установщик (см. installer.py). Собирается ПОСЛЕ архива и отдельным

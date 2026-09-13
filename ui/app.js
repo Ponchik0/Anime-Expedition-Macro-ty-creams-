@@ -3400,9 +3400,17 @@ async function importTasks() {
         let mode = 'story';
         let map = '';
         let stage = '1';
+        let repeat = 1;
+        let infinite_wave_limit = 20;
+        let auto_play = 'autoplay';
         if (lower.includes('summer') || lower.includes('event')) {
           mode = 'event';
+          map = 'Summer';
           stage = lower.includes('portal') ? 'portal' : 'infinite';
+          if (stage === 'infinite') {
+            infinite_wave_limit = 30;
+            repeat = 9999;
+          }
         } else if (lower.includes('raid')) {
           mode = 'raid';
         } else if (lower.includes('tower')) {
@@ -3416,7 +3424,9 @@ async function importTasks() {
           stage,
           difficulty: 'Normal',
           macro: tplName,
-          repeat: 1
+          repeat,
+          infinite_wave_limit,
+          auto_play
         });
       }
     }

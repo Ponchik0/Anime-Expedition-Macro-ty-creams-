@@ -1,0 +1,37 @@
+{
+  "name": "Portals - single portal (exit to lobby)",
+  "description": "Workflow: open the specific portal you want to run manually (Items -> Portals tab -> click your portal -> the Activate confirmation screen appears), then press Play. Prestart waits for the Activate screen and clicks Activate. Loop A watches for the post-run Exit to Lobby button and clicks it after the single portal completes. Every Click block reads its target from Settings > Debug > Macro Coordinates -- the shipped defaults come from a live 1152x756 window, but per-user overrides win.",
+  "blocks": {
+    "team": "",
+    "equipment": "include",
+    "prestart": [
+      {"type": "detect", "params": {}, "mode": "single", "image": "portal_activate",
+        "threshold": 0.80, "loop": true, "loopAttempts": 30, "loopIntervalMs": 1000,
+        "skip_modes": ["portals"],
+        "then": [
+          {"type": "click", "params": {"coord_key": "portal_activate", "label": "Activate portal"}}
+        ], "else": []},
+      {"type": "walk_path", "params": {}, "once": true, "mode": "auto", "pathName": "", "sprint": false}
+    ],
+    "battle": [
+      {"type": "wait_wave", "params": {"wave": "1"}, "once": false},
+      {"type": "place_unit", "params": {"name": "unit 1", "x": 500, "y": 380},
+        "once": false, "hotkey": "1", "ignoreHighlight": false, "retryUntilPlaced": true},
+      {"type": "place_unit", "params": {"name": "unit 2", "x": 560, "y": 380},
+        "once": false, "hotkey": "2", "ignoreHighlight": false, "retryUntilPlaced": true}
+    ],
+    "loop_a": [
+      {"type": "detect", "params": {}, "skip_modes": ["portals"], "mode": "expr",
+        "expr": "find('portal_exit') or find('portal_win')",
+        "threshold": 0.80, "loop": true, "loopAttempts": 0, "loopIntervalMs": 1500,
+        "then": [
+          {"type": "detect", "params": {}, "mode": "single", "image": "portal_exit",
+            "threshold": 0.82, "loop": true, "loopAttempts": 4, "loopIntervalMs": 800,
+            "then": [
+              {"type": "click", "params": {"coord_key": "portal_exit", "label": "Exit to Lobby (single-portal mode)"}}
+            ], "else": []}
+        ], "else": []}
+    ],
+    "loop_b": []
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Summer Portal",
+  "tasks": [
+    {
+      "id": "task_summer_portal",
+      "mode": "portals",
+      "map": "summer",
+      "stage": "1",
+      "difficulty": "Normal",
+      "infinite_wave_limit": 20,
+      "extract_after": "0",
+      "repeat": 1,
+      "team": "",
+      "equipment": "include",
+      "play_mode": "solo",
+      "macro": "",
+      "auto_play": "autoplay",
+      "timer_minutes": 0,
+      "timer_next_enabled": false,
+      "timer_next": "",
+      "stop_on_failure": false,
+      "on_complete_enabled": false,
+      "on_complete_action": "next",
+      "on_complete_target": ""
+    }
+  ]
+}

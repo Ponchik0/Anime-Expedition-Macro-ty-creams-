@@ -1,0 +1,129 @@
+{
+  "version": 2,
+  "kind": "anime-expeditions-tasks",
+  "name": "Summer Fishing",
+  "tasks": [
+    {
+      "id": "task_summer_fishing",
+      "mode": "event",
+      "map": "Summer",
+      "stage": "infinite",
+      "difficulty": "Normal",
+      "infinite_wave_limit": 30,
+      "extract_after": "0",
+      "repeat": 9999,
+      "team": "",
+      "equipment": "include",
+      "play_mode": "solo",
+      "macro": "Inf Summer",
+      "auto_play": "autoplay",
+      "timer_minutes": 0,
+      "timer_next_enabled": false,
+      "timer_next": "",
+      "stop_on_failure": false,
+      "on_complete_enabled": false,
+      "on_complete_action": "next",
+      "on_complete_target": ""
+    }
+  ],
+  "templates": {
+    "Inf Summer": {
+      "name": "Inf Summer",
+      "blocks": {
+        "team": "",
+        "equipment": "include",
+        "prestart": [
+          {
+            "type": "walk_path",
+            "params": {},
+            "once": true,
+            "mode": "none",
+            "pathName": "",
+            "sprint": false
+          },
+          {
+            "type": "wait_ms",
+            "params": {
+              "ms": 1000
+            },
+            "once": true
+          },
+          {
+            "type": "click",
+            "params": {
+              "x": 74,
+              "y": 670
+            },
+            "once": true
+          },
+          {
+            "type": "wait_ms",
+            "params": {
+              "ms": 500
+            },
+            "once": true
+          },
+          {
+            "type": "click",
+            "params": {
+              "x": 150,
+              "y": 500
+            },
+            "once": true
+          }
+        ],
+        "battle": [
+          {
+            "type": "detect",
+            "params": {},
+            "once": false,
+            "mode": "single",
+            "image": "Game_results",
+            "advanced": false,
+            "images": [],
+            "logic": "and",
+            "expr": "",
+            "region": null,
+            "threshold": null,
+            "showAll": false,
+            "loop": false,
+            "loopAttempts": 0,
+            "loopIntervalMs": 1000,
+            "then": [
+              {
+                "type": "click",
+                "params": {
+                  "x": 576,
+                  "y": 601
+                },
+                "once": false
+              }
+            ],
+            "else": []
+          }
+        ],
+        "loop_a": [
+          {
+            "type": "click",
+            "params": {
+              "x": 150,
+              "y": 500
+            },
+            "once": false
+          },
+          {
+            "type": "click",
+            "params": {
+              "x": 576,
+              "y": 601
+            },
+            "once": false
+          }
+        ],
+        "loop_b": []
+      }
+    }
+  },
+  "paths": {},
+  "recordings": {}
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Portals - N portals then exit",
+  "description": "Runs a set number of portals, then clicks Exit to Lobby. Workflow: open your preferred portal manually (Items -> Portals tab -> click portal), press Play, and the macro takes over from the Activate screen. Every post-run chooser increments a counter (the Detect block inside Loop A, mode='counter'); THEN fires (Select next portal) while count <= limit, ELSE fires (Exit to Lobby) once count > limit. Run from a Portals task (0.22) and the count comes from that task's \"Portals Then Exit\" field automatically -- the counter Detect carries limit_from_task='extract_after', and 0 there means keep going until you stop the task. Run it from the Macro Manager instead (no task) and it falls back to the `limit` baked into that block: edit it for any positive integer (default 3), or leave it empty ('') for infinite. Post-run Select always accepts whichever of the 3 portals the game offered -- no branching needed. Coords come from Settings > Debug > Macro Coordinates.",
+  "blocks": {
+    "team": "",
+    "equipment": "include",
+    "prestart": [
+      {"type": "detect", "params": {}, "mode": "single", "image": "portal_activate",
+        "threshold": 0.80, "loop": true, "loopAttempts": 30, "loopIntervalMs": 1000,
+        "skip_modes": ["portals"],
+        "then": [
+          {"type": "click", "params": {"coord_key": "portal_activate", "label": "Activate portal"}}
+        ], "else": []},
+      {"type": "walk_path", "params": {}, "once": true, "mode": "auto", "pathName": "", "sprint": false}
+    ],
+    "battle": [
+      {"type": "wait_wave", "params": {"wave": "1"}, "once": false},
+      {"type": "place_unit", "params": {"name": "unit 1", "x": 500, "y": 380},
+        "once": false, "hotkey": "1", "ignoreHighlight": false, "retryUntilPlaced": true},
+      {"type": "place_unit", "params": {"name": "unit 2", "x": 560, "y": 380},
+        "once": false, "hotkey": "2", "ignoreHighlight": false, "retryUntilPlaced": true}
+    ],
+    "loop_a": [
+      {"type": "detect", "params": {}, "skip_modes": ["portals"], "mode": "single", "image": "portal_offer",
+        "threshold": 0.80, "loop": true, "loopAttempts": 0, "loopIntervalMs": 1500,
+        "then": [
+          {"type": "detect", "params": {},
+            "mode": "counter",
+            "counter_id": "portal_runs",
+            "limit": 3,
+            "limit_from_task": "extract_after",
+            "label": "Portal runs",
+            "then": [
+              {"type": "click", "params": {"coord_key": "portal_select", "label": "Select next portal (counter < limit)"}}
+            ],
+            "else": [
+              {"type": "click", "params": {"coord_key": "portal_exit", "label": "Exit to Lobby (counter >= limit)"}}
+            ]}
+        ], "else": []}
+    ],
+    "loop_b": []
+  }
+}

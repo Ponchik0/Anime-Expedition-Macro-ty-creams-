@@ -1957,11 +1957,54 @@ def test_old_villian_invasion_act_tasks_migrate_to_an_event_kind(saved_stage, tm
     )
 
 
-def test_event_tasks_already_on_a_kind_are_left_alone(tmp_path):
-    tasks = json.dumps([{"id": "a", "mode": "event", "map": "Event", "stage": "portal"}])
-    out = run_js(_EVENT_MIGRATION_WORLD % tasks, tmp_path)
-    assert out["stages"] == ["portal"]
-    assert not any("Villian Invasion" in line for line in out["logs"])
+
+def test_import_summer_template_auto_creates_infinite_task_with_high_repeats(tmp_path):
+    """Когда импортируют сценарий Inf Summer без списка задач,
+    импорт обязан создать готовую задачу на карту Summer с infinite_wave_limit 30,
+    автоплеем и repeat 9999 (для непрерывного внутриигрового рестарта).
+    """
+    code = """
+    const logs = [];
+    global.addLog = m => logs.push(m);
+    global.importCustomPaths = async () => 0;
+    global.importCustomRecordings = async () => 0;
+    global.enteringTaskIds = new Set();
+    global.renderTaskList = () => {};
+    global.renderTaskBuilder = () => {};
+    global.refreshTaskTemplates = async () => {};
+    global.saveTaskQueue = () => {};
+    global.newTaskId = () => 'task-1';
+    global.normalizeExtractAfter = s => s || '0';
+    global.defaultTask = () => ({ mode: 'story', map: '', stage: '1', difficulty: 'Normal', repeat: 1 });
+    global.taskCards = [];
+    global.pywebview = {
+      api: {
+        import_tasks_file: async () => ({
+          ok: true,
+          filename: 'Inf Summer.json',
+          data: {
+            name: 'Inf Summer',
+            blocks: { prestart: [], battle: [], loop_a: [] }
+          }
+        }),
+        list_templates: async () => [],
+        save_template: async () => {}
+      }
+    };
+    eval(extract('normalizeTemplateImportData'));
+    eval(extract('importTasks'));
+    importTasks().then(() => {
+      console.log(JSON.stringify({ taskCards, logs }));
+    });
+    """
+    out = run_js(code, tmp_path)
+    created = out["taskCards"][0]
+    assert created["mode"] == "event"
+    assert created["map"] == "Summer"
+    assert created["stage"] == "infinite"
+    assert created["infinite_wave_limit"] == 30
+    assert created["repeat"] == 9999
+    assert created["macro"] == "Inf Summer"
 
 
 

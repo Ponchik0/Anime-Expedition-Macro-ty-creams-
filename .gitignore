@@ -13,7 +13,14 @@ Assets/stage_data.json
 # the task queue. None of it is meaningful to anyone but you.
 debug/
 Paths/*
-Templates/
+Templates/*
+Templates/Tasks/*
+!Templates/examples/
+!Templates/examples/*
+!Templates/Inf Summer.json
+!Templates/Tasks/
+!Templates/Tasks/Summer Fishing.json
+!Templates/Tasks/Summer Portal.json
 # Record block input recordings (core/input_record.py) -- personal, no
 # shipped-defaults exception like Paths/defaults/ below (there's no
 # game-wide "known good" recording to ship; every one is bespoke).

@@ -1,0 +1,96 @@
+{
+  "name": "Inf Summer",
+  "blocks": {
+    "team": "",
+    "equipment": "include",
+    "prestart": [
+      {
+        "type": "walk_path",
+        "params": {},
+        "once": true,
+        "mode": "none",
+        "pathName": "",
+        "sprint": false
+      },
+      {
+        "type": "wait_ms",
+        "params": {
+          "ms": 1000
+        },
+        "once": true
+      },
+      {
+        "type": "click",
+        "params": {
+          "x": 74,
+          "y": 670
+        },
+        "once": true
+      },
+      {
+        "type": "wait_ms",
+        "params": {
+          "ms": 500
+        },
+        "once": true
+      },
+      {
+        "type": "click",
+        "params": {
+          "x": 150,
+          "y": 500
+        },
+        "once": true
+      }
+    ],
+    "battle": [
+      {
+        "type": "detect",
+        "params": {},
+        "once": false,
+        "mode": "single",
+        "image": "Game_results",
+        "advanced": false,
+        "images": [],
+        "logic": "and",
+        "expr": "",
+        "region": null,
+        "threshold": null,
+        "showAll": false,
+        "loop": false,
+        "loopAttempts": 0,
+        "loopIntervalMs": 1000,
+        "then": [
+          {
+            "type": "click",
+            "params": {
+              "x": 576,
+              "y": 601
+            },
+            "once": false
+          }
+        ],
+        "else": []
+      }
+    ],
+    "loop_a": [
+      {
+        "type": "click",
+        "params": {
+          "x": 150,
+          "y": 500
+        },
+        "once": false
+      },
+      {
+        "type": "click",
+        "params": {
+          "x": 576,
+          "y": 601
+        },
+        "once": false
+      }
+    ],
+    "loop_b": []
+  }
+}
