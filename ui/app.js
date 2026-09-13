@@ -1876,7 +1876,10 @@ function updateResolutionUI(w, h) {
   const col = document.getElementById('game-column');
   if (col) col.style.width = w + 'px';
   const slot = document.getElementById('game-slot');
-  if (slot) slot.style.height = h + 'px';
+  if (slot) {
+    slot.style.width = w + 'px';
+    slot.style.height = h + 'px';
+  }
   const stage = document.getElementById('game-slot-stage');
   if (stage) {
     stage.style.maxWidth = w + 'px';
@@ -3340,13 +3343,93 @@ async function importTasks() {
   }
   let data = result.data || {};
 
-  if (Array.isArray(data)) {
-    data = { tasks: data };
-  } else if (data.kind && data.kind !== 'anime-expeditions-tasks') {
+  if (data.kind === 'anime-expeditions-settings') {
     addLog('[Task] Import failed: that file is not a task export.');
     return;
   }
-  if (!Array.isArray(data.tasks)) { addLog('[Task] Import failed: that file is not a task export.'); return; }
+
+  // Если файл содержит CREAM share-код в поле code
+  if (data.code && typeof data.code === 'string') {
+    try {
+      const decoded = await pywebview.api.decode_template_code(data.code);
+      if (decoded && decoded.ok) {
+        data = decoded;
+      }
+    } catch (e) {}
+  }
+
+  if (Array.isArray(data)) {
+    data = { tasks: data };
+  }
+
+  // Одиночная задача { mode: '...', map: '...', macro: '...' }
+  if (!data.tasks && (data.mode || data.macro || data.stage || data.difficulty) && !data.blocks && !data.prestart && !data.templates) {
+    data = { tasks: [data] };
+  }
+
+  // Если импортируют шаблон макроса или бандл шаблонов (когда tasks отсутствуют)
+  let normTpl = null;
+  if (!Array.isArray(data.tasks) || data.tasks.length === 0) {
+    const fallbackName = (result.filename ? result.filename.replace(/\.json$/i, '') : '') || 'Imported Macro';
+    if (typeof normalizeTemplateImportData === 'function') {
+      normTpl = normalizeTemplateImportData(data, fallbackName);
+    } else if (data && typeof data === 'object') {
+      if (data.blocks != null) {
+        normTpl = {
+          templates: { [data.name || fallbackName]: { blocks: data.blocks } },
+          paths: data.paths || {},
+          recordings: data.recordings || {}
+        };
+      } else if (data.prestart != null || data.battle != null) {
+        normTpl = {
+          templates: { [data.name || fallbackName]: { blocks: data } },
+          paths: data.paths || {},
+          recordings: data.recordings || {}
+        };
+      }
+    }
+    if (normTpl && Object.keys(normTpl.templates).length > 0) {
+      data.templates = { ...(data.templates || {}), ...normTpl.templates };
+      data.paths = { ...(data.paths || {}), ...(normTpl.paths || {}) };
+      data.recordings = { ...(data.recordings || {}), ...(normTpl.recordings || {}) };
+
+      // Если в файле не было списка задач, автоматически создаём задачу под каждый импортированный макрос
+      data.tasks = [];
+      for (const tplName of Object.keys(normTpl.templates)) {
+        const lower = tplName.toLowerCase();
+        let mode = 'story';
+        let map = '';
+        let stage = '1';
+        if (lower.includes('summer') || lower.includes('event')) {
+          mode = 'event';
+          stage = lower.includes('portal') ? 'portal' : 'infinite';
+        } else if (lower.includes('raid')) {
+          mode = 'raid';
+        } else if (lower.includes('tower')) {
+          mode = 'tower';
+        } else if (lower.includes('tourn')) {
+          mode = 'tournament';
+        }
+        data.tasks.push({
+          mode,
+          map,
+          stage,
+          difficulty: 'Normal',
+          macro: tplName,
+          repeat: 1
+        });
+      }
+    }
+  }
+
+  if (data.kind && data.kind !== 'anime-expeditions-tasks' && !normTpl) {
+    addLog('[Task] Import failed: that file is not a task export.');
+    return;
+  }
+  if (!Array.isArray(data.tasks) || data.tasks.length === 0) {
+    addLog('[Task] Import failed: that file is not a task export.');
+    return;
+  }
 
   let existing = [];
   try { existing = await pywebview.api.list_templates(); } catch (e) {}

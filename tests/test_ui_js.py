@@ -462,10 +462,54 @@ const world = (data) => new Function('data', `
   ${extract('importCustomPaths')}
   ${extract('normalizeExtractAfter')}
   ${extract('importCustomRecordings')}
+  ${extract('normalizeTemplateImportData')}
   ${extract('importTasks')}
   return { importTasks, saved, restoredPaths, logs, cards: () => taskCards };
 `)(data);
 """
+
+
+def test_import_tasks_accepts_single_task_without_array_wrapper(tmp_path):
+    """Одиночный объект задачи (без обёртки в tasks: [...]) должен успешно импортироваться."""
+    data = {"mode": "event", "map": "Summer", "stage": "infinite", "macro": "Inf Summer"}
+    out = run_js(_IMPORT_HARNESS + f"""
+        (async () => {{
+          const w = world({json.dumps(data)});
+          await w.importTasks();
+          console.log(JSON.stringify({{ cards: w.cards().length, macro: w.cards()[0].macro }}));
+        }})();
+    """, tmp_path)
+    assert out["cards"] == 1
+    assert out["macro"] == "Inf Summer"
+
+
+def test_import_tasks_accepts_standalone_macro_template_and_creates_task(tmp_path):
+    """Импорт JSON-файла макроса (например Inf Summer.json) в окне Задач должен
+    сохранять макрос в Templates/ и автоматически создавать задачу в очереди."""
+    data = {
+        "name": "Inf Summer",
+        "blocks": {
+            "prestart": [{"type": "walk_path", "mode": "none"}],
+            "battle": []
+        }
+    }
+    out = run_js(_IMPORT_HARNESS + f"""
+        (async () => {{
+          const w = world({json.dumps(data)});
+          await w.importTasks();
+          console.log(JSON.stringify({{
+            saved: w.saved,
+            cards: w.cards().length,
+            taskMacro: w.cards()[0].macro,
+            taskMode: w.cards()[0].mode
+          }}));
+        }})();
+    """, tmp_path)
+    assert out["saved"] == ["Inf Summer"]
+    assert out["cards"] == 1
+    assert out["taskMacro"] == "Inf Summer"
+    assert out["taskMode"] == "event"
+
 
 _MODERN = {"kind": "anime-expeditions-tasks",
            "tasks": [{"mode": "story", "macro": "Rose Farm"}],

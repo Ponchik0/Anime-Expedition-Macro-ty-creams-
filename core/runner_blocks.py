@@ -1118,6 +1118,10 @@ class BlockOps:
         pre-step always had."""
         if getattr(self, "_started_in_game", False):
             self._log('[Macro] Started while already in-game -- skipping walk to keep your current position.')
+            # Флаг действует только на самый первый заход: если этот же матч перезапустится
+            # (Restart Game на 30 волне) или выйдет в лобби, персонаж снова окажется на спавне,
+            # и ходьба должна честно сработать.
+            self._started_in_game = False
             return
 
         if block.get("mode") in ("none", "disabled", "manual"):

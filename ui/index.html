@@ -39,7 +39,7 @@
        waiting screen shows (see showWaiting()/showDocked() in app.js) so the
        loading state reads as just the spinner, not a half-built app shell. -->
   <div id="titlebar" class="pywebview-drag-region flex items-center justify-between px-4 border-b flex-shrink-0"
-       style="height: 44px; background: var(--bg-card); border-color: var(--border);">
+       style="display: flex; height: 44px; background: var(--bg-card); border-color: var(--border);">
     <!-- Название игры в углу. Бренд оригинального движка из интерфейса убран
          (атрибуция автора остаётся в README и LICENSE — этого требует MIT). -->
     <div class="flex items-center gap-3">
@@ -175,7 +175,7 @@
       </div>
     </div>
 
-    <div id="main-layout" class="flex-1 flex min-h-0">
+    <div id="main-layout" class="flex-1 flex min-h-0 overflow-x-auto">
       <!-- Left column: game-slot has #game-slot-stage when Roblox is not yet docked.
            When Roblox docks, the stage is hidden and the native Roblox window is placed here. -->
       <div id="game-column" class="flex flex-col flex-shrink-0" style="width: 1152px;">
@@ -271,7 +271,51 @@
         </div>
       </div>
 
-      <div id="dash-side" class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="flex: 1; min-width: 0;">
+      <div id="dash-side" class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="flex: 1; min-width: 260px;">
+        <!-- Controls: primary commands at the very top so they are always visible and never cut off -->
+        <section class="rp-panel">
+          <header class="rp-panel-head">
+            <span class="rp-head-tag" style="--rp-tag: var(--brand);">Macro</span>
+            <span class="rp-head-title">Controls</span>
+            <span class="rp-head-rule"></span>
+          </header>
+          <div class="sp-box">
+            <div class="seg-toggle sp-seg">
+              <button type="button" id="sp-auto" class="seg-btn" onclick="setStartMode('auto')">Scenario</button>
+              <button type="button" id="sp-replay" class="seg-btn" onclick="setStartMode('replay')">Recording</button>
+            </div>
+            <div class="sp-what">
+              <div id="sp-line1" class="sp-line1">&mdash;</div>
+              <div id="sp-line2" class="sp-line2"></div>
+            </div>
+            <div id="sp-extras" class="sp-extras"></div>
+          </div>
+          <div id="task-grid" class="rp-controls">
+            <button id="btn-macro-start" class="rp-btn rp-btn-start ui-btn-glow" onclick="startMacro()">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6.5 4.6c0-1.2 1.3-1.9 2.3-1.3l11 6.9c.9.6.9 2 0 2.6l-11 6.9c-1 .6-2.3-.1-2.3-1.3V4.6z"/>
+              </svg>
+              Start
+              <span id="btn-macro-start-key" class="rp-btn-hotkey"></span>
+            </button>
+            <button id="btn-macro-pause" class="rp-btn rp-btn-pause ui-btn-glow" onclick="togglePauseMacro()" disabled>
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4.5" width="4" height="15" rx="1.2"/>
+                <rect x="14" y="4.5" width="4" height="15" rx="1.2"/>
+              </svg>
+              <span id="btn-macro-pause-label">Pause</span>
+              <span id="btn-macro-pause-key" class="rp-btn-hotkey"></span>
+            </button>
+            <button id="btn-macro-stop" class="rp-btn rp-btn-stop ui-btn-glow" onclick="stopMacro()" disabled>
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2"/>
+              </svg>
+              Stop
+              <span id="btn-macro-stop-key" class="rp-btn-hotkey"></span>
+            </button>
+          </div>
+        </section>
+
         <!-- Status readout: hero Action row + ledger rows with dotted leaders.
              Wrapped in .rp-hoverpanel so the extra detail rows (.rp-rows-extra)
              can be absolutely positioned and overlay the panels below on hover
@@ -442,56 +486,6 @@
           </div>
         </section>
 
-        <!-- Controls: one primary command, one quiet one. -->
-        <section class="rp-panel">
-          <header class="rp-panel-head">
-            <span class="rp-head-tag" style="--rp-tag: var(--brand);">Macro</span>
-            <span class="rp-head-title">Controls</span>
-            <span class="rp-head-rule"></span>
-          </header>
-          <!-- ЧТО СДЕЛАЕТ «СТАРТ» — прямо над самой кнопкой.
-               Кнопка одна, а стоять за ней может очень разное: очередь задач,
-               где у КАЖДОЙ задачи свой сценарий, либо повтор выбранной записи,
-               и поверх всего этого — надстройки (Challenge, ресурсные),
-               которые вклиниваются в прогон между задачами. Узнать это можно
-               было, только обойдя три-четыре экрана, и «нажал экспедицию, а
-               включилась запись» получалось само собой. -->
-          <div class="sp-box">
-            <div class="seg-toggle sp-seg">
-              <button type="button" id="sp-auto" class="seg-btn" onclick="setStartMode('auto')">Scenario</button>
-              <button type="button" id="sp-replay" class="seg-btn" onclick="setStartMode('replay')">Recording</button>
-            </div>
-            <div class="sp-what">
-              <div id="sp-line1" class="sp-line1">&mdash;</div>
-              <div id="sp-line2" class="sp-line2"></div>
-            </div>
-            <div id="sp-extras" class="sp-extras"></div>
-          </div>
-          <div id="task-grid" class="rp-controls">
-            <button id="btn-macro-start" class="rp-btn rp-btn-start ui-btn-glow" onclick="startMacro()">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6.5 4.6c0-1.2 1.3-1.9 2.3-1.3l11 6.9c.9.6.9 2 0 2.6l-11 6.9c-1 .6-2.3-.1-2.3-1.3V4.6z"/>
-              </svg>
-              Start
-              <span id="btn-macro-start-key" class="rp-btn-hotkey"></span>
-            </button>
-            <button id="btn-macro-pause" class="rp-btn rp-btn-pause ui-btn-glow" onclick="togglePauseMacro()" disabled>
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4.5" width="4" height="15" rx="1.2"/>
-                <rect x="14" y="4.5" width="4" height="15" rx="1.2"/>
-              </svg>
-              <span id="btn-macro-pause-label">Pause</span>
-              <span id="btn-macro-pause-key" class="rp-btn-hotkey"></span>
-            </button>
-            <button id="btn-macro-stop" class="rp-btn rp-btn-stop ui-btn-glow" onclick="stopMacro()" disabled>
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="5" y="5" width="14" height="14" rx="2"/>
-              </svg>
-              Stop
-              <span id="btn-macro-stop-key" class="rp-btn-hotkey"></span>
-            </button>
-          </div>
-        </section>
 
         <!-- Run history: fills the remaining rail height, scrolls internally. -->
         <section class="rp-panel rp-panel-fill" style="min-height: 120px;">

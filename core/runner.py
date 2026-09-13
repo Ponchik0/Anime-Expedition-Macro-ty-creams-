@@ -1401,6 +1401,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 result = self._play_one_match(hwnd, stop_event, task, default_walk_paths,
                                                 first_repeat=fresh_entry, webhook=webhook)
                 fresh_entry = False
+                self._started_in_game = False
                 if result is None:
                     if stop_event.is_set():
                         return False
@@ -1793,6 +1794,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         Stage first (in case a match/Pre Start is still up), then spams
         Back (in case it's stuck on a menu instead), then confirms the
         lobby is actually reached. Returns whether it actually got there."""
+        self._started_in_game = False
         self._log("[Macro] Attempting to recover to the lobby...")
         self._set_status(action="Recovering...")
         if self._checkpoint(stop_event):
@@ -3335,6 +3337,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         результата (_handle_match_result) и прямо из этапа, когда экрана
         результата вообще не было (raid, см. RESULT_ROUND_ENDED). `label` --
         только для строки состояния, чтобы было видно, откуда уходим."""
+        self._started_in_game = False
         self._set_status(action=f"{label} -- clicking Leave Stage...")
         if not self._click_and_verify_gone(
                 hwnd, stop_event, "leave_stage", NAV_CLICK_TIMEOUT, success_name="return"):

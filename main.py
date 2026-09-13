@@ -3359,13 +3359,26 @@ class Api:
             try:
                 data = json.loads(content)
             except json.JSONDecodeError:
-                # User may have selected a text or JSON file containing a raw CREAM share code
+                # Если файл правили руками, там могла остаться лишняя завершающая запятая
+                import re
+                cleaned = re.sub(r",\s*([\]}])", r"\1", content)
+                try:
+                    data = json.loads(cleaned)
+                except Exception:
+                    # Пользователь мог выбрать текстовый файл или JSON с сырым CREAM-кодом
+                    from core import share
+                    decoded = share.decode_template_code(content.strip())
+                    if decoded.get("ok"):
+                        data = decoded
+                    else:
+                        return {"ok": False, "reason": "File is not a valid JSON or template code."}
+
+            # Если внутри JSON лежит объект с CREAM-кодом: {"code": "CREAM..."}
+            if isinstance(data, dict) and "code" in data and not any(k in data for k in ("tasks", "templates", "blocks", "prestart")):
                 from core import share
-                decoded = share.decode_template_code(content.strip())
+                decoded = share.decode_template_code(str(data["code"]).strip())
                 if decoded.get("ok"):
                     data = decoded
-                else:
-                    return {"ok": False, "reason": "File is not a valid JSON or template code."}
         except OSError as exc:
             return {"ok": False, "reason": str(exc)}
         return {"ok": True, "data": data, "path": path, "filename": os.path.basename(path)}

@@ -371,7 +371,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   position: fixed;
   top: 44px; right: 0; bottom: 0;
   width: var(--rail-w);
-  display: none;                     /* показывается вместе с титульной строкой */
+  display: flex;
   flex-direction: column;
   gap: var(--s1);
   padding: var(--s2) var(--s1);
@@ -381,22 +381,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   overflow: hidden;
 }
 
-/* Рельс живёт ровно тогда же, когда титульная строка: во время ожидания
-   Roblox приложение сворачивается в узкое окно 400px и показывает только
-   экран ожидания — рельс там был бы лишним. app.js переключает титульную
-   строку между display:none и display:flex (showWaiting / showDocked),
-   на это и опираемся. */
-body:has(#titlebar[style*="flex"]) #rail { display: flex; }
-
 /* Экраны освобождают полосу под рельс. Того же эффекта нельзя добиться
    отступом у <body>: титульная строка должна идти во всю ширину, чтобы
    кнопки окна остались в самом углу. */
-body:has(#titlebar[style*="flex"]) #screen-dashboard,
-body:has(#titlebar[style*="flex"]) #screen-task,
-body:has(#titlebar[style*="flex"]) #screen-creation,
-body:has(#titlebar[style*="flex"]) #screen-resource,
-body:has(#titlebar[style*="flex"]) #screen-replay,
-body:has(#titlebar[style*="flex"]) #screen-settings {
+#screen-dashboard,
+#screen-task,
+#screen-creation,
+#screen-resource,
+#screen-replay,
+#screen-settings {
   padding-right: var(--rail-w);
 }
 
@@ -632,6 +625,16 @@ body.compact-mode #screen-dashboard { padding-right: 0 !important; }
   padding: 10px var(--s3) var(--s3);
 }
 .rp-controls .rp-btn-start { grid-column: 1 / -1; }
+
+/* При уменьшенном разрешении (1080p с масштабированием, 1366x768 и т.д.)
+   кнопки Пауза и Стоп выстраиваются в одну колонку, чтобы кнопка Стоп
+   не смещалась в правую колонку под навигационный рельс. */
+@media (max-width: 1520px) {
+  .rp-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 .rp-btn {
   display: flex; align-items: center; justify-content: center; gap: var(--s2);
   padding: var(--s2) var(--s3);
@@ -641,6 +644,8 @@ body.compact-mode #screen-dashboard { padding-right: 0 !important; }
   color: var(--text-dim);
   font-family: var(--font);
   font-size: 12px; font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
   transition: background var(--t-hover) var(--ease),
               border-color var(--t-hover) var(--ease),
               color var(--t-hover) var(--ease);

@@ -558,3 +558,33 @@ def test_legacy_auto_upgrade_block_still_uses_click_mode(monkeypatch):
         (300, 400),
         (10, 20),
     ]
+
+
+def test_walk_path_block_started_in_game_resets_flag_after_first_skip():
+    """Флаг _started_in_game должен сбрасываться после первого пропуска ходьбы.
+
+    Если пользователь нажал Старт, уже стоя в матче, первый матч не должен
+    сдвигать его с выбранной позиции. Но если посреди фарма произойдёт
+    Restart Game (например, по лимиту 30 волн) или выход в лобби, персонаж
+    снова окажется на спавне. Если не сбросить _started_in_game в False,
+    макрос будет вечно пропускать ходьбу на всех последующих заходах и повторах,
+    оставляя персонажа стоять на точке спавна.
+    """
+    import threading
+    runner = DummyRunner()
+    runner._started_in_game = True
+    stop_event = threading.Event()
+    block = {"type": "walk_path", "mode": "auto"}
+
+    # Первый вызов при старте из игры -- ходьба пропускается, флаг сбрасывается в False
+    runner._run_walk_path_block(123, stop_event, {"map": "Summer"}, {}, block, first_repeat=True)
+    assert runner._started_in_game is False
+    assert any("Started while already in-game" in msg for msg in runner.logs)
+
+    # Второй вызов (например, после Restart Game) -- флаг уже False, поэтому
+    # сообщение о старте из игры повторно НЕ появляется.
+    runner.logs.clear()
+    runner._run_walk_path_block(123, stop_event, {"map": "Summer"}, {}, block, first_repeat=True)
+    assert not any("Started while already in-game" in msg for msg in runner.logs)
+    assert any("No default walk path set" in msg for msg in runner.logs)
+
