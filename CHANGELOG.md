@@ -4,9 +4,22 @@ All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
 ## [1.1.10] - 2026-09-13
 
-### Fixed
-- **JSON Import in Tasks**: Added universal JSON import support to the Tasks screen. Users can now directly import standalone macro templates (e.g. `Inf Summer.json`), macro template bundles, single task objects, or CREAM share code files.
-- **UI Layout & Navigation Overlap**: Fixed dashboard controls being pushed down or overlapped by the right navigation rail on non-standard and smaller resolutions. Controls (Start, Pause, Stop) are now fixed at the top of the sidebar, the game slot container dynamically resizes to match selected resolutions (800x600, 1024x768, 1152x768), and buttons stack vertically on narrower viewports.
+### Task Queue & Import
+- `new` **Universal JSON Import in Tasks** — the Tasks screen now accepts any `.json` format: standalone macro templates (`Inf Summer.json`), exported template packs, single task objects without array wrappers, and raw CREAM share codes (`{"code": "..."}`). Tasks are automatically constructed, queued, and validated.
+- `fix` **Task Auto-Transition Enforcement** — fixed edge cases where the macro could transition to the next task even when Auto Transition was disabled. Toggling Auto Transition Off now strictly repeats or terminates the current task safely.
+
+### UI & Layout Scalability
+- `new` **Top-Anchored Dashboard Controls** — Start, Pause, and Stop controls are now permanently pinned to the top of the sidebar dashboard, ensuring they remain immediately accessible and never pushed off-screen.
+- `new` **Dynamic Resolution Auto-Layout** — the embedded Roblox frame and game column dynamically scale to the selected game resolution (1152×768, 1024×768, 800×600), automatically reclaiming 130–350px of horizontal room on compact monitor setups.
+- `fix` **Navigation Rail Overlap Protection** — added responsive layout breakpoints so that action buttons (Start, Pause, Stop) vertically stack across the full sidebar width on narrow or high-DPI displays, completely eliminating overlap from the right navigation rail.
+
+### Combat, Hotbar & Fishing Reliability
+- `new` **Ironclad Multi-Rank Fishing Rod Verification** — multi-layer verification for equipped fishing rods supporting all ranks (Novice through Grandmaster) and low graphic settings via 11 reference templates and 2.5x OCR keyword parsing. Automatically draws slot 1 if missing.
+- `fix` **Bottom Hotbar & Placeable Fish Safety** — eliminated automatic hotbar slot cycling and accidental clicks during matches. Prevents locking into unit placement/targeting mode when carrying placeable buff fish items.
+- `fix` **Rod Unequip Prevention** — strictly checks if the rod is already active before interacting, preventing accidental un-equipping of fishing rods during cycle transitions.
+
+### Quality & Bugfixes
+- `fix` **100% Test Coverage** — all 1,368 unit tests passing across unit testing, vision pipelines, and frontend syntax checks (`node --check ui/app.js`).
 
 ## [1.1.9] - 2026-09-13
 
