@@ -62,10 +62,8 @@
 
     </div>
 
-    <!-- Навигация. Разметка осталась внутри титульной строки, но стилями
-         (#rail в style.css) выставлена вертикальным рельсом у правого края
-         окна: иконка + подпись. Влево её ставить нельзя — туда, в точку
-         x=0 y=44, main.py докает окно Roblox. -->
+    <!-- Навигация: расположена горизонтально по центру титульной строки (#titlebar).
+         Выстроена в ряд в длину, освобождая правый край окна. -->
     <nav id="rail" class="no-drag">
       <button id="nav-dashboard" onclick="switchScreen('dashboard')" class="nav-btn active no-drag" data-nav-label="Панель" data-tooltip="Dashboard">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

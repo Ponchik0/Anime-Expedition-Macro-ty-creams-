@@ -89,11 +89,9 @@
   --z-tooltip: 70;
 
   /* --- Ширина навигационного рельса ---
-     76px — минимум, при котором самая длинная подпись («Настройки», 10px)
-     помещается целиком и не режется многоточием. Правая панель дашборда
-     получает остаток: 1552 - 76 - 1152 = 324px, этого хватает трём кнопкам
-     управления в ряд. */
-  --rail-w: 76px;
+     В горизонтальном верхнем формате навигации правый рельс отсутствует (0px).
+     Вся ширина окна доступна для игрового поля и панелей. */
+  --rail-w: 0px;
 
   /* === СОВМЕСТИМОСТЬ ====================================================
      Старый интерфейс раскрашивался шестью цветами: brand/teal/amber/slate/
@@ -357,93 +355,106 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 @keyframes ver-badge-spin { to { transform: rotate(360deg); } }
 .ver-badge-icon.spinning { animation: ver-badge-spin 900ms linear infinite; }
 
-/* ====================================================== НАВИГАЦИЯ (РЕЛЬС) ==
-   Вертикальный рельс у ПРАВОГО края окна, иконка + подпись.
-   Почему справа, а не слева: окно Roblox докается в левый верхний угол по
-   координатам x=0, y=44, заданным в main.py. Рельс слева наехал бы на игру,
-   и пришлось бы править геометрию докинга в Python — то есть трогать самое
-   рабочее место движка. Справа он не пересекается ни с чем. */
+/* ================================================= НАВИГАЦИЯ (ШАПКА / ТОП) ==
+   Горизонтальная навигация в шапке окна (#titlebar).
+   Кнопки экранов выстроены в ряд по центру титульной строки, полностью
+   освобождая правый край окна. Больше никакого вертикального рельса справа,
+   никаких перекрытий кнопок или элементов управления на любых разрешениях! */
 #rail {
-  /* Фиксирован у правого края, от нижней кромки титульной строки донизу.
-     Fixed, а не колонка во flex-потоке: экраны лежат прямыми детьми <body>,
-     и обернуть их всех в общий контейнер значило бы двигать 2200 строк
-     разметки ради 64 пикселей. */
-  position: fixed;
-  top: 44px; right: 0; bottom: 0;
-  width: var(--rail-w);
+  position: static;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
   gap: var(--s1);
-  padding: var(--s2) var(--s1);
-  background: var(--bg-card);
-  border-left: 1px solid var(--border);
-  z-index: var(--z-rail);
-  overflow: hidden;
+  height: 32px;
+  margin: 0 var(--s3);
+  padding: 0;
+  background: transparent;
+  border: none;
+  z-index: 1;
+  overflow: visible;
 }
 
-/* Экраны освобождают полосу под рельс. Того же эффекта нельзя добиться
-   отступом у <body>: титульная строка должна идти во всю ширину, чтобы
-   кнопки окна остались в самом углу. */
+/* Экранам больше не нужен правый отступ под рельс — вся ширина окна доступна! */
 #screen-dashboard,
 #screen-task,
 #screen-creation,
 #screen-resource,
 #screen-replay,
 #screen-settings {
-  padding-right: var(--rail-w);
+  padding-right: 0 !important;
   box-sizing: border-box;
   max-width: 100vw;
   overflow: hidden;
 }
 
-/* Компактный режим (F7) прячет всё лишнее — рельс тоже. */
+/* Компактный режим (F7) */
 body.compact-mode #rail { display: none !important; }
 body.compact-mode #screen-dashboard { padding-right: 0 !important; }
 
 .nav-btn {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
+  width: auto;
+  height: 30px;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: var(--s2) 2px;
+  gap: 6px;
+  padding: 0 10px;
   border-radius: var(--r-md);
   border: 1px solid transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1;
   text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
   transition: background var(--t-hover) var(--ease),
               color var(--t-hover) var(--ease),
               border-color var(--t-hover) var(--ease);
 }
 .nav-btn svg {
-  width: 16px; height: 16px;
-  stroke-width: 1.5;          /* одна толщина штриха на все иконки */
+  width: 15px; height: 15px;
+  stroke-width: 1.75;
   flex-shrink: 0;
 }
 .nav-btn:hover { background: var(--bg-surface); color: var(--text-dim); }
 .nav-btn:active { background: var(--bg-field); }
-/* Выделение — заливка и контур, без свечения и без заливки акцентом целиком */
+/* Выделение активного экрана */
 .nav-btn.active {
   background: var(--accent-wash);
   border-color: var(--accent-line);
   color: var(--accent);
+  font-weight: 600;
 }
-.nav-btn.active svg { stroke-width: 1.75; }
+.nav-btn.active svg { stroke-width: 2; }
 
-/* Подпись под иконкой. В разметке её нет — добавляется через data-атрибут,
-   который уже стоит на кнопках (data-tooltip). Так подписи появились без
-   правки 165 onclick-обработчиков. */
+/* Подпись рядом с иконкой */
 .nav-btn::after {
   content: attr(data-nav-label);
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* На экранах шириной менее 1100px компактно скрываем подписи, оставляя аккуратные иконки */
+@media (max-width: 1100px) {
+  #rail {
+    margin: 0 var(--s1);
+    gap: 2px;
+  }
+  .nav-btn {
+    padding: 0 8px;
+    height: 28px;
+    gap: 0;
+  }
+  .nav-btn::after {
+    display: none;
+  }
 }
 
 /* ================================================================ ПАНЕЛИ == */
