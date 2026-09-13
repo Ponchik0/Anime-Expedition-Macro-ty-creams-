@@ -432,7 +432,7 @@ def test_inf_summer_restart_never_leaves_to_lobby_even_on_last_repeat(monkeypatc
     runner._current_task = {"macro": "Inf Summer", "mode": "event", "stage": "infinite"}
 
     monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(runner, "_trigger_in_game_restart", lambda _hwnd, _stop: True)
+    monkeypatch.setattr(runner, "_trigger_in_game_restart", lambda _hwnd, _stop, *a, **kw: True)
 
     left = []
     monkeypatch.setattr(
@@ -443,6 +443,31 @@ def test_inf_summer_restart_never_leaves_to_lobby_even_on_last_repeat(monkeypatc
     res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
     assert res == "restarted"
     assert "leave_stage" not in left, "Inf Summer никогда не должен уходить в лобби через leave_stage"
+
+
+def test_inf_summer_retries_restart_until_successful_without_leaving(monkeypatch):
+    """Ловит баг, когда первая попытка рестарта не удалась и макрос ошибочно
+    сдавался и выходил в лобби. Для Inf Summer он обязан пробовать рестарт снова."""
+    runner = _runner()
+    runner._current_task = {"macro": "Inf Summer", "mode": "event", "stage": "infinite"}
+
+    monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
+
+    attempts = [False, False, True]  # Первые 2 раза не удалось, на 3-й сработало
+    def mock_restart(_hwnd, _stop, *a, **kw):
+        return attempts.pop(0) if attempts else True
+
+    monkeypatch.setattr(runner, "_trigger_in_game_restart", mock_restart)
+
+    left = []
+    monkeypatch.setattr(
+        runner, "_click_and_verify_gone",
+        lambda _hwnd, _stop, name, *_args, **_kwargs: left.append(name) or True
+    )
+
+    res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
+    assert res == "restarted"
+    assert len(left) == 0, "Никаких попыток выйти в лобби не должно быть совершено"
 
 
 

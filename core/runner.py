@@ -2550,6 +2550,24 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         current_task = getattr(self, "_current_task", None) or {}
         is_fishing = self._is_fishing_task(current_task) or str(current_task.get("macro") or "").strip().lower() == "inf summer"
         is_last_repeat = getattr(self, "_is_last_repeat", False) and not is_fishing
+
+        if is_fishing:
+            # ДЛЯ РЫБАЛКИ И INF SUMMER ВЫХОД В ЛОББИ СТРОГО ЗАПРЕЩЕН.
+            # Пользователь встает на позицию для ловли вручную. Выход в лобби
+            # вернет его на спавн. Поэтому жмем ТОЛЬКО Restart Game в цикле,
+            # пока матч не перезапустится прямо в игре.
+            retry_count = 0
+            while not self._checkpoint(stop_event):
+                retry_count += 1
+                if self._trigger_in_game_restart(hwnd, stop_event):
+                    return "restarted"
+                self._log(
+                    f"[Macro] Inf Summer: attempt #{retry_count} to Restart Game via Settings did not complete -- "
+                    "retrying restart directly without leaving to lobby..."
+                )
+                time.sleep(1.0)
+            return "failed"
+
         if not is_last_repeat:
             if self._trigger_in_game_restart(hwnd, stop_event):
                 return "restarted"
