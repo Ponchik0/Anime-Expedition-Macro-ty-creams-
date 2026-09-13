@@ -3465,6 +3465,9 @@ async function importTasks() {
   renderTaskBuilder();
   saveTaskQueue();
   addLog(`[Task] Imported ${added} task(s)${tplAdded ? `, ${tplAdded} macro template(s)` : ''}${pathAdded ? `, ${pathAdded} custom path(s)` : ''}${recordingAdded ? `, and ${recordingAdded} recording(s)` : ''}.`);
+  if (tplAdded && bundled.length > 0) {
+    addLog(`[Task] Macro "${bundled[0][0]}" is ready -- click Edit or open Scenarios to customize its blocks and walk path.`);
+  }
   if (typeof showToast === 'function') {
     showToast(`Imported ${added} task(s) into queue.`);
   }
@@ -3797,6 +3800,9 @@ function taskSummary(t) {
 function renderQueueRow(t, idx) {
   const { title, meta } = taskSummary(t);
   const entering = enteringTaskIds.has(t.id) ? ' entering' : '';
+  const editBtn = t.macro
+    ? `<button class="task-icon-btn edit" onclick="event.stopPropagation(); editMacroTemplate('${escapeHtml(t.macro)}')" data-tooltip="Edit macro in Scenarios">&#9998;</button>`
+    : '';
   return `
     <div class="task-card${entering} ${t.id === selectedTaskId ? 'selected' : ''}" id="task_${t.id}"
          style="--tqc: ${TASK_MODE_COLORS[t.mode] || 'var(--brand)'};" onclick="selectTaskCard('${t.id}')">
@@ -3807,9 +3813,21 @@ function renderQueueRow(t, idx) {
         <div class="tq-title">${escapeHtml(title)}</div>
         <div class="tq-meta">${escapeHtml(meta)}</div>
       </div>
+      ${editBtn}
       <button class="task-icon-btn clone" onclick="event.stopPropagation(); cloneTaskCard('${t.id}')" data-tooltip="Clone">&#10697;</button>
       <button class="task-icon-btn delete" onclick="event.stopPropagation(); removeTaskCard('${t.id}')" data-tooltip="Remove">&#10005;</button>
     </div>`;
+}
+
+async function editMacroTemplate(name) {
+  if (!name) return;
+  switchScreen('creation');
+  await refreshTemplateList();
+  const sel = document.getElementById('template-select');
+  if (sel) {
+    sel.value = name;
+    await loadSelectedTemplate();
+  }
 }
 
 function renderTaskList() {
@@ -3976,16 +3994,28 @@ function renderTaskBuilder() {
   // Team Loadout rides with the chosen template (see the Macro Manager tab), so the
   // macro picker is the only loadout-related control left on a task.
   const macroSel = `
-    <select class="task-select" onchange="setTaskProp('${t.id}', 'macro', this.value)" data-tooltip="Select a pre-start placement macro template">
+    <select class="task-select" style="flex: 1;" onchange="setTaskProp('${t.id}', 'macro', this.value); renderTaskBuilder()" data-tooltip="Select a pre-start placement macro template">
       <option value="">No Macro</option>
       ${taskTemplates.map(n => `<option value="${escapeHtml(n)}" ${n === t.macro ? 'selected' : ''}>&#9654; ${escapeHtml(n)}</option>`).join('')}
     </select>`;
+  const editMacroBtn = t.macro ? `
+    <button type="button" class="task-toolbar-btn primary flex items-center gap-1"
+            style="padding: 5px 12px; font-size: 11px; white-space: nowrap; flex-shrink: 0;"
+            onclick="editMacroTemplate('${escapeHtml(t.macro)}')"
+            data-tooltip="Open this macro in Macro Manager (Сценарии) to edit blocks, walk path, or timings">
+      <span>&#9998;</span> <span>Edit</span>
+    </button>` : '';
+  const macroContainer = `
+    <div class="flex items-center gap-2" style="width: 100%;">
+      ${macroSel}
+      ${editMacroBtn}
+    </div>`;
   // Infinite & Fishing runs unlimited waves, so it needs an Autoplay Macro
   // Operation to keep going; Portal Mode is a normal stage and keeps the
   // plain label.
   const macroLabel = (t.mode === 'event' && t.stage === 'infinite')
     ? 'Macro Operation (Must be Autoplay)' : 'Macro Operation';
-  fields.push(field(macroLabel, macroSel, 'Select a pre-start placement macro template'));
+  fields.push(field(macroLabel, macroContainer, 'Select a pre-start placement macro template'));
 
   // Остановка макроса при сбое или ошибке задачи
   const stopOnFail = !!t.stop_on_failure;

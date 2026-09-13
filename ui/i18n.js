@@ -197,6 +197,10 @@
     'No saved presets': 'Сохранённых наборов нет',
     'Load...': 'Загрузить…',
     'Save': 'Сохранить',
+    'Edit': 'Редактировать',
+    'Edit macro in Scenarios': 'Редактировать сценарий в Сценариях',
+    'Open this macro in Macro Manager (Сценарии) to edit blocks, walk path, or timings':
+      'Открыть этот сценарий в «Сценариях» для редактирования блоков, пути ходьбы и таймингов',
     'Delete': 'Удалить',
     'New': 'Новый',
     'Map (optional)': 'Карта (необязательно)',

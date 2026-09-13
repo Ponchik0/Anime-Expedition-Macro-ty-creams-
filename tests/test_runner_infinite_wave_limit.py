@@ -381,6 +381,47 @@ def test_click_block_skips_slot1_when_rod_already_held(monkeypatch):
     assert len(clicks) == 0
 
 
+def test_infinite_wave_limit_polls_and_retries_settings_opening_for_restart(monkeypatch):
+    """Ловит баг, когда меню настроек открывается с небольшой задержкой (анимация или
+    деспавн мобов на волне 30-31), и старый код при первой же проверке без опроса сдавался
+    и выкидывал игрока в лобби на спавн вместо внутриигрового Restart Game."""
+    runner = _runner()
+    runner._is_last_repeat = False
+
+    checks = {"count": 0}
+    clicked_restart = {"clicked": False}
+    clicks = []
+
+    def fake_find_image(_hwnd, name, **_kwargs):
+        if name == "nav_settings":
+            return {"x": 270, "y": 25, "cx": 273, "cy": 30, "score": 0.9}
+        if name in ("restart_icon2", "restart_icon", "restart_btn", "restart_btn2", "restart_full_row", "restart_btn_text", "start_game_restart"):
+            checks["count"] += 1
+            # Первые 2 проверки кнопка ещё не отрисовалась (меню открывается),
+            # на 3-ю проверку кнопка появляется
+            if checks["count"] >= 3:
+                return {"x": 600, "y": 380, "cx": 621, "cy": 392, "score": 1.0}
+            return None
+        if name == "restart_red_btn" and clicked_restart["clicked"]:
+            return {"x": 570, "y": 420, "cx": 580, "cy": 430, "score": 1.0}
+        return None
+
+    def fake_click(x, y):
+        clicks.append((x, y))
+        if (x, y) == (621, 392):
+            clicked_restart["clicked"] = True
+
+    monkeypatch.setattr(runner_module.vision, "find_image", fake_find_image)
+    monkeypatch.setattr(runner_module.vision, "ref_to_screen", lambda _hwnd, x, y: (x, y))
+    runner._mouse.move_to = lambda _x, _y: None
+    runner._mouse.click = fake_click
+
+    res = runner._leave_infinite_at_wave_limit(123, threading.Event(), 30)
+    assert res == "restarted"
+    assert checks["count"] >= 3
+    assert len(clicks) >= 2  # Клик Restart + клик подтверждения red_btn
+
+
 
 
 
