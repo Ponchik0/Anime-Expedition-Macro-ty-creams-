@@ -2,6 +2,12 @@
 
 All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
+## [1.1.10] - 2026-09-13
+
+### Fixed
+- **JSON Import in Tasks**: Added universal JSON import support to the Tasks screen. Users can now directly import standalone macro templates (e.g. `Inf Summer.json`), macro template bundles, single task objects, or CREAM share code files.
+- **UI Layout & Navigation Overlap**: Fixed dashboard controls being pushed down or overlapped by the right navigation rail on non-standard and smaller resolutions. Controls (Start, Pause, Stop) are now fixed at the top of the sidebar, the game slot container dynamically resizes to match selected resolutions (800x600, 1024x768, 1152x768), and buttons stack vertically on narrower viewports.
+
 ## [1.1.9] - 2026-09-13
 
 ### New
