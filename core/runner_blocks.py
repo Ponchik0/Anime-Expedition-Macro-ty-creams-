@@ -390,6 +390,19 @@ class BlockOps:
             except Exception:
                 pass
 
+        # ЗАЩИТА УДОЧКИ (СЛОТ 1 ХОТБАРА) ОТ СЛУЧАЙНОГО СНЯТИЯ (UN-EQUIP).
+        # Если блок клика нацелен на слот 1 хотбара (74, 670), проверяем, не экипирована ли удочка уже.
+        # В Roblox повторный клик по активному слоту убирает инструмент из рук!
+        # Если удочка уже в руках (_is_fishing_rod_equipped), пропускаем клик.
+        is_rod_slot_target = (abs(x - 74) <= 25 and abs(y - 670) <= 25)
+        if is_rod_slot_target and hasattr(self, "_is_fishing_rod_equipped"):
+            try:
+                if self._is_fishing_rod_equipped(hwnd):
+                    self._log(f"[Macro] {label}: Fishing rod is already in hand (Fishing HUD detected) -- skipping click at ({x}, {y}) to avoid un-equipping.")
+                    return
+            except Exception:
+                pass
+
         self._log(f"[Macro] {label}: clicking ({x}, {y}).")
         left, top, _, _ = wm.get_window_rect_screen(hwnd)
         self._mouse.click(left + x, top + y)

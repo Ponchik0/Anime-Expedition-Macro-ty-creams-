@@ -2290,7 +2290,104 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except (TypeError, ValueError):
             return DEFAULT_INFINITE_WAVE_LIMIT
 
+    def _is_fishing_task(self, task: dict) -> bool:
+        """Определяет, относится ли текущее задание к рыбалке (Summer Event Infinite & Fishing, Inf Summer)."""
+        if not task:
+            return False
+        mode = str(task.get("mode") or "").lower()
+        event_kind = str(task.get("event_kind") or "").lower()
+        macro_name = str(task.get("macro") or task.get("name") or "").lower()
+        stage = str(task.get("stage") or "").lower()
 
+        if mode == "event" and ("infinite" in event_kind or event_kind == ""):
+            return True
+        if any(kw in macro_name for kw in ("fish", "рыба", "summer", "inf summer")):
+            return True
+        if "fish" in stage or "summer" in stage:
+            return True
+        return False
+
+    def _is_fishing_rod_equipped(self, hwnd: int) -> bool:
+        """Возвращает True, если удочка экипирована в руках (виден HUD Fishing EXP / ранг рыбалки).
+
+        ПОЧЕМУ ЭТО ЖЕЛЕЗОБЕТОННО:
+        В зависимости от уровня рыбалки (Novice, Apprentice, Adept, Expert, Master,
+        Veteran, Grandmaster) и настроек графики Roblox HUD выглядит по-разному:
+        - Текст меняется от Novice до Grandmaster (у максимального уровня полоска черная).
+        - Эмблема справа меняет цвет (бронза, серебро, золото, фиолетовый с крыльями).
+        - На минимальной графике текст может быть смазанным.
+
+        Поэтому проверка выполняется в два надежных эшелона:
+        1. Мульти-шаблонный поиск (все варианты Fishing rank, Fishing rank_alt1..alt9, emblem).
+        2. OCR-распознавание текста с 2.5x увеличением (ключевые слова рангов и fishing/exp).
+        """
+        hud_region = (680, 540, 470, 210)
+        # 1. Поиск шаблонов Fishing rank (автоматически перебирает все варианты alt1..alt9)
+        try:
+            match = vision.find_image(hwnd, "Fishing rank", region=hud_region, threshold=0.68)
+            if match:
+                return True
+        except vision.TemplateNotFound:
+            pass
+        except Exception:
+            pass
+
+        # 2. OCR-распознавание ключевых слов рангов рыбалки
+        try:
+            if ocr_windows.is_available():
+                crop_bgr = vision.capture_window_region_bgr(hwnd, hud_region)
+                if crop_bgr is not None and crop_bgr.size > 0:
+                    enlarged = cv2.resize(crop_bgr, (0, 0), fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+                    lines = ocr_windows.ocr_lines(enlarged) or []
+                    keywords = (
+                        "grandmaster", "master", "veteran", "expert", "adept",
+                        "apprentice", "novice", "fishing", "exp", "fish"
+                    )
+                    for line in lines:
+                        txt = line.get("text", "").lower()
+                        if any(kw in txt for kw in keywords):
+                            return True
+        except Exception:
+            pass
+
+        return False
+
+    def _ensure_fishing_rod_equipped(self, hwnd: int, max_attempts: int = 4) -> bool:
+        """Гарантирует, что удочка экипирована в руках персонажа.
+
+        ПОЧЕМУ ЭТО ЖЕЛЕЗОБЕТОННО:
+        1. Если удочка уже в руках (HUD обнаружен), НИЧЕГО НЕ ДЕЛАЕТ,
+           чтобы не убрать удочку повторным нажатием (механика Roblox).
+        2. Если удочка не в руках:
+           - Пробует нажать клавишу '1'.
+           - Ждёт 0.35 с и перепроверяет _is_fishing_rod_equipped.
+           - Если всё ещё нет, делает клик по слоту 1 (74, 670).
+           - Ждёт 0.35 с и перепроверяет.
+        3. Как только HUD зафиксирован — сразу возвращает True и прекращает любые нажатия.
+        """
+        if self._is_fishing_rod_equipped(hwnd):
+            return True
+
+        self._log("[Macro] Fishing rod is NOT in hand (Fishing HUD missing) -- equipping rod...")
+        for attempt in range(1, max_attempts + 1):
+            # 1. Попытка через нажатие клавиши 1
+            wm.activate_window(hwnd)
+            self._keyboard.tap(ord("1"))
+            time.sleep(0.35)
+            if self._is_fishing_rod_equipped(hwnd):
+                self._log(f"[Macro] Fishing rod equipped successfully on attempt {attempt} (key 1).")
+                return True
+
+            # 2. Попытка через клик по слоту 1 в хотбаре (74, 670)
+            rod_x, rod_y = vision.ref_to_screen(hwnd, 74, 670)
+            self._mouse.click(rod_x, rod_y)
+            time.sleep(0.35)
+            if self._is_fishing_rod_equipped(hwnd):
+                self._log(f"[Macro] Fishing rod equipped successfully on attempt {attempt} (click slot 1).")
+                return True
+
+        self._log("[Macro] Warning: Could not confirm fishing rod equipped after all attempts.")
+        return False
 
     def _find_restart_button(self, hwnd: int) -> dict:
         """Ищет кнопку Restart Game в настройках.
@@ -2540,6 +2637,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._battle_status_minute = None  # свежий матч -- свежий такт (см. _pulse_battle_status)
         self._last_detected_wave = 0
         next_wave_poll_time = 0.0
+        next_rod_check_time = 0.0
         polls = 0  # счётчик опросов, см. MATCH_END_CHECK_EVERY
         portal_offer_last_check = 0.0
         portal_offer_selected = False
@@ -2586,6 +2684,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                             self._last_detected_wave = max(getattr(self, "_last_detected_wave", 0), c_wave)
                 except Exception:
                     pass
+
+            # Для заданий на рыбалку: каждые 12 секунд проверяем, что удочка не убрана.
+            # Если удочка уже в руках (HUD обнаружен) — НИЧЕГО не нажимаем.
+            # Если HUD отсутствует — экипируем слот 1.
+            if self._is_fishing_task(task) and time.time() >= next_rod_check_time:
+                next_rod_check_time = time.time() + 12.0
+                if not self._is_fishing_rod_equipped(hwnd):
+                    self._ensure_fishing_rod_equipped(hwnd)
 
             if battle_blocks:
                 self._run_battle_blocks_tick(hwnd, stop_event, battle_blocks, first_repeat, macro_name)
@@ -3547,6 +3653,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         self._run_prestart_blocks(hwnd, stop_event, task, first_repeat, default_walk_paths)
         if self._checkpoint(stop_event):
             return False
+
+        # Для заданий на рыбалку гарантируем, что удочка взята в руки перед началом цикла
+        if self._is_fishing_task(task):
+            self._ensure_fishing_rod_equipped(hwnd)
+
         return True
 
     def _team_loadout_key(self, task: dict):

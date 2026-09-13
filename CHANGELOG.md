@@ -5,6 +5,7 @@ All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 ## [1.1.9] - 2026-09-13
 
 ### New
+- **Ironclad Fishing Rod Verification**: Multi-echelon verification of equipped fishing rod supporting all levels (Novice to Grandmaster) and low graphics via 11 templates and 2.5x OCR keyword parsing. Automatically equips slot 1 if missing and strictly protects held rods from accidental un-equipping (skipping slot 1 clicks/keys when already held).
 - **Copy Logs Button**: Added a dedicated "Copy Logs" button to the Dashboard log viewer with visual confirmation.
 
 ### Fixed

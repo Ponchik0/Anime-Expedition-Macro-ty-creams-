@@ -1,6 +1,7 @@
 import threading
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from core import runner as runner_module
@@ -276,17 +277,109 @@ def test_infinite_wave_limit_leaves_to_lobby_on_last_repeat(monkeypatch):
 
 
 def test_no_hotbar_interaction_during_infinite_match():
-    """Проверяет, что макрос НЕ кликает нижнюю панель хотбара (слоты 1-6) и не жмет клавиши 1-6.
+    """Проверяет, что макрос НЕ запускает циклическое прожатие слотов 2-6 (рыба-бустеры).
 
     ПОЧЕМУ ЭТО ВАЖНО: часть пойманных рыб требует применения/установки на юнита.
     Любые автоматические клики или прожатия хотбара активируют режим прицеливания/размещения,
     блокируя дальнейшее управление и ломая прогон.
     """
     runner = _runner()
-    # Убеждаемся, что в объекте раннера нет методов автоматического взаимодействия с хотбаром
     assert not hasattr(runner, "_trigger_wave10_hotbar_keys")
     assert not hasattr(runner, "_try_use_fish_hotbar_items")
-    assert not hasattr(runner, "_ensure_fishing_rod_equipped")
+
+
+def test_is_fishing_task():
+    """Проверяет точное определение заданий рыбалки (Summer Event Infinite, Inf Summer)."""
+    runner = _runner()
+    assert runner._is_fishing_task({"mode": "event", "event_kind": "infinite"}) is True
+    assert runner._is_fishing_task({"macro": "Inf Summer"}) is True
+    assert runner._is_fishing_task({"macro": "summer fishing"}) is True
+    assert runner._is_fishing_task({"stage": "Summer Infinite"}) is True
+    assert runner._is_fishing_task({"mode": "story", "macro": "Autoplay"}) is False
+
+
+def test_is_fishing_rod_equipped_vision_and_ocr(monkeypatch):
+    """Проверяет железобетонную детекцию удочки: как через шаблоны, так и через OCR (Grandmaster / Novice)."""
+    runner = _runner()
+
+    # 1. Проверка по шаблону
+    monkeypatch.setattr(runner_module.vision, "find_image", lambda *_args, **_kwargs: {"score": 0.92})
+    assert runner._is_fishing_rod_equipped(123) is True
+
+    # 2. Проверка по OCR при несовпадении шаблонов (например, ранг Grandmaster максимального уровня)
+    monkeypatch.setattr(runner_module.vision, "find_image", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner_module.vision, "capture_window_region_bgr", lambda *_args, **_kwargs: np.zeros((50, 200, 3), dtype=np.uint8))
+    monkeypatch.setattr(runner_module.ocr_windows, "is_available", lambda: True)
+    monkeypatch.setattr(runner_module.ocr_windows, "ocr_lines", lambda *_args, **_kwargs: [{"text": "Grandmaster"}])
+    assert runner._is_fishing_rod_equipped(123) is True
+
+    # 3. Проверка по OCR для других уровней (Novice, Veteran, Fishing EXP)
+    monkeypatch.setattr(runner_module.ocr_windows, "ocr_lines", lambda *_args, **_kwargs: [{"text": "500 / 1000 Fishing EXP"}])
+    assert runner._is_fishing_rod_equipped(123) is True
+
+    # 4. Если на экране пустота / лобби — возвращает False
+    monkeypatch.setattr(runner_module.ocr_windows, "ocr_lines", lambda *_args, **_kwargs: [{"text": "Wave 15"}])
+    assert runner._is_fishing_rod_equipped(123) is False
+
+
+def test_ensure_fishing_rod_equipped_protects_held_rod(monkeypatch):
+    """Проверяет, что если удочка уже в руках, макрос НЕ жмет слот 1 (чтобы не убрать удочку в Roblox)."""
+    runner = _runner()
+    keys_tapped = []
+    clicks = []
+    runner._keyboard.tap = lambda vk, **_kwargs: keys_tapped.append(vk)
+    runner._mouse.click = lambda x, y: clicks.append((x, y))
+
+    # Удочка уже экипирована
+    monkeypatch.setattr(runner, "_is_fishing_rod_equipped", lambda _hwnd: True)
+
+    ok = runner._ensure_fishing_rod_equipped(123)
+    assert ok is True
+    assert len(keys_tapped) == 0
+    assert len(clicks) == 0
+
+
+def test_ensure_fishing_rod_equipped_equips_when_missing(monkeypatch):
+    """Проверяет, что если удочки в руках нет, макрос экипирует слот 1 и проверяет появление HUD."""
+    runner = _runner()
+    keys_tapped = []
+    clicks = []
+    runner._keyboard.tap = lambda vk, **_kwargs: keys_tapped.append(chr(vk))
+    runner._mouse.click = lambda x, y: clicks.append((x, y))
+    monkeypatch.setattr(runner_module.wm, "activate_window", lambda _hwnd: None)
+    monkeypatch.setattr(runner_module.vision, "ref_to_screen", lambda _hwnd, x, y: (x, y))
+
+    # Сначала удочки нет, после первого нажатия '1' HUD появляется
+    state = {"equipped": False}
+    def fake_is_equipped(_hwnd):
+        return state["equipped"]
+    def fake_tap(vk, **_kwargs):
+        keys_tapped.append(chr(vk))
+        state["equipped"] = True
+
+    monkeypatch.setattr(runner, "_is_fishing_rod_equipped", fake_is_equipped)
+    runner._keyboard.tap = fake_tap
+
+    ok = runner._ensure_fishing_rod_equipped(123)
+    assert ok is True
+    assert "1" in keys_tapped
+    assert len(clicks) == 0  # Кликом не спамил, так как клавиша '1' сразу активировала удочку
+
+
+def test_click_block_skips_slot1_when_rod_already_held(monkeypatch):
+    """Проверяет, что блок клика (74, 670) пропускается, если удочка уже в руках."""
+    runner = _runner()
+    clicks = []
+    runner._mouse.click = lambda x, y: clicks.append((x, y))
+    monkeypatch.setattr(runner_module.wm, "get_window_rect_screen", lambda _hwnd: (0, 0, 1152, 756))
+    monkeypatch.setattr(runner, "_is_fishing_rod_equipped", lambda _hwnd: True)
+
+    block = {"type": "click", "params": {"x": 74, "y": 670}}
+    runner._run_click_block(123, threading.Event(), block, block_num=1, phase_label="Pre Start")
+
+    # Клик должен быть пропущен, так как удочка уже в руках!
+    assert len(clicks) == 0
+
 
 
 
