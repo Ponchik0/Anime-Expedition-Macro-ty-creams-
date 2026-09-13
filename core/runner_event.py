@@ -53,7 +53,7 @@ class EventOps:
             wm.activate_window(hwnd)
         except Exception:
             pass
-        if self._click_found_image(hwnd, "nav_event", EVENT_SCREEN_TIMEOUT, stop_event, shuffle=True) is None:
+        if self._click_found_image(hwnd, "nav_event", EVENT_SCREEN_TIMEOUT, stop_event, shuffle=True, threshold=0.78) is None:
             self._spam_back_until_gone(hwnd, stop_event)
             return False
         if self._checkpoint(stop_event):

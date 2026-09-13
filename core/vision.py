@@ -193,7 +193,10 @@ def _effective_threshold(name: str, threshold: float) -> float:
 # misses. Kept to a modest +-10% range -- a real mismatch bigger than that
 # has never been reported, and a wider range costs more per miss for no
 # observed benefit.
-SCALE_FACTORS = (1.0, 0.95, 1.05, 0.90, 1.10)
+# SCALE_FACTORS covers standard 1152x756 (1.0 first) as well as common scaled
+# client geometries (1024x672 ≈ 0.888 / 1.125, 800x600, etc.) without penalizing
+# standard 1x resolution which hits on the very first scale.
+SCALE_FACTORS = (1.0, 0.95, 1.05, 0.90, 1.10, 0.88, 1.13, 0.85, 1.15)
 
 
 class TemplateNotFound(Exception):
@@ -865,7 +868,7 @@ def _get_multiscale_pairs() -> list:
             (1.0, corr),
             (inv, inv),
         ])
-    for s in (0.95, 1.05, 0.90, 1.10):
+    for s in (0.95, 1.05, 0.90, 1.10, 0.88, 1.13, 0.85, 1.15):
         pairs.append((s, s))
         if abs(corr - 1.0) > 0.03:
             pairs.append((corr * s, s))

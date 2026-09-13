@@ -2617,6 +2617,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         the exit UI could not be used, and ``None`` while the match continues.
         """
         now = time.time()
+        if "start_time" not in state:
+            state["start_time"] = now
         if now < state.get("next_check", 0.0):
             return None
         state["next_check"] = now + WAIT_WAVE_POLL_INTERVAL
@@ -2627,6 +2629,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 raise RuntimeError("window capture returned no image")
             current, maximum = wave_module.read_wave(image)
         except Exception as exc:
+            current, maximum = None, None
             state.pop("confirmations", None)
             if not state.get("read_error_logged"):
                 self._log(
@@ -2634,10 +2637,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     f"retrying every {WAIT_WAVE_POLL_INTERVAL:.0f}s."
                 )
                 state["read_error_logged"] = True
-            return None
 
         if current is None or maximum is not None:
             state.pop("confirmations", None)
+            # Fallback по времени матча: если OCR недоступен или выдает ошибки на протяжении
+            # ожидаемой длительности боя (в среднем 13-14 сек на волну, для 30 волн ≈ 420 сек),
+            # автоматически перезапускаем матч, чтобы макрос не застревал в бесконечной волне.
+            elapsed = now - state.get("start_time", now)
+            task_fallback = None
+            if hasattr(self, "_current_task") and isinstance(self._current_task, dict):
+                task_fallback = self._current_task.get("infinite_wave_fallback_seconds")
+            fallback_timeout = max(180, int(task_fallback or (limit * 14)))
+            if elapsed >= fallback_timeout:
+                self._log(
+                    f"[Macro] Wave OCR is unavailable or unreadable -- duration threshold "
+                    f"({int(elapsed)}s >= {fallback_timeout}s) reached for wave {limit}, triggering restart."
+                )
+                return self._exit_infinite_wave_limit(hwnd, stop_event, limit)
             return None
         self._last_detected_wave = max(getattr(self, "_last_detected_wave", 0), current)
         state.pop("read_error_logged", None)
@@ -5135,17 +5151,43 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # step before it.
         self._log("[Macro] Checking you're on the lobby...")
         self._set_status(action="Checking lobby...")
+
+        # Сначала закрываем баннеры/всплывающие окна (Update Log / Daily / News), если они перекрывают лобби
+        self._dismiss_lobby_overlay(hwnd)
+
+        # 1. Быстрый поиск со стандартным порогом (для 1152x756 стандартных разрешений)
         try:
             match, _ = vision.wait_for_image_any(
                 hwnd, NAV_PLAY_IMAGE_NAMES,
-                timeout=LOBBY_CHECK_TIMEOUT, stop_event=stop_event)
+                timeout=2.0, stop_event=stop_event)
+            if match is not None:
+                return True
         except vision.TemplateNotFound as exc:
             self._log(f"[Macro] Can't check the lobby: {exc}")
             return False
-        if match is not None:
-            return True
+
         if stop_event.is_set():
             return False
+
+        # 2. Адаптивный fallback для нестандартных/сжатых окон (1024x672, 800x600)
+        # и случаев, когда кнопка Play перекрыта другими игроками или уведомлением:
+        # проверяем Play, Event, Items, Summon с мягким порогом 0.78.
+        lobby_anchors = ("nav_play", "nav_event", "nav_items", "nav_summon")
+        deadline = time.time() + max(1.0, LOBBY_CHECK_TIMEOUT - 2.0)
+        while time.time() < deadline:
+            if stop_event.is_set():
+                return False
+            for anchor in lobby_anchors:
+                try:
+                    m = vision.find_image(hwnd, anchor, threshold=0.78)
+                    if m is not None:
+                        return True
+                except vision.TemplateNotFound:
+                    continue
+            self._dismiss_lobby_overlay(hwnd)
+            if stop_event.wait(0.5):
+                return False
+
         # No Play button after a full LOBBY_CHECK_TIMEOUT wait looks exactly
         # like a silent disconnect that never even triggered Roblox's own
         # Reconnect/Retry prompt (see _handle_disconnect) -- rather than
@@ -5153,7 +5195,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # disconnect already uses instead of stopping the whole run over it.
         # (_attempt_rejoin itself skips this on a multi-instance setup --
         # see its own comment.)
-        self._log(f'[Macro] "nav_play" not found within {LOBBY_CHECK_TIMEOUT:.0f}s -- not on the lobby '
+        self._log(f'[Macro] Lobby navigation buttons not found within {LOBBY_CHECK_TIMEOUT:.0f}s -- not on the lobby '
                    f'(likely a silent disconnect), attempting a rejoin via deep link.')
         return self._attempt_rejoin(hwnd, stop_event)
 
@@ -5186,6 +5228,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         except vision.TemplateNotFound as exc:
             self._log(f"[Macro] {exc}")
             return False
+        if match is None:
+            # Fallback со сниженным порогом для сжатых/нестандартных окон (1024x672, 800x600)
+            try:
+                match, name = vision.find_image_any(hwnd, NAV_PLAY_IMAGE_NAMES, threshold=0.78)
+            except vision.TemplateNotFound:
+                match = None
         if match is None:
             self._log('[Macro] "nav_play" vanished before it could be clicked -- stopping.')
             return False
