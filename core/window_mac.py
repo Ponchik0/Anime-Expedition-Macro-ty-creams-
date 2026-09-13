@@ -179,6 +179,15 @@ def get_client_rect_screen(window_id: int):
     return get_window_rect_screen(window_id)
 
 
+def get_client_size(window_id: int) -> tuple[int, int]:
+    """Return (width, height) of window's client area."""
+    try:
+        left, top, right, bottom = get_client_rect_screen(window_id)
+        return int(max(0, right - left)), int(max(0, bottom - top))
+    except Exception:
+        return 0, 0
+
+
 def _ax_first_window(window_id: int):
     """The AXUIElement for this pid's first window. Matching a specific
     CGWindowID to its AX element has no public API -- Roblox only ever has

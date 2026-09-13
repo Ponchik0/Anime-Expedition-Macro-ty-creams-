@@ -74,15 +74,21 @@ def _try_create_engine():
     for prefix, alpha_arg in (("winsdk", True), ("winrt", False)):
         try:
             backend = _load_backend(prefix, buffer_alpha_arg=alpha_arg)
-            engine = (
-                backend.ocr.OcrEngine.try_create_from_language(
-                    backend.globalization.Language("en-US")
-                )
-                or backend.ocr.OcrEngine.try_create_from_user_profile_languages()
+            # 1. Попробуем en-US (основной язык игрового интерфейса)
+            engine = backend.ocr.OcrEngine.try_create_from_language(
+                backend.globalization.Language("en-US")
             )
+            # 2. Попробуем язык пользовательского профиля Windows
+            if engine is None:
+                engine = backend.ocr.OcrEngine.try_create_from_user_profile_languages()
+            # 3. Попробуем любой установленный языковой пакет OCR (цифры волн читаются в любом языке)
+            if engine is None:
+                avail = list(backend.ocr.OcrEngine.available_recognizer_languages)
+                if avail:
+                    engine = backend.ocr.OcrEngine.try_create_from_language(avail[0])
             if engine is not None:
                 return backend, engine, ""
-            errors.append(f"{prefix}: Windows OCR engine unavailable")
+            errors.append(f"{prefix}: Windows OCR engine unavailable (no installed language packs)")
         except Exception as exc:
             errors.append(f"{prefix}: {exc.__class__.__name__}: {exc}")
     return None, None, "; ".join(errors)

@@ -5758,7 +5758,17 @@ def _launch_ui():
         except Exception as exc:
             api.push_log(f"[Macro] Couldn't check macOS permissions: {exc}")
     scale = wm.get_display_scale_percent()
-    api.push_log(f"[Macro] Display scale: {scale}%.")
+    screen_w, screen_h = wm.get_screen_size()
+    api.push_log(f"[Macro] Display scale: {scale}%. Screen resolution: {screen_w}x{screen_h}.")
+    try:
+        from core import ocr_windows
+        if ocr_windows.is_available():
+            api.push_log(f"[OCR] Windows OCR engine ready (backend: {ocr_windows.backend_name()}).")
+        else:
+            reason = ocr_windows.unavailable_reason()
+            api.push_log(f"[OCR] Windows OCR engine unavailable ({reason}), using fallback.")
+    except Exception as exc:
+        api.push_log(f"[OCR] Couldn't check Windows OCR: {exc}")
     if scale != 100:
         api.push_log(f"[Macro] Windows display scale is {scale}%, not 100% -- this is a common cause of "
                        f"clicks/detection landing slightly wrong. Set it to 100% in Settings > System > Display, "
@@ -6068,7 +6078,8 @@ def _launch_ui():
                             wm.hide_window(hwnd)
                         api.pinned_hwnd = None  # dock succeeded -- back to normal auto-tracking of this hwnd
                         api.push_ui("showDocked")
-                        api.push_log("Roblox docked.")
+                        cw, ch = wm.get_client_size(hwnd)
+                        api.push_log(f"Roblox docked (HWND: {hwnd}, client size: {cw}x{ch}, expected: {config.FIXED_WIN_W}x{config.FIXED_WIN_H}).")
                     else:
                         api.push_log("Could not find the macro's own window to dock into, will retry.")
             except Exception as exc:

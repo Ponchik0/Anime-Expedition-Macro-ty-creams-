@@ -49,6 +49,12 @@ else:
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",
         "webview.platforms.win32",
+        "winsdk._winrt",
+        "winsdk.windows.media.ocr",
+        "winsdk.windows.globalization",
+        "winsdk.windows.graphics.imaging",
+        "winsdk.windows.security.cryptography",
+        "winsdk.windows.storage.streams",
     ]
 
 # Data PyInstaller wouldn't otherwise know to bundle -- extracted to
@@ -201,6 +207,7 @@ if sys.platform != "darwin":
     for projection in ("winsdk", "winrt"):
         if importlib.util.find_spec(projection) is not None:
             cmd += [f"--collect-submodules={projection}"]
+            cmd += [f"--collect-all={projection}"]
 if importlib.util.find_spec("rapidocr_onnxruntime") is not None:
     cmd += ["--collect-data=rapidocr_onnxruntime"]
 for src, dest in ADD_DATA:

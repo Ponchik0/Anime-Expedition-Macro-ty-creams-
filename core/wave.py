@@ -70,7 +70,14 @@ def read_wave(region_bgr):
     # single pass per mask there -- verified to match Tesseract's readings
     # on every test frame at ~16x the speed.
     use_windows = ocr_windows.is_available()
-    pytesseract = None if use_windows else get_pytesseract()
+    pytesseract = None
+    if not use_windows:
+        try:
+            pytesseract = get_pytesseract()
+        except Exception:
+            pytesseract = None
+    if not use_windows and pytesseract is None:
+        return None, None
     psm_modes = (7,) if use_windows else _PSM_MODES
     config_base = f"--psm 7 -c tessedit_char_whitelist={_WHITELIST}"
     votes = Counter()

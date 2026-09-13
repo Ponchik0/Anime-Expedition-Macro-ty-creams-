@@ -521,6 +521,18 @@ def get_client_rect_screen(hwnd: int):
     return top_left.x, top_left.y, bottom_right.x, bottom_right.y
 
 
+def get_client_size(hwnd: int) -> tuple[int, int]:
+    """Return (width, height) of hwnd's client area."""
+    try:
+        client = RECT()
+        if hwnd and user32.GetClientRect(hwnd, ctypes.byref(client)):
+            return int(client.right - client.left), int(client.bottom - client.top)
+        left, top, right, bottom = get_client_rect_screen(hwnd)
+        return int(max(0, right - left)), int(max(0, bottom - top))
+    except Exception:
+        return 0, 0
+
+
 def is_foreground(hwnd: int) -> bool:
     return user32.GetForegroundWindow() == hwnd
 

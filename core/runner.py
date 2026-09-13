@@ -24,8 +24,10 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 
 import cv2
+import numpy as np
 
 from . import camera
+from . import config
 from . import keys
 from . import ocr_windows
 from . import stage_select
@@ -1115,7 +1117,23 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 return
 
             if loop_pass == 1:
-                self._log(f"[Macro] Starting run -- {len(tasks)} task(s) queued.")
+                try:
+                    cw, ch = wm.get_client_size(hwnd)
+                except Exception:
+                    cw, ch = 0, 0
+                try:
+                    scale = wm.get_display_scale_percent()
+                except Exception:
+                    scale = 100
+                try:
+                    screen_w, screen_h = wm.get_screen_size()
+                except Exception:
+                    screen_w, screen_h = 0, 0
+                self._log(
+                    f"[Macro] Starting run -- {len(tasks)} task(s) queued. "
+                    f"Roblox client: {cw}x{ch} (expected {config.FIXED_WIN_W}x{config.FIXED_WIN_H}), "
+                    f"scale: {scale}%, screen: {screen_w}x{screen_h}."
+                )
             else:
                 self._log(f"[Macro] Task queue finished -- restarting from task 1 (pass {loop_pass}).")
 
@@ -1365,8 +1383,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             skip_setup = getattr(self, "_skip_first_task_setup", False)
             self._skip_first_task_setup = False
             if skip_setup:
+                try:
+                    cw, ch = wm.get_client_size(hwnd)
+                except Exception:
+                    cw, ch = 0, 0
                 self._log(f'[Macro] Already in-game -- treating the current stage as "{map_name}" '
-                           f'and skipping stage entry.')
+                           f'(client size: {cw}x{ch}) and skipping stage entry.')
             elif not self._run_task_setup(hwnd, stop_event, task, mode, map_name, coords, scroll_power,
                                             scroll_nudges, webhook):
                 if stop_event.is_set():
@@ -4644,34 +4666,63 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         vision.click_match(self._mouse, hwnd, skip_match)
         return True
 
-    def _find_start_game_button(self, hwnd, stop_event: threading.Event = None, timeout: float = 0):
-        """Tries nav_start_game (whose folder holds every visual variant of
-        the ready-up button seen in practice -- the old separately-named
-        _3/_4 crops live in there now, all tried automatically per search),
-        then nav_start_game_confirm (a DIFFERENT button -- the "Start
-        Anyway"-style second confirm, see _click_start_game_2_if_found) --
-        so the actual "start the round" click (see _play_one_match) isn't
-        dependent on just one image matching. Returns (name, match) for
-        whichever was found first, or (None, None) if none of them were --
-        missing/not-yet-added templates are skipped silently, same as any
-        other optional template.
+    def _find_start_game_green_button(self, hwnd):
+        """Резервный детектор кнопки Start Game по характерному ярко-зелёному цвету
+        в центральной области экрана (где появляется модальное окно Start Game?).
+        Срабатывает даже при изменённом разрешении, аватаре или оформлении модалки."""
+        rx, ry, rw, rh = 300, 150, 552, 450
+        try:
+            bgr = vision.capture_game_bgr(hwnd, (rx, ry, rw, rh))
+            if bgr is None:
+                return None
+            b, g, r = bgr[:, :, 0], bgr[:, :, 1], bgr[:, :, 2]
+            mask = (
+                (g > 130)
+                & (g.astype(int) > r.astype(int) + 25)
+                & (g.astype(int) > b.astype(int) + 35)
+            ).astype(np.uint8)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                x, y, bw, bh = cv2.boundingRect(cnt)
+                if bw >= 80 and 15 <= bh <= 60 and (bw / float(bh)) >= 2.5:
+                    return {
+                        "x": rx + x,
+                        "y": ry + y,
+                        "w": bw,
+                        "h": bh,
+                        "cx": rx + x + bw // 2,
+                        "cy": ry + y + bh // 2,
+                        "score": 1.0,
+                    }
+        except Exception:
+            return None
+        return None
 
-        timeout=0 (the default) is a single instant pass -- used right
-        after a click to check it's gone, where waiting around would just
-        slow the retry loop down. Pass a real timeout for the FIRST check
-        (right as Pre Start hands off), since the button can still be
-        animating in at that exact moment and a one-shot check there was
-        landing before it existed at all, especially on Expedition where
-        Pre Start's place_unit clicks run right up until this point."""
+    def _find_start_game_button(self, hwnd, stop_event: threading.Event = None, timeout: float = 0):
+        """Ищет кнопку старта раунда. Проверяет шаблоны nav_start_game, start_game_prompt
+        (модалка подтверждения старта) и nav_start_game_confirm, а также резервный поиск
+        зелёной кнопки по цвету. Возвращает (name, match) или (None, None).
+        Порог 0.72 и смещение клика для модалок высотой >80 гарантируют попадание
+        в кнопку внизу диалога даже при нестандартных скинах и аватарах."""
         deadline = time.time() + max(0.0, timeout)
         while True:
-            for name in ("nav_start_game", "nav_start_game_confirm"):
+            for name in ("nav_start_game", "start_game_prompt", "nav_start_game_confirm"):
                 try:
-                    match = vision.find_image(hwnd, name)
+                    match = vision.find_image(hwnd, name, threshold=0.72)
                 except vision.TemplateNotFound:
                     continue
                 if match is not None:
+                    # Если найдена модалка целиком (start_game_prompt высотой > 80),
+                    # кнопка Start Game находится в самом низу окна модалки.
+                    if match.get("h", 0) > 80:
+                        match = dict(match)
+                        match["cy"] = match["y"] + match["h"] - 20
                     return name, match
+
+            color_match = self._find_start_game_green_button(hwnd)
+            if color_match is not None:
+                return "start_game_green_btn", color_match
+
             if time.time() >= deadline or (stop_event is not None and stop_event.is_set()):
                 return None, None
             time.sleep(0.3)
