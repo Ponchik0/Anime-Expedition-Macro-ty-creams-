@@ -48,6 +48,8 @@ A custom build and feature-rich fork of [Cream's Macro](https://github.com/Cweam
 - **In-Game Auto Play** integration: seamless toggle between macro unit placement and native Roblox Auto Play, with camera drag bypass and persistent state preservation across portal runs.
 - **Auto Shop Meat**: added Food/Meat auto-purchasing (up to 200 stock) with aligned purchase grids.
 - **Action Recorder (Replay Mode)**: TinyTask-style mouse & keyboard recorder/replayer that faithfully preserves in-match wait times using high-precision timers (`time.perf_counter()`).
+- **Universal Import & Dynamic Layout**: Accepts any `.json` task/template structure, CREAM share codes, and auto-adapts window layout across any Roblox resolution without button clipping.
+- **Fishing & Hotbar Safety**: Multi-rank fishing rod auto-detection (Novice to Grandmaster) and placeable fish unequip protection.
 - Auto-reconnect via `roblox://` deep links on disconnects, template verification tool, customizable theme engine, and PDF run reports.
 
 Historical AutoHotkey coordinates, thresholds, and observations are documented in [`docs/from_ahk.md`](docs/from_ahk.md).
