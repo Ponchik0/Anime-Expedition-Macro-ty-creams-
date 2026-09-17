@@ -1004,5 +1004,48 @@ def test_scenarios_screen_always_rerenders_with_active_lang():
     assert '"Первый заброс удочки в озеро"' in js_code, "KNOWN_COMMENTS обязан содержать 'Первый заброс удочки в озеро'"
 
 
+def test_whats_new_popup_and_clean_changelog():
+    """Ловит баг отсутствия удобного окна 'Что нового' при входе,
+    а также регрессию с неаккуратными круглыми элементами и отсутствием кнопок закрытия.
+    """
+    html = GLASS_HTML.read_text(encoding="utf-8")
+    assert "updFootWhatsNew" in html, "Разметка обязана содержать футер Что нового updFootWhatsNew"
+    assert "btnUpdDone" in html, "Разметка обязана содержать кнопку btnUpdDone ('Понятно')"
+    assert "btnUpdClose" in html, "Разметка обязана содержать кнопку закрытия btnUpdClose"
 
+    js = GLASS_JS.read_text(encoding="utf-8")
+    assert "showWhatsNewPopup" in js, "app.js обязан определять функцию showWhatsNewPopup"
+    assert "btnUpdClose" in js, "app.js обязан обрабатывать клик по кнопке закрытия btnUpdClose"
+    assert "btnUpdDone" in js, "app.js обязан обрабатывать клик по кнопке btnUpdDone"
+
+    css = GLASS_CSS.read_text(encoding="utf-8")
+    assert ".chg-sec-label::before" not in css, "Заголовки секций не должны содержать круглых маркеров ::before"
+    assert "border-radius: 999px" not in css[css.find(".chg-badge"):css.find(".chg-badge") + 300], (
+        "Бейджи изменений не должны быть круглыми пузырями (999px)"
+    )
+
+
+def test_whats_new_only_shows_on_upgrade_from_1_1_10(monkeypatch):
+    """Ловит баг постоянного навязчивого всплывания окна 'Что нового' при каждом запуске v2.0.0.
+    Окно обязано всплывать ТОЛЬКО при переходе со старой версии (1.1.10),
+    а для пользователей на 2.0.0 возвращать show: False.
+    """
+    import main
+    from core import settings
+
+    # 1. При переходе с версии 1.1.10 -> show: True
+    monkeypatch.setattr(settings, "load", lambda: {"hotkeys": {}, "last_seen_version": "1.1.10"})
+    api = main.Api()
+    st = api.get_whats_new_status()
+    assert st["show"] is True, "При переходе с версии 1.1.10 окно обязано открываться"
+
+    # 2. На версии 2.0.0 -> show: False
+    monkeypatch.setattr(settings, "load", lambda: {"hotkeys": {}, "last_seen_version": "2.0.0"})
+    st2 = api.get_whats_new_status()
+    assert st2["show"] is False, "На версии 2.0.0 окно не должно всплывать автоматически"
+
+    # 3. Фронтенд обязан проверять статус через checkStartupWhatsNew
+    js = GLASS_JS.read_text(encoding="utf-8")
+    assert "checkStartupWhatsNew" in js, "app.js обязан иметь функцию checkStartupWhatsNew"
+    assert "ae_last_seen_version" in js, "app.js обязан отслеживать ae_last_seen_version"
 

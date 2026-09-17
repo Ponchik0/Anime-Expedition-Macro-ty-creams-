@@ -51,6 +51,8 @@ const STR = {
     upd_done_short: "Installed · restart to apply",
     upd_installed: "Update installed",
     upd_restart: "restart to apply",
+    whats_new_title: "What's New in v2.0.0",
+    btn_got_it: "Got it",
     bell_title: "System warnings", bell_empty: "No notifications. All clear.",
     dash_custom_title: "Customize Dashboard",
     dash_custom_tag: "Customize",
@@ -477,6 +479,8 @@ const STR = {
     upd_done_short: "Установлено · перезапустите",
     upd_installed: "Обновление установлено",
     upd_restart: "перезапустите, чтобы применить",
+    whats_new_title: "Что нового в v2.0.0",
+    btn_got_it: "Понятно",
     bell_title: "Системные предупреждения", bell_empty: "Уведомлений нет. Всё чисто.",
     dash_custom_title: "Настройка дашборда",
     dash_custom_tag: "Кастомизация",
@@ -875,44 +879,59 @@ const STR = {
   },
 };
 
-/* настоящий changelog релиза v1.1.10 с GitHub (Ponchik0/Anime-Expedition-Macro-ty-creams-) */
+/* Настоящий changelog релиза v2.0.0 */
 const CHANGELOG = [
-  { title: { en: "Combat & Match Automation", ru: "Бой и автоматизация матчей" }, items: [
-    { kind: "new", text: "Smart Start Game Modal Auto-Click" },
-    { kind: "new", text: "Time-Based Infinite Wave Fallback" },
-    { kind: "fix", text: "Seamless In-Game Restart Loop (Inf Summer)" },
-    { kind: "fix", text: "Match Auto-Recovery on Join" },
-  ]},
-  { title: { en: "Lobby & Adaptive Resolution", ru: "Лобби и адаптивное разрешение" }, items: [
-    { kind: "new", text: "Adaptive Multi-Anchor Lobby Detection" },
-    { kind: "new", text: "Lobby Overlay Auto-Dismissal" },
-    { kind: "new", text: "Expanded Multiscale Range (0.88, 1.13, 0.85, 1.15)" },
-    { kind: "fix", text: "Summer Event Navigation Reliability" },
-  ]},
-  { title: { en: "Windows OCR & Diagnostics", ru: "Windows OCR и диагностика" }, items: [
-    { kind: "new", text: "Bundled Windows OCR (winsdk) Native Binaries" },
-    { kind: "new", text: "Multi-Language OCR Fallback" },
-    { kind: "new", text: "Detailed Startup & Resolution Diagnostics" },
-  ]},
-  { title: { en: "Task Queue & Import", ru: "Очередь задач и импорт" }, items: [
-    { kind: "new", text: "Universal JSON Import in Tasks" },
-    { kind: "new", text: "Quick Macro Block Editor Shortcut" },
-    { kind: "fix", text: "Task Auto-Transition Enforcement" },
-  ]},
-  { title: { en: "UI & Layout Scalability", ru: "Интерфейс и раскладка" }, items: [
-    { kind: "new", text: "Horizontal Top Navigation Header" },
-    { kind: "new", text: "Dynamic Resolution Auto-Layout" },
-    { kind: "fix", text: "Resolution Scaling & Work Area Adaptation" },
-    { kind: "fix", text: "Adaptive Controls & Overlap Protection" },
-  ]},
-  { title: { en: "Fishing & Hotbar Reliability", ru: "Рыбалка и хотбар" }, items: [
-    { kind: "new", text: "Ironclad Multi-Rank Fishing Rod Verification" },
-    { kind: "fix", text: "Bottom Hotbar & Placeable Fish Safety" },
-    { kind: "fix", text: "Rod Unequip Prevention" },
-  ]},
-  { title: { en: "Quality", ru: "Качество" }, items: [
-    { kind: "fix", text: "All 1,376 unit tests passing" },
-  ]},
+  {
+    title: { en: "Cyber-Glass UI & Modular Dashboard", ru: "Интерфейс Cyber-Glass и модульная панель" },
+    items: [
+      { kind: "new", title: "Modern Cyber-Glass Design", text: { en: "Obsidian glass styling, dynamic backdrop blur, refined glow effects, and Onyx/Pearl theme switching.", ru: "Стеклянный стиль obsidian glass, динамический блюр, мягкое неоновое свечение и темы Onyx/Pearl." } },
+      { kind: "new", title: "Modular Grid & Drag Handles", text: { en: "Rearrange, hide, or restore Dashboard cards using dedicated grab handles.", ru: "Перемещение, скрытие и возврат карточек панели за аккуратные ручки захвата." } },
+      { kind: "new", title: "Sidebar Restore Banner", text: { en: "Instant one-click restoration banner whenever dashboard cards are hidden.", ru: "Удобная плашка восстановления скрытых карточек в один клик." } },
+    ]
+  },
+  {
+    title: { en: "Sub-Block Physics & Telemetry", ru: "Физика подблоков и телеметрия" },
+    items: [
+      { kind: "new", title: "Live Swap Physics", text: { en: "Smooth drag-and-drop inertia physics with velocity tilt and real-time live preview layout.", ru: "Плавная инерция при перетаскивании с наклоном и живым превью нового расположения." } },
+      { kind: "new", title: "Win Streak & Telemetry Strip", text: { en: "Real-time session HUD tracking consecutive wins, personal records, and rotation timers.", ru: "Телеметрия побед, текущий стрик, рекорд сессии и таймер ротаций." } },
+      { kind: "new", title: "Loss Streak Safety Stop", text: { en: "Configurable threshold automatically pausing macro execution to safeguard winrate.", ru: "Защитная пауза макроса при череде поражений для сохранения винрейта." } },
+      { kind: "fix", title: "Mini Queue Adaptive Scroll", text: { en: "Upcoming queue strictly displays active tasks with zebra striping and responsive clamping.", ru: "Очередь отображает только включённые задачи с зебра-подсветкой и плавной прокруткой." } },
+    ]
+  },
+  {
+    title: { en: "WASD Walk & Route Navigation", ru: "Запись шагов WASD и маршруты" },
+    items: [
+      { kind: "new", title: "Live WASD Walk Recording", text: { en: "Record movement routes in-game via global hotkey (Alt+9) with an interactive on-screen HUD.", ru: "Запись маршрутов шагов прямо в игре через горячую клавишу (Alt+9) с мини-HUD." } },
+      { kind: "new", title: "Intelligent Idle Auto-Save", text: { en: "Concludes and saves movement routes after 1.8s of idle input or via the on-screen Stop button.", ru: "Автосохранение маршрута после 1.8с покоя или по экранной кнопке Стоп." } },
+      { kind: "new", title: "Visual Walking Path Picker", text: { en: "Assign stored WASD routes in one click directly inside Scenario Walk blocks and Hub manager.", ru: "Выбор сохранённых маршрутов в один клик прямо в блоках движения сценариев." } },
+    ]
+  },
+  {
+    title: { en: "Recordings Drawer & Quick Replay (F10)", ru: "Шторка записей и быстрый повтор (F10)" },
+    items: [
+      { kind: "new", title: "Sliding Glass Drawer (F10)", text: { en: "Full-height glass drawer with live search, route length, action count, and instant play.", ru: "Стеклянная шторка записей с поиском, длительностью, счётчиком действий и быстрым запуском." } },
+      { kind: "fix", title: "Roblox Occlusion Protection", text: { en: "Auto-hides embedded game window while drawer is open to prevent native HWND overlap.", ru: "Автоматическое скрытие окна игры при открытии шторки, чтобы игра не перекрывала список." } },
+    ]
+  },
+  {
+    title: { en: "Hotkeys & Multi-Key Combinations", ru: "Горячие клавиши и комбинации" },
+    items: [
+      { kind: "new", title: "Two-Key Hotkey Recording", text: { en: "Full support for modifier combos (Alt+9, Alt+F5, Alt+F6) with holding states.", ru: "Запись сочетаний (Alt+9, Alt+F5, Alt+F6) с корректным ожиданием второй клавиши." } },
+      { kind: "new", title: "Tactile Unbind Button (×)", text: { en: "Quick-clear button on every shortcut row to immediately unbind keybindings.", ru: "Кнопка мгновенной очистки бинда (×) на каждой строке настроек." } },
+      { kind: "fix", title: "Default Hotkey Migration", text: { en: "Automated migration of legacy default keys (F6 -> Alt+F5, F10 -> Alt+F6, F9 -> F10).", ru: "Бесшовный автоматический перенос старых дефолтных биндов на новые сочетания." } },
+    ]
+  },
+  {
+    title: { en: "Engine Reliability & Bugfixes", ru: "Надёжность движка и исправления" },
+    items: [
+      { kind: "fix", title: "Anti-Reparenting Leak", text: { en: "Strictly filters game windows by macro process ID, preventing accidental docking into browsers.", ru: "Строгая фильтрация окон по PID макроса — окно Roblox больше не прикрепляется к браузеру." } },
+      { kind: "fix", title: "Adaptive Resolution & DPI", text: { en: "Aspect ratio distortion correction for 1024x768 and high-DPI scaling.", ru: "Коррекция пропорций и кликов мыши на нестандартных разрешениях и масштабировании DPI." } },
+      { kind: "fix", title: "Inf Summer Restart Verification", text: { en: "5-stage restart verification and unconditional lobby exit lock for endless farming.", ru: "5-ступенчатая проверка рестарта и блокировка случайного выхода в лобби в бесконечных режимах." } },
+      { kind: "fix", title: "Start Game Modal Auto-Click", text: { en: "Automatic visual detection and confirmation click for green Start Game prompts.", ru: "Автоматическое обнаружение и клик по зелёной кнопке подтверждения Start Game." } },
+      { kind: "fix", title: "Bundled Windows OCR", text: { en: "Explicitly bundles WinRT OCR assemblies for zero-setup clean Windows installations.", ru: "Встроенные библиотеки WinRT OCR для стабильной работы на чистых системах без ручной настройки." } },
+      { kind: "fix", title: "Safe In-App Confirmations", text: { en: "Replaced native modal alerts that were hidden behind the native game window.", ru: "Замена нативных диалогов на безопасные карточки, которые никогда не прячутся за окном игры." } },
+    ]
+  }
 ];
 
 const t = key => (STR[LANG] && STR[LANG][key]) || STR.en[key] || key;
@@ -1243,32 +1262,54 @@ function syncUpdArrow() {
   }
 }
 
+function showWhatsNewPopup(customTitle) {
+  if (!updPop) return;
+  const footWN = $("#updFootWhatsNew");
+  const footDL = $("#updFootDownload");
+  if (footWN) footWN.hidden = false;
+  if (footDL) footDL.hidden = true;
+
+  const titleEl = $("#updPopTitle");
+  if (titleEl) {
+    titleEl.textContent = customTitle || t("whats_new_title");
+  }
+  renderChangelog();
+  updPop.hidden = false;
+  syncUpdArrow();
+  if (bellPop) bellPop.hidden = true;
+}
+
+function dismissWhatsNew() {
+  if (updPop) updPop.hidden = true;
+  localStorage.setItem("ae_last_seen_version", "2.0.0");
+  if (window.pywebview && pywebview.api && pywebview.api.mark_whats_new_seen) {
+    try { pywebview.api.mark_whats_new_seen(); } catch (_) {}
+  }
+}
+
+const btnUpdClose = $("#btnUpdClose");
+if (btnUpdClose) {
+  btnUpdClose.addEventListener("click", dismissWhatsNew);
+}
+const btnUpdDone = $("#btnUpdDone");
+if (btnUpdDone) {
+  btnUpdDone.addEventListener("click", dismissWhatsNew);
+}
+
 updBtn.addEventListener("click", async (e) => {
-  // Shift+клик позволяет протестировать поповер обновления локально
-  if ((e && e.shiftKey) || (window.event && window.event.shiftKey)) {
-    if (updBtn.classList.contains("has-update")) {
-      updBtn.classList.remove("has-update", "ready");
-      updPop.hidden = true;
-      toast(LANG === "ru" ? "Тестовое обновление скрыто" : "Test update hidden");
-    } else {
-      updBtn.classList.add("ready", "has-update");
-      $("#updPopTitle").textContent = t("upd_title");
-      renderChangelog();
-      $(".upd-dl-label").textContent = t("upd_download");
-      updPop.hidden = false;
-      syncUpdArrow();
-      if (bellPop) bellPop.hidden = true;
-      toast(LANG === "ru" ? "Тестовое обновление показано" : "Test update shown");
-    }
+  if (!updPop.hidden) {
+    dismissWhatsNew();
     return;
   }
-
-  if (!updPop.hidden) { updPop.hidden = true; return; }
   syncUpdArrow();
 
-  if (updBtn.classList.contains("has-update") || updBtn.classList.contains("ready")) {
-    $("#updPopTitle").textContent = t("upd_title");
-    renderChangelog();
+  if (updBtn.classList.contains("has-update")) {
+    const footWN = $("#updFootWhatsNew");
+    const footDL = $("#updFootDownload");
+    if (footWN) footWN.hidden = true;
+    if (footDL) footDL.hidden = false;
+    $("#updPopTitle").textContent = lastUpdateVersion ? `${t("upd_title")} (${lastUpdateVersion})` : t("upd_title");
+    renderChangelog(lastUpdateNotes);
     $(".upd-dl-label").textContent = t("upd_download");
     updPop.hidden = false;
     syncUpdArrow();
@@ -1276,35 +1317,38 @@ updBtn.addEventListener("click", async (e) => {
     return;
   }
 
-  if (updBtn.classList.contains("checking")) return;
-  updBtn.classList.add("checking");
+  showWhatsNewPopup();
+});
 
-  if (window.pywebview && pywebview.api && pywebview.api.check_for_update) {
-    try {
-      const res = await pywebview.api.check_for_update();
-      updBtn.classList.remove("checking");
-      if (res && res.available) {
-        updBtn.classList.add("ready", "has-update");
-        $("#updPopTitle").textContent = `${t("upd_title")} (${res.version})`;
-        renderChangelog();
-        updPop.hidden = false;
-        syncUpdArrow();
-        if (bellPop) bellPop.hidden = true;
-      } else {
-        toast(t("upd_latest"));
-      }
-      return;
-    } catch (err) {
-      updBtn.classList.remove("checking");
-    }
+// Открытие окна только если пользователь обновился со старой версии (1.1.10)
+async function checkStartupWhatsNew() {
+  const localSeen = localStorage.getItem("ae_last_seen_version");
+  if (localSeen === "2.0.0") {
+    return; // Уже на 2.0.0 — автоматически не всплывает!
   }
 
-  // В автономном режиме (без Python)
-  setTimeout(() => {
-    updBtn.classList.remove("checking");
-    toast(t("upd_latest"));
-  }, 700);
-});
+  if (window.pywebview && pywebview.api && pywebview.api.get_whats_new_status) {
+    try {
+      const st = await pywebview.api.get_whats_new_status();
+      if (st && st.show) {
+        showWhatsNewPopup();
+        localStorage.setItem("ae_last_seen_version", "2.0.0");
+        if (pywebview.api.mark_whats_new_seen) {
+          pywebview.api.mark_whats_new_seen();
+        }
+      } else {
+        localStorage.setItem("ae_last_seen_version", "2.0.0");
+      }
+      return;
+    } catch (_) {}
+  }
+}
+
+setTimeout(checkStartupWhatsNew, 450);
+
+window.testWhatsNew = function() {
+  showWhatsNewPopup();
+};
 window.addEventListener("resize", syncUpdArrow);
 
 document.addEventListener("click", e => {
@@ -1455,25 +1499,108 @@ bellBtn.addEventListener("click", (e) => {
 });
 
 /* ------------------------------------------------ обновления: changelog */
-function renderChangelog() {
+let lastUpdateNotes = "";
+let lastUpdateVersion = "";
+
+function renderChangelog(notesMd) {
   const box = $("#updChangelog");
+  if (!box) return;
   box.innerHTML = "";
+
+  const effectiveMd = (typeof notesMd === "string" && notesMd.trim().length > 0) ? notesMd : lastUpdateNotes;
+
+  // Если есть реальный Markdown из GitHub Release
+  if (effectiveMd && effectiveMd.trim().length > 0) {
+    const lines = effectiveMd.split('\n').map(s => s.trim());
+    let currentSec = null;
+
+    lines.forEach(line => {
+      if (!line || line === '---' || line.startsWith('>')) return;
+      if (line.startsWith('### ') || line.startsWith('## ')) {
+        const titleText = line.replace(/^#+\s*/, '').replace(/^[vV]?\d+\.\d+\.\d+\s*[—–-]?\s*/, '').trim();
+        if (!titleText || /How to update|Direct download/i.test(titleText)) return;
+        currentSec = document.createElement("div");
+        currentSec.className = "chg-section";
+        const label = document.createElement("div");
+        label.className = "chg-sec-label";
+        label.textContent = titleText;
+        currentSec.appendChild(label);
+        box.appendChild(currentSec);
+      } else if (line.startsWith('- ') && currentSec) {
+        const row = document.createElement("div");
+        row.className = "chg-item";
+
+        const raw = line.slice(2);
+        const m = raw.match(/^`([^`]+)`\s*/);
+        const tag = m ? m[1].toLowerCase() : 'new';
+        const rest = m ? raw.slice(m[0].length) : raw;
+
+        const badge = document.createElement("i");
+        badge.className = "chg-badge chg-" + (tag === "fix" ? "fix" : "new");
+        badge.textContent = tag === "fix" ? "FIX" : "NEW";
+
+        const content = document.createElement("span");
+        content.className = "chg-text";
+
+        // Парсим **Заголовок** — описание
+        const boldMatch = rest.match(/^\*\*([^*]+)\*\*\s*(?:[—–-]\s*)?(.*)$/);
+        if (boldMatch) {
+          const strong = document.createElement("strong");
+          strong.textContent = boldMatch[1];
+          content.appendChild(strong);
+          if (boldMatch[2]) {
+            const desc = document.createElement("span");
+            desc.className = "chg-desc";
+            desc.textContent = " — " + boldMatch[2];
+            content.appendChild(desc);
+          }
+        } else {
+          content.textContent = rest;
+        }
+
+        row.append(badge, content);
+        currentSec.appendChild(row);
+      }
+    });
+
+    if (box.children.length > 0) return;
+  }
+
+  // Fallback: стилизованный встроенный список v2.0.0
   CHANGELOG.forEach(sec => {
+    const secEl = document.createElement("div");
+    secEl.className = "chg-section";
     const label = document.createElement("div");
     label.className = "chg-sec-label";
     label.textContent = sec.title[LANG] || sec.title.en;
-    box.appendChild(label);
+    secEl.appendChild(label);
+
     sec.items.forEach(item => {
       const row = document.createElement("div");
       row.className = "chg-item";
       const badge = document.createElement("i");
       badge.className = "chg-badge chg-" + item.kind;
-      badge.textContent = item.kind === "new" ? "NEW" : "FIX";
-      const text = document.createElement("span");
-      text.textContent = item.text;
-      row.append(badge, text);
-      box.appendChild(row);
+      badge.textContent = item.kind.toUpperCase();
+
+      const content = document.createElement("span");
+      content.className = "chg-text";
+      if (item.title) {
+        const strong = document.createElement("strong");
+        strong.textContent = item.title;
+        content.appendChild(strong);
+      }
+      const descText = typeof item.text === "object" ? (item.text[LANG] || item.text.en) : item.text;
+      if (descText) {
+        const desc = document.createElement("span");
+        desc.className = "chg-desc";
+        desc.textContent = (item.title ? " — " : "") + descText;
+        content.appendChild(desc);
+      }
+
+      row.append(badge, content);
+      secEl.appendChild(row);
     });
+    box.appendChild(secEl);
   });
 }
 

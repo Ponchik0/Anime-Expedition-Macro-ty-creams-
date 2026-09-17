@@ -877,6 +877,47 @@ class Api:
         threading.Thread(target=run, daemon=True).start()
         return {"ok": True}
 
+    def check_for_update(self) -> dict:
+        """Синхронная проверка обновлений, возвращающая полные данные, описание и ссылки."""
+        try:
+            self._update_info = updater.check_for_update(log=self.push_log)
+        except Exception as exc:
+            self.push_log(f"[Update] Check failed: {exc}")
+            self._update_info = {"available": False, "status": updater.CHECK_OFFLINE,
+                                 "reason": str(exc),
+                                 "current_version": updater.get_current_version()}
+        return self._update_info
+
+    def get_whats_new_status(self) -> dict:
+        """Определяет, нужно ли показать окно 'Что нового' при входе в макрос.
+        Показывает ТОЛЬКО при первом переходе со старой версии (1.1.10) на 2.0.0.
+        Если пользователь уже работает на версии 2.0.0, окно автоматически не показывается.
+        """
+        current = updater.get_current_version()
+        data = cfg.load()
+        last_seen = data.get("last_seen_version")
+
+        # Если уже на 2.0.0 и версия была просмотрена — не показывать
+        if last_seen == current:
+            return {"show": False, "version": current}
+
+        # Пользователь обновился с 1.1.10:
+        # либо в last_seen_version явно записана 1.1.10,
+        # либо ключа ещё не было, но есть существующие настройки (settings.json от 1.1.10)
+        is_upgrade_from_1_1_10 = (last_seen == "1.1.10") or (last_seen is None and bool(data))
+
+        return {
+            "show": is_upgrade_from_1_1_10,
+            "from_version": last_seen or "1.1.10",
+            "version": current,
+        }
+
+    def mark_whats_new_seen(self) -> dict:
+        """Запоминает, что пользователь ознакомился с релизом 2.0.0, чтобы окно больше не всплывало."""
+        current = updater.get_current_version()
+        cfg.update({"last_seen_version": current})
+        return {"ok": True}
+
     def apply_update(self) -> dict:
         if not self._update_info.get("available"):
             return {"ok": False, "reason": "no_update"}

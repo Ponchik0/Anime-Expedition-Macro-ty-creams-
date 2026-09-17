@@ -91,14 +91,27 @@
       </button>
       <div class="upd-pop glass-card" id="updPop" hidden>
         <div class="upd-pop-head">
-          <strong id="updPopTitle">Update available</strong>
-          <span class="chip mono">2.0.0</span>
+          <div class="upd-head-left">
+            <span class="upd-head-tag mono">v2.0.0</span>
+            <strong id="updPopTitle" data-i18n="whats_new_title">Что нового</strong>
+          </div>
+          <button type="button" class="icon-btn upd-close-btn" id="btnUpdClose" title="Закрыть" aria-label="Close">
+            <svg class="ic"><use href="#i-close"/></svg>
+          </button>
         </div>
         <div class="changelog" id="updChangelog"></div>
-        <button class="btn btn-primary btn-sm upd-dl" id="btnUpdDownload">
-          <span class="upd-dl-fill"></span>
-          <span class="upd-dl-label" data-i18n="upd_download">Download</span>
-        </button>
+        <div class="upd-pop-foot" id="updFootWhatsNew">
+          <span class="upd-foot-meta mono">Anime Expeditions · v2.0.0</span>
+          <button type="button" class="btn btn-primary btn-sm" id="btnUpdDone">
+            <span data-i18n="btn_got_it">Понятно</span>
+          </button>
+        </div>
+        <div class="upd-pop-dl-foot" id="updFootDownload" hidden>
+          <button class="btn btn-primary btn-sm upd-dl" id="btnUpdDownload">
+            <span class="upd-dl-fill"></span>
+            <span class="upd-dl-label" data-i18n="upd_download">Download</span>
+          </button>
+        </div>
       </div>
     </div>
 
