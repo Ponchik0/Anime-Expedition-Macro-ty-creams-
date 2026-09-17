@@ -41,6 +41,49 @@ def test_ensure_lobby_dismisses_overlay_and_finds_anchor_fallback(monkeypatch):
     assert runner._attempt_rejoin.called is False
 
 
+def test_lobby_overlay_dismiss_uses_generic_close_templates(monkeypatch):
+    """Проверяет, что автозакрытие баннеров в лобби реально работает: отдельной
+    вырезки update_log_close на диске нет, поэтому закрытие обязано находиться
+    по общим шаблонам (click_anywhere_to_close / nav_closeui). Если список
+    сузить до несуществующего имени, find_image_any бросит TemplateNotFound и
+    баннер обновления так и останется висеть над Play.
+    """
+    from core import runner_constants as rc
+
+    assert 'click_anywhere_to_close' in rc.LOBBY_OVERLAY_CLOSE_IMAGE_NAMES
+    assert 'nav_closeui' in rc.LOBBY_OVERLAY_CLOSE_IMAGE_NAMES
+
+    runner = _runner()
+    # _runner() подменяет метод моком: снимаем подмену, тестируем настоящий код.
+    del runner._dismiss_lobby_overlay
+    runner._mouse = MagicMock()
+    clicked = []
+
+    def fake_find_image_any(_hwnd, names, **_kw):
+        assert 'click_anywhere_to_close' in names
+        return ({'x': 10, 'y': 10, 'cx': 20, 'cy': 20, 'score': 0.91}, 'click_anywhere_to_close')
+
+    monkeypatch.setattr(vision, 'find_image_any', fake_find_image_any)
+    monkeypatch.setattr(vision, 'click_match', lambda _mouse, _hwnd, _m: clicked.append(True))
+    monkeypatch.setattr(runner_module.time, 'sleep', lambda _s: None)
+
+    assert runner._dismiss_lobby_overlay(12345) is True
+    assert clicked == [True]
+
+
+def test_lobby_overlay_dismiss_quiet_without_templates(monkeypatch):
+    """Если ни одного шаблона-закрывашки нет на диске, проверка лобби не должна
+    падать: find_image_any бросает TemplateNotFound, и оверлей просто пропускается.
+    """
+    runner = _runner()
+
+    def raise_missing(_hwnd, _names, **_kw):
+        raise vision.TemplateNotFound('update_log_close')
+
+    monkeypatch.setattr(vision, 'find_image_any', raise_missing)
+    assert runner._dismiss_lobby_overlay(12345) is False
+
+
 def test_infinite_wave_limit_triggers_time_fallback_when_ocr_unavailable(monkeypatch):
     """Проверяет, что если OCR в Windows не установлен (no installed language packs)
     и волна не распознается, макрос не зависает навсегда, а по истечении

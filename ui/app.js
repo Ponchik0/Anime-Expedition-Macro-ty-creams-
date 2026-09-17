@@ -288,7 +288,7 @@ function isBlockingOverlayOpen() {
   // subscribe-modal из апстрима здесь нет намеренно: этой модалки в нашей
   // разметке не существует. fuel-paths-modal (Заправка) -- есть, и она тоже
   // перекрывает игру, поэтому идёт в тот же список.
-  if (['update-modal', 'scale-warning-modal', 'onboarding-modal', 'faq-modal', 'share-code-modal'].some(isOpen)) return true;
+  if (['update-modal', 'scale-warning-modal', 'onboarding-modal', 'faq-modal', 'share-code-modal', 'diag-modal'].some(isOpen)) return true;
   if (!captureDanceActive && ['im-modal', 'pu-modal', 'path-name-modal', 'fuel-paths-modal'].some(isOpen)) return true;
   // Окно «Записи» (F9). Проверяется не по style.display (его открывают
   // сбросом в '', а не в 'flex' — isOpen выше такое не считает открытым), а
@@ -336,8 +336,10 @@ function updateListItem(body) {
   const m = body.match(/^`([^`]+)`\s*/);
   const label = m ? m[1] : '';
   const isNew = /нов|new/i.test(label);
+  const isFix = /fix|испр/i.test(label);
+  const tagClass = isNew ? 'upd-tag-new' : (isFix ? 'upd-tag-fix' : 'upd-tag-misc');
   const tag = m
-    ? `<span class="upd-tag ${isNew ? 'is-new' : ''}">${escapeUpdateHtml(label)}</span>`
+    ? `<span class="upd-tag ${tagClass}">${escapeUpdateHtml(label)}</span>`
     : '<span class="upd-tag" style="visibility:hidden"></span>';
   const rest = m ? body.slice(m[0].length) : body;
   return `<li>${tag}<span class="upd-li-text">${updateInline(rest)}</span></li>`;
@@ -413,10 +415,94 @@ function markUpdateAvailable(info) {
   setUpdateSignal(true, String(info.version || '').replace(/^v/, ''));
 }
 
-async function showUpdateAvailable() {
+// Позиционирует модальное окно как всплывающий поповер прямо над/под вызвавшей кнопкой
+function anchorModalToElement(modalId, targetElement) {
+  if (typeof document === 'undefined') return;
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  const panel = modal.querySelector ? (modal.querySelector('.upd-panel') || modal.querySelector('.modal-panel')) : null;
+  if (!panel) return;
+
+  if (!targetElement || typeof targetElement.getBoundingClientRect !== 'function' || typeof window === 'undefined') {
+    panel.classList.remove('popover-mode', 'popover-above', 'popover-below');
+    panel.style.position = '';
+    panel.style.top = '';
+    panel.style.left = '';
+    panel.style.bottom = '';
+    panel.style.margin = 'auto';
+    return;
+  }
+
+  const rect = targetElement.getBoundingClientRect();
+  const winWidth = window.innerWidth || 1152;
+  const winHeight = window.innerHeight || 756;
+  const panelWidth = Math.min(440, winWidth - 24);
+
+  panel.classList.add('popover-mode');
+  panel.style.position = 'fixed';
+  panel.style.width = panelWidth + 'px';
+  panel.style.margin = '0';
+
+  // Выравнивание по горизонтали: центрируем стрелочку на кнопке
+  const targetCenterX = rect.left + (rect.width / 2);
+  let panelLeft = targetCenterX - 48;
+  panelLeft = Math.max(12, Math.min(winWidth - panelWidth - 12, panelLeft));
+  panel.style.left = Math.round(panelLeft) + 'px';
+
+  // Позиция стрелочки относительно карточки
+  const arrowX = Math.max(18, Math.min(panelWidth - 24, targetCenterX - panelLeft));
+  panel.style.setProperty('--popover-arrow-left', `${Math.round(arrowX)}px`);
+
+  // Если кнопка в верхней части экрана (в шапке) — открываемся под ней, стрелочка вверх
+  // Если кнопка внизу экрана (например в Настройках) — открываемся над ней, стрелочка вниз
+  const isBelow = rect.top < (winHeight / 2);
+  if (isBelow) {
+    panel.classList.remove('popover-above');
+    panel.classList.add('popover-below');
+    panel.style.top = `${Math.round(rect.bottom + 8)}px`;
+    panel.style.bottom = 'auto';
+  } else {
+    panel.classList.remove('popover-below');
+    panel.classList.add('popover-above');
+    panel.style.bottom = `${Math.round(winHeight - rect.top + 8)}px`;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    const updModal = document.getElementById('update-modal');
+    if (updModal && updModal.style.display === 'flex') {
+      anchorModalToElement('update-modal', document.getElementById('ver-badge'));
+    }
+    const diagModal = document.getElementById('diag-modal');
+    if (diagModal && diagModal.style.display === 'flex') {
+      anchorModalToElement('diag-modal', document.getElementById('diag-bell-btn'));
+    }
+  });
+}
+
+async function showUpdateAvailable(triggerEl) {
   try {
-    const info = await pywebview.api.get_update_info();
+    const modal = document.getElementById('update-modal');
+    // Если уже открыто — закрываем (toggle)
+    if (modal && modal.style.display === 'flex') {
+      dismissUpdateModal();
+      return;
+    }
+    // Если открыта диагностика — закрываем её, чтобы не накладывались
+    const diagModal = document.getElementById('diag-modal');
+    if (diagModal && diagModal.style.display === 'flex') {
+      closeDiagModal();
+    }
+
+    let info = null;
+    if (window.pywebview && pywebview.api && pywebview.api.get_update_info) {
+      info = await pywebview.api.get_update_info();
+    } else {
+      info = _mockUpdateInfo;
+    }
     if (!info || !info.available) return;
+    resetUpdateModalButtons();
     markUpdateAvailable(info);
     pendingUpdateBytes = Number(info.size) || 0;
     document.getElementById('update-version').textContent = info.version;
@@ -425,13 +511,11 @@ async function showUpdateAvailable() {
       pendingUpdateBytes ? formatMb(pendingUpdateBytes) : '';
     document.getElementById('update-notes').innerHTML =
       renderReleaseNotes(info.notes) || '<p>Описание релиза не приложено.</p>';
-    document.getElementById('update-modal').style.display = 'flex';
-    // Roblox is docked as a real native child window, not DOM content --
-    // it renders on top of this modal regardless of CSS z-index, same
-    // reason switchScreen() hides it for every screen except Dashboard.
-    // This can fire while sitting on Dashboard (where it's normally
-    // shown), so it has to hide it explicitly here too, or the modal
-    // exists but is invisible behind the game.
+
+    const anchor = triggerEl || (typeof document !== 'undefined' ? document.getElementById('ver-badge') : null);
+    anchorModalToElement('update-modal', anchor);
+
+    modal.style.display = 'flex';
     try { window.pywebview && pywebview.api.hide_game(); } catch (e) {}
   } catch (e) {}
 }
@@ -464,11 +548,262 @@ function dismissScaleWarning() {
   restoreGameIfDashboard();
 }
 
-async function manualCheckForUpdate() {
-  const badge = document.getElementById('ver-badge');
-  // Если обновление уже найдено и горит маячок — сразу открываем окно обновления
+// ---------------------------------------------------------------------------
+// Diagnostics bell — shown when get_diagnostics() returns issues the user
+// can fix without reinstalling the whole app (e.g. missing OCR pack).
+// Keeps the header clean: completely absent when everything is fine.
+// ---------------------------------------------------------------------------
+
+// Кэш текущих предупреждений: обновляется при старте и после установки.
+// Хранит массив объектов {id, title, detail, action, action_label}.
+let _diagIssues = [];
+// Кнопки установки, нажатые в данный момент: id -> true пока идёт установка.
+let _diagInstalling = {};
+
+// Вызывается при старте (loadResolutionUI и т.п.) — нет смысла делать отдельно.
+async function checkDiagnostics() {
+  try {
+    if (!window.pywebview || !pywebview.api || !pywebview.api.get_diagnostics) return;
+    const res = await pywebview.api.get_diagnostics();
+    if (!res || !res.issues) return;
+    _diagIssues = res.issues;
+    _updateDiagBell();
+  } catch (e) { /* не критично — просто не покажем колокольчик */ }
+}
+
+function _updateDiagBell() {
+  const btn = document.getElementById('diag-bell-btn');
+  if (!btn) return;
+  const hasIssues = _diagIssues.length > 0;
+  if (hasIssues) {
+    btn.classList.add('has-issues');
+    btn.title = 'Системные предупреждения: требуется действие (нажмите для деталей)';
+  } else {
+    btn.classList.remove('has-issues');
+    btn.title = 'Системные предупреждения: проблем нет';
+  }
+}
+
+function openDiagModal(triggerEl) {
+  const modal = document.getElementById('diag-modal');
+  // Если уже открыто — закрываем (toggle)
+  if (modal && modal.style.display === 'flex') {
+    closeDiagModal();
+    return;
+  }
+  // Если открыто обновление — закрываем его, чтобы не накладывались
+  const updModal = document.getElementById('update-modal');
+  if (updModal && updModal.style.display === 'flex') {
+    dismissUpdateModal();
+  }
+
+  const jump = document.getElementById('diag-jump-bar');
+  const list = document.getElementById('diag-issues-list');
+  const actions = document.getElementById('diag-actions');
+  const progressWrap = document.getElementById('diag-progress-wrap');
+  const installBtn = document.getElementById('diag-install-btn');
+
+  // Сбрасываем подвал в исходное состояние с кнопками (скрываем прогресс)
+  if (progressWrap) progressWrap.style.display = 'none';
+  if (actions) actions.style.display = 'flex';
+  if (installBtn) installBtn.disabled = false;
+
+  const hasIssues = typeof _diagIssues !== 'undefined' && _diagIssues.length > 0;
+  if (jump) jump.style.display = hasIssues ? 'flex' : 'none';
+  if (installBtn) installBtn.style.display = hasIssues ? 'inline-flex' : 'none';
+
+  if (list) {
+    if (hasIssues) {
+      list.innerHTML = `
+        <h4 style="margin-top:0;margin-bottom:6px;font-size:13px;color:var(--text);font-weight:600;">Языковой пакет Windows OCR (en-US)</h4>
+        <p style="margin-top:0;margin-bottom:10px;color:var(--text-dim);font-size:11px;line-height:1.5;">
+          Компонент необходим для автоматического чтения номера текущей волны в режиме «Бесконечный». Без него волновой монитор работает по аварийному таймеру.
+        </p>
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;font-size:11px;color:var(--text-muted);line-height:1.5;">
+          <span style="color:#ffffff;font-weight:700;">Внимание:</span> установка требует прав администратора Windows. При появлении запроса контроля учетных записей (UAC) нажмите <strong style="color:var(--text);">«Да»</strong>.
+        </div>
+      `;
+    } else {
+      list.innerHTML = `
+        <div style="text-align:center;padding:24px 8px;">
+          <div style="font-size:26px;color:var(--ok,#6bc987);margin-bottom:6px;">✓</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">Все компоненты в порядке</div>
+          <div style="font-size:11px;color:var(--text-muted);">Активных системных предупреждений нет. Макрос готов к работе.</div>
+        </div>
+      `;
+    }
+  }
+
+  const anchor = triggerEl || (typeof document !== 'undefined' ? document.getElementById('diag-bell-btn') : null);
+  anchorModalToElement('diag-modal', anchor);
+
+  if (modal) {
+    modal.style.display = 'flex';
+    try { window.pywebview && pywebview.api.hide_game(); } catch (e) {}
+  }
+}
+
+function closeDiagModal() {
+  const modal = document.getElementById('diag-modal');
+  if (modal) modal.style.display = 'none';
+  restoreGameIfDashboard();
+}
+
+// Запуск установки компонентов в формате скачивания обновления:
+// кнопки прячутся, появляется прогресс-бар с анимацией и статусом.
+async function diagStartInstall() {
+  const actions = document.getElementById('diag-actions');
+  const progressWrap = document.getElementById('diag-progress-wrap');
+  const bar = document.getElementById('diag-progress-bar');
+  const text = document.getElementById('diag-progress-text');
+  const size = document.getElementById('diag-progress-size');
+
+  if (actions) actions.style.display = 'none';
+  if (progressWrap) progressWrap.style.display = 'block';
+  if (bar) {
+    bar.style.transform = 'scaleX(0)';
+    bar.style.background = 'linear-gradient(90deg, #a1a1aa, #ffffff)';
+    bar.classList.add('update-progress-indeterminate');
+  }
+  if (text) text.textContent = 'Загрузка и установка компонентов Windows...';
+  if (size) size.textContent = 'Пожалуйста, подождите';
+
+  // Если открыто напрямую в обычном браузере (file:///):
+  if (!window.pywebview || !pywebview.api || !pywebview.api.install_windows_ocr) {
+    setTimeout(() => {
+      if (bar) {
+        bar.classList.remove('update-progress-indeterminate');
+        bar.style.transform = 'scaleX(1)';
+        bar.style.background = 'var(--ok,#6bc987)';
+      }
+      if (text) text.textContent = '✓ Компоненты успешно установлены!';
+      if (size) size.textContent = '100%';
+
+      setTimeout(() => {
+        window.windowsOcrInstallDone();
+        if (typeof showToast === 'function') {
+          showToast('✓ Установка смоделирована (режим браузера)');
+        }
+      }, 1200);
+    }, 1800);
+    return;
+  }
+
+  try {
+    const res = await pywebview.api.install_windows_ocr();
+    if (!res || !res.ok) {
+      diagInstallFailed('Не удалось запустить процесс установки');
+    }
+  } catch (e) {
+    diagInstallFailed(String(e));
+  }
+}
+
+// Сигнал из Python: установка завершена успешно (код возврата 0)
+window.windowsOcrInstallDone = function() {
+  const bar = document.getElementById('diag-progress-bar');
+  const text = document.getElementById('diag-progress-text');
+  const size = document.getElementById('diag-progress-size');
+
+  if (bar) {
+    bar.classList.remove('update-progress-indeterminate');
+    bar.style.transform = 'scaleX(1)';
+    bar.style.background = 'var(--ok,#6bc987)';
+  }
+  if (text) text.textContent = '✓ Компоненты успешно установлены! Перезапустите макрос.';
+  if (size) size.textContent = '100%';
+
+  setTimeout(() => {
+    _diagIssues = _diagIssues.filter(i => i.id !== 'windows_ocr_missing');
+    _updateDiagBell();
+    closeDiagModal();
+  }, 1600);
+};
+
+// Сигнал из Python при ошибке установки
+window.windowsOcrInstallFailed = function() {
+  diagInstallFailed('Установка отклонена или завершилась с ошибкой');
+};
+
+function diagInstallFailed(errMsg) {
+  const bar = document.getElementById('diag-progress-bar');
+  const text = document.getElementById('diag-progress-text');
+  const size = document.getElementById('diag-progress-size');
+  const actions = document.getElementById('diag-actions');
+  const progressWrap = document.getElementById('diag-progress-wrap');
+
+  if (bar) {
+    bar.classList.remove('update-progress-indeterminate');
+    bar.style.background = 'var(--err,#ef4444)';
+    bar.style.transform = 'scaleX(1)';
+  }
+  if (text) text.textContent = errMsg || 'Ошибка при установке компонентов';
+  if (size) size.textContent = 'Сбой';
+
+  setTimeout(() => {
+    if (progressWrap) progressWrap.style.display = 'none';
+    if (actions) actions.style.display = 'flex';
+  }, 2400);
+}
+
+// Функция для локальной проверки отображения (можно вызвать из консоли или через Shift+клик на версию)
+
+window.testDiagBell = function(show = true) {
+  if (show) {
+    _diagIssues = [{
+      id: 'windows_ocr_missing',
+      severity: 'warn',
+      title: 'Windows OCR unavailable',
+      detail: 'Wave counter uses fallback mode. Click Install to add the en-US OCR language pack.',
+      action: 'install_windows_ocr',
+      action_label: 'Install',
+      reason: 'Режим проверки отображения (тестовая симуляция)'
+    }];
+  } else {
+    _diagIssues = [];
+  }
+  _updateDiagBell();
+};
+
+const _mockUpdateInfo = {
+  available: true,
+  current_version: 'v2.0.0',
+  version: 'v2.0.1',
+  size: 120894464, // ~115.3 МБ
+  notes: `
+### Новые возможности
+- \`new\` **Diagnostics Bell** — быстрый доступ к проверке системных компонентов и установка пакета Windows OCR одной кнопкой прямо из шапки.
+- \`new\` **Adaptive Resolution** — масштабирование интерфейса под экраны 1024x768 без сдвига координат и кликов.
+- \`new\` **Lobby Auto-Recovery** — улучшенная навигация по лобби с распознаванием кнопок Event и Summon при закрытых меню.
+
+### Исправления и улучшения
+- \`fix\` **Infinite Wave Detection** — таймер-fallback предотвращает зависание при долгих прогонах.
+- \`fix\` **Memory & Artifact Cleanup** — уменьшен размер приложения и очищены кэши тестов (-160 МБ).
+`
+};
+
+// Тестовые моки доступны через window.testDiagBell() и Shift+клик на версию,
+// но при обычном старте интерфейс отображает реальное актуальное состояние.
+
+
+
+async function manualCheckForUpdate(e) {
+  // Shift+клик на версию позволяет локально проверить как выглядит колокольчик и модалка!
+  if (typeof window !== 'undefined' && ((e && e.shiftKey) || (window.event && window.event.shiftKey))) {
+    if (typeof _diagIssues !== 'undefined' && _diagIssues.length > 0) {
+      window.testDiagBell && window.testDiagBell(false);
+      typeof showToast === 'function' && showToast('Тестовый колокольчик скрыт');
+    } else {
+      window.testDiagBell && window.testDiagBell(true);
+      typeof showToast === 'function' && showToast('Тестовый колокольчик показан');
+    }
+    return;
+  }
+
+  const badge = typeof document !== 'undefined' ? document.getElementById('ver-badge') : null;
+  // Если обновление уже найдено и горит маячок — сразу открываем окно обновления у кнопки
   if (badge && badge.classList.contains('has-update')) {
-    showUpdateAvailable();
+    showUpdateAvailable(badge);
     return;
   }
 
@@ -593,6 +928,65 @@ function resetUpdateModalButtons() {
   if (sizeEl) sizeEl.textContent = '';
 }
 
+// Красивая плавная симуляция скачивания релиза в браузере (file:///)
+function simulateBrowserUpdateDownload() {
+  const bar = document.getElementById('update-progress-bar');
+  const text = document.getElementById('update-progress-text');
+  const size = document.getElementById('update-progress-size');
+
+  let pct = 0;
+  const totalMb = 115.3;
+  if (bar) {
+    bar.classList.remove('update-progress-indeterminate');
+    bar.style.background = 'linear-gradient(90deg, #a1a1aa, #ffffff)';
+    bar.style.transform = 'scaleX(0)';
+  }
+
+  if (text) text.textContent = 'Подключение к серверам обновлений...';
+  if (size) size.textContent = '0%';
+
+  const interval = setInterval(() => {
+    if (pct < 30) {
+      pct += 4;
+    } else if (pct < 70) {
+      pct += 5;
+    } else if (pct < 95) {
+      pct += 3;
+    } else {
+      pct = 100;
+    }
+
+    const currentMb = ((totalMb * pct) / 100).toFixed(1);
+    const speed = (24 + (pct % 6) * 2.2).toFixed(1);
+
+    if (bar) bar.style.transform = `scaleX(${pct / 100})`;
+    if (text) {
+      text.textContent = pct < 100
+        ? `Загрузка: ${currentMb} МБ из ${totalMb} МБ (${speed} МБ/с)`
+        : '✓ Загрузка завершена (115.3 МБ). Распаковка компонентов...';
+    }
+    if (size) size.textContent = `${pct}%`;
+
+    if (pct >= 100) {
+      clearInterval(interval);
+      if (bar) bar.style.background = '#ffffff';
+
+      setTimeout(() => {
+        if (text) text.textContent = '✓ Обновление готово к установке! Перезапуск...';
+        setTimeout(() => {
+          dismissUpdateModal();
+          clearUpdateSignal();
+          const badgeText = document.getElementById('ver-badge-text');
+          if (badgeText) badgeText.textContent = 'v1.1.11';
+          if (typeof showToast === 'function') {
+            showToast('✓ Версия обновлена до v1.1.11 (симуляция)');
+          }
+        }, 1500);
+      }, 1200);
+    }
+  }, 140);
+}
+
 // apply_update() kicks off the download/stage/relaunch in a background
 // thread and returns immediately -- this polls get_update_progress() to
 // drive a real progress bar instead of the button just saying "Updating..."
@@ -600,11 +994,19 @@ function resetUpdateModalButtons() {
 // the window would just sit there with nothing visible happening, which
 // read as broken rather than in-progress).
 async function applyUpdate() {
+
   const btn = document.getElementById('update-apply-btn');
-  btn.disabled = true;
-  document.getElementById('update-notes').style.display = 'none';
-  document.getElementById('update-actions').style.display = 'none';
-  document.getElementById('update-progress-wrap').style.display = 'block';
+  if (btn) btn.disabled = true;
+  const actions = document.getElementById('update-actions');
+  if (actions) actions.style.display = 'none';
+  const progressWrap = document.getElementById('update-progress-wrap');
+  if (progressWrap) progressWrap.style.display = 'block';
+
+  // Если открыто напрямую в обычном браузере (file:///), запускаем красивую симуляцию скачивания
+  if (!window.pywebview || !pywebview.api || !pywebview.api.apply_update) {
+    simulateBrowserUpdateDownload();
+    return;
+  }
 
   try {
     const result = await pywebview.api.apply_update();
@@ -617,6 +1019,7 @@ async function applyUpdate() {
     resetUpdateModalButtons();
     return;
   }
+
 
   const bar = document.getElementById('update-progress-bar');
   const text = document.getElementById('update-progress-text');
@@ -1428,7 +1831,7 @@ let rebindPendingKey = null;
 // Esc during capture instead.
 const HOTKEY_DEFAULTS = {
   toggle_game: 'f4', skip_waiting: '', macro_start: 'f1', macro_stop: 'f2', macro_pause: 'f5', debug_screenshot: 'f3',
-  image_manager: 'f6', toggle_compact: 'f7', toggle_record: 'f8', open_replay: 'f9', game_auto_upgrade: '',
+  image_manager: 'f6', toggle_compact: 'f7', toggle_record: 'f8', open_replay: 'f10', game_auto_upgrade: '',
 };
 // Порядок один на все обходы: загрузка настроек, сброс, ответ set_hotkey.
 // Раньше каждый список был написан руками отдельно, и добавленное действие
@@ -1863,6 +2266,9 @@ async function loadSettingsUI() {
   refreshRobloxWindowList();
   refreshDebugMacroOpSelect();
   loadResolutionUI();
+  // Проверяем диагностику при каждой инициализации настроек (а значит, при
+  // каждом старте). Колокольчик появится только если есть что исправить.
+  checkDiagnostics();
 }
 
 // ---------------------------------------------------------------------------
@@ -5446,7 +5852,7 @@ function addBlock(type, key, atIndex) {
     block.phantomCheckAttempts = 4;
     block.phantomCheckDelay = 12;
   }
-  if (type === 'walk') { block.params.path = ''; }
+  if (type === 'walk') { block.params.path = ''; block.recordOnReach = true; }
   if (type === 'walk_path') { block.mode = 'auto'; block.pathName = ''; }
   if (type === 'send_key') { block.key = ''; }
   if (type === 'upgrade_unit') { block.params.index = ''; block.params.times = 1; }
@@ -5815,6 +6221,9 @@ function stopActiveRecording() {
   if (recordingBlockId) toggleRecordPath(recordingBlockId);
   else if (recordingFuelPathKey) toggleRecordFuelPath(recordingFuelPathKey);
   else if (recordingMacroBlockId) toggleRecordMacro(recordingMacroBlockId);
+  else if (window.pywebview?.api?.finish_live_walk_record) {
+    window.pywebview.api.finish_live_walk_record();
+  }
 }
 
 async function startRecordingTarget(target) {
@@ -6210,13 +6619,26 @@ function renderSendKeyControls(b) {
 // into this block's picker instead of the Walk Path row's.
 function renderWalkControls(b) {
   const isRecording = recordingBlockId === b.id;
+  const isRecordOnReach = Boolean(b.recordOnReach || (b.params && b.params.recordOnReach) || (!b.params.path && b.recordOnReach !== false));
   const options = savedPaths.map(n => `<option value="${escapeHtml(n)}" ${n === b.params.path ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('');
   return `
     <button type="button" class="block-mod-btn ${isRecording ? 'on' : ''}" onclick="toggleRecordPath('${b.id}')">${isRecording ? 'Stop' : 'Record'}</button>
+    <button type="button" class="block-mod-btn ${isRecordOnReach ? 'on' : ''} tooltip-side" data-tooltip="Record live when reached in game (Teach-In)" onclick="toggleRecordOnReach('${b.id}')">🔴 Record on run</button>
     <select class="block-input" style="width:auto;" onchange="updateBlockParam('${b.id}', 'path', this.value)">
       <option value="">Pick saved path...</option>${options}
     </select>
     ${sprintToggle(b)}`;
+}
+
+function toggleRecordOnReach(id) {
+  const loc = findBlockLocation(id);
+  if (!loc) return;
+  const block = loc.container[loc.idx];
+  const next = !Boolean(block.recordOnReach || (block.params && block.params.recordOnReach));
+  block.recordOnReach = next;
+  if (!block.params) block.params = {};
+  block.params.recordOnReach = next;
+  renderPhases();
 }
 
 // Hold Left Shift for the whole walk -- for paths that only reach their spot
@@ -9695,4 +10117,28 @@ async function refreshRecLive() {
       : '<div style="color:var(--text-muted)">Жду первых действий — переключись в Roblox и играй.</div>';
   }
 }
+
+window.onLiveWalkRecordStart = function(data) {
+  const popout = document.getElementById('rec-popout');
+  const popoutText = document.getElementById('rec-popout-text');
+  if (popout) {
+    if (popoutText) {
+      popoutText.textContent = `🔴 Recording path (${data?.phase || "Battle"} #${data?.block_num || 1}) - timer starts on your first key`;
+    }
+    popout.style.display = 'flex';
+  }
+};
+
+window.onLiveWalkRecordDone = function(data) {
+  const popout = document.getElementById('rec-popout');
+  if (popout) popout.style.display = 'none';
+  if (data && data.saved) {
+    addLog(`[Macro] Recorded path "${data.path_name}" saved into scenario.`);
+    if (window.pywebview?.api?.list_paths) {
+      window.pywebview.api.list_paths().then(p => {
+        if (Array.isArray(p)) savedPaths = p;
+      }).catch(() => {});
+    }
+  }
+};
 

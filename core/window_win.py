@@ -142,9 +142,10 @@ class WindowsWindowManager(BaseWindowManager):
     at the point of actually moving the mouse/clicking.
     """
 
-    def __init__(self, title_substring: str = config.ROBLOX_WINDOW_TITLE):
+    def __init__(self, title_substring: str = config.ROBLOX_WINDOW_TITLE, pid: Optional[int] = None):
         super().__init__(title_substring=title_substring)
         self.hwnd = None
+        self.pid = pid
 
     def find_window(self):
         return self.find()
@@ -165,6 +166,8 @@ class WindowsWindowManager(BaseWindowManager):
         @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
         def _enum_proc(hwnd, _lparam):
             if not user32.IsWindowVisible(hwnd):
+                return True
+            if self.pid is not None and get_window_pid(hwnd) != self.pid:
                 return True
             length = user32.GetWindowTextLengthW(hwnd)
             if length == 0:
@@ -797,6 +800,21 @@ def restore_borders(hwnd: int) -> None:
     style |= WS_CAPTION | WS_BORDER | WS_THICKFRAME
     user32.SetWindowLongW(hwnd, GWL_STYLE, style)
     user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED)
+
+
+def is_zoomed(hwnd: int) -> bool:
+    """Проверяет, развернуто ли окно на весь экран (WS_MAXIMIZE)."""
+    return bool(user32.IsZoomed(hwnd))
+
+
+def maximize_window(hwnd: int) -> None:
+    """Разворачивает окно на весь экран (SW_MAXIMIZE = 3)."""
+    user32.ShowWindow(hwnd, 3)
+
+
+def restore_window(hwnd: int) -> None:
+    """Восстанавливает окно до нормального размера (SW_RESTORE = 9)."""
+    user32.ShowWindow(hwnd, 9)
 
 
 # ── Keep the machine awake while a run is going (see core.runner) ──

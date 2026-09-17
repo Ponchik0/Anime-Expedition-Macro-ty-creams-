@@ -523,7 +523,12 @@ PARTY_OVERLAY_IMAGE_NAMES = NAV_DISBAND_IMAGE_NAMES + ("invite_players_open",)
 # instead: observed as three "nav_back not found -- still on the lobby,
 # re-clicking Play" retries in a row while the patch notes sat on screen.
 # Optional like nav_disband: no image means the check does nothing.
-LOBBY_OVERLAY_CLOSE_IMAGE_NAMES = ("update_log_close",)
+# Отдельного кадра "update_log_close" пока нет на диске (папка заведётся, когда
+# кто-то снимет вырезку с живого баннера), поэтому рядом стоят общие закрывашки,
+# которые уже сняты: подсказка "click anywhere to close" и красный крестик
+# nav_closeui. find_image_any молча пропускает отсутствующие имена, так что
+# появившийся позже update_log_close просто встанет первым в приоритете.
+LOBBY_OVERLAY_CLOSE_IMAGE_NAMES = ("update_log_close", "click_anywhere_to_close", "nav_closeui")
 # The same "are we actually on the lobby" question during a teleport wait, but
 # that loop can run for five minutes on matchmaking and polls fast, so the
 # check runs every Nth poll rather than every one -- a full-window search per

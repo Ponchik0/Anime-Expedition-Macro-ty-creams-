@@ -38,14 +38,16 @@ class BaseWindowManager(abc.ABC):
         pass
 
 
-def get_window_manager(title_substring: Optional[str] = None) -> BaseWindowManager:
+def get_window_manager(title_substring: Optional[str] = None, **kwargs) -> BaseWindowManager:
     """Factory function returning the platform-specific WindowManager instance."""
-    kwargs = {} if title_substring is None else {"title_substring": title_substring}
+    params = dict(kwargs)
+    if title_substring is not None:
+        params["title_substring"] = title_substring
     if sys.platform == "darwin":
         from .window_mac import MacWindowManager
-        return MacWindowManager(**kwargs)
+        return MacWindowManager(**params)
     from .window_win import WindowsWindowManager
-    return WindowsWindowManager(**kwargs)
+    return WindowsWindowManager(**params)
 
 
 def __getattr__(name: str) -> Any:

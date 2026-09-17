@@ -104,9 +104,9 @@ def test_the_answer_always_carries_the_full_current_map(monkeypatch):
     """Интерфейс рисует строки по этому словарю, а не по своим ожиданиям."""
     _store(monkeypatch)
     api = _Api()
-    res = api.set_hotkey("open_replay", "f10")
+    res = api.set_hotkey("open_replay", "f11")
     assert set(res["hotkeys"]) == set(main.HOTKEY_DEFAULTS)
-    assert res["hotkeys"]["open_replay"] == "f10"
+    assert res["hotkeys"]["open_replay"] == "f11"
 
 
 def test_an_unknown_action_is_refused_with_the_map_intact(monkeypatch):

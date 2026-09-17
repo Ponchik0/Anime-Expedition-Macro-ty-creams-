@@ -39,14 +39,16 @@
             "once": true,
             "mode": "none",
             "pathName": "",
-            "sprint": false
+            "sprint": false,
+            "comment": "Оставаться на месте у спавна"
           },
           {
             "type": "wait_ms",
             "params": {
               "ms": 1000
             },
-            "once": true
+            "once": true,
+            "comment": "Пауза перед экипировкой удочки"
           },
           {
             "type": "click",
@@ -54,14 +56,16 @@
               "x": 74,
               "y": 670
             },
-            "once": true
+            "once": true,
+            "comment": "Взять удочку (Слот 1 хотбара)"
           },
           {
             "type": "wait_ms",
             "params": {
               "ms": 500
             },
-            "once": true
+            "once": true,
+            "comment": "Пауза на доставание удочки в руки"
           },
           {
             "type": "click",
@@ -69,7 +73,8 @@
               "x": 150,
               "y": 500
             },
-            "once": true
+            "once": true,
+            "comment": "Первый заброс удочки в озеро"
           }
         ],
         "battle": [
@@ -79,6 +84,7 @@
             "once": false,
             "mode": "single",
             "image": "Game_results",
+            "comment": "Проверка окончания матча (результаты)",
             "advanced": false,
             "images": [],
             "logic": "and",
@@ -96,7 +102,8 @@
                   "x": 576,
                   "y": 601
                 },
-                "once": false
+                "once": false,
+                "comment": "Подтвердить результат / Replay"
               }
             ],
             "else": []
@@ -109,7 +116,8 @@
               "x": 150,
               "y": 500
             },
-            "once": false
+            "once": false,
+            "comment": "Повторный заброс удочки в воду"
           },
           {
             "type": "click",
@@ -117,7 +125,8 @@
               "x": 576,
               "y": 601
             },
-            "once": false
+            "once": false,
+            "comment": "Подсечь рыбу / забрать улов"
           }
         ],
         "loop_b": []

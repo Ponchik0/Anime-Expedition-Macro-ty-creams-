@@ -39,6 +39,7 @@
     'Session': 'Сессия',
     'All Time': 'Всего',
     'Minimize': 'Свернуть',
+    'Customize': 'Кастомизация',
     'Time this session / all-time total': 'Время за сессию / за всё время',
 
     // --- Дашборд: состояние ---
@@ -57,6 +58,11 @@
     'Difficulty': 'Сложность',
     'Play Mode': 'Режим игры',
     'Macro': 'Сценарий',
+    'Active Automations': 'Фоновые сервисы',
+    'Auto-Shop': 'Торговец',
+    'Bounty': 'Баунти',
+    'Crafting': 'Крафт',
+    'Fuel': 'Топливо',
 
     // --- Дашборд: табло ---
     'Scoreboard': 'Счёт',
@@ -76,6 +82,10 @@
     // имена режимов из самой игры, их не переводим ('Challenge' уже есть ниже,
     // в блоке своего экрана, и намеренно оставлен как есть).
     'Daily Challenge': 'Дневной челлендж',
+    'Summer Fishing': 'Рыбалка',
+    'Event Infinite': 'Event Infinite',
+    'Story Infinite': 'Story Infinite',
+    'Portals': 'Порталы',
     'What this run actually was': 'Чем этот забег был на самом деле',
     'Save stats and run history to PDF': 'Сохранить статистику и историю в PDF',
     'Erase run history and the win/loss counters': 'Стереть историю забегов и счётчики побед/поражений',
@@ -84,6 +94,14 @@
 
     // --- Дашборд: управление ---
     'Controls': 'Управление',
+    'Task Queue': 'Очередь задач',
+    'Task queue ready · Press Start (F1)': 'Очередь задач готова · Нажмите Старт (F1)',
+    'Macro Engine': 'Движок макроса',
+    'Auto-Restart': 'Авто-рестарт',
+    'VIP Rejoin': 'VIP Реджоин',
+    'Streak': 'Серия',
+    'Record': 'Рекорд',
+    'Challenge': 'Челлендж',
     // --- Блок «что сделает Старт» над кнопками ---
     'Scenario': 'Сценарий',
     'Recording': 'Запись',
@@ -239,6 +257,8 @@
     'Path name...': 'Название пути…',
     'Save Recorded Path': 'Сохранить записанный путь',
     'Stop Recording': 'Остановить запись',
+    'Record on run': 'Запись на ходу',
+    'Record live when reached in game (Teach-In)': 'Записать движение прямо во время выполнения сценария (Teach-In)',
     'Test Pre Start': 'Проверить Pre Start',
     'Test Battle': 'Проверить бой',
     'Test Pre Start / Battle': 'Проверить Pre Start / бой',
@@ -313,6 +333,15 @@
     "Same as the Dashboard's Start button.": 'То же, что кнопка «Старт» на панели.',
     "Same as the Dashboard's Stop button.": 'То же, что кнопка «Стоп» на панели.',
     "Same as the Dashboard's Pause button.": 'То же, что кнопка «Пауза» на панели.',
+    'Auto-Restart': 'Авто-рестарт',
+    'Auto-Restart Loop': 'Авто-рестарт цикла',
+    'VIP Rejoin': 'VIP Реджоин',
+    'VIP Lobby Rejoin': 'Перезаход в VIP лобби',
+    'WASD Walk Recording': 'Запись маршрута WASD',
+    'Save Recorded Walk Path': 'Сохранить маршрут WASD',
+    'Upcoming Queue': 'Очередь задач',
+    'Wins Streak': 'Серия побед',
+    'Best:': 'Рекорд:',
     'Unbound': 'Не назначено',
     'Not set': 'Не задано',
     'Press a key...': 'Нажми клавишу…',
@@ -472,6 +501,12 @@
     'Open Monitor': 'Открыть монитор',
     'Install Tesseract OCR': 'Установить Tesseract OCR',
     'Install': 'Установить',
+    'System Warnings': 'Системные предупреждения',
+    'Windows OCR unavailable': 'Windows OCR недоступен',
+    'Close': 'Закрыть',
+    'Installing...': 'Установка...',
+    'Installed': 'Установлено',
+    'No issues found.': 'Проблем не обнаружено.',
     'Pathing': 'Пути ходьбы',
     'Scroll Power': 'Сила прокрутки',
     'Scroll Attempts': 'Попыток прокрутки',
@@ -718,6 +753,10 @@
     'Loop B': 'Цикл Б',
     'Combat': 'бой',
     'Repeats': 'повторяется',
+    'Before round begins: walk, loadout, initial actions': 'До старта: ходьба, экипировка, стартовые клики',
+    'Combat flow: wave-based placements, upgrades, results': 'Во время боя: волны, прокачка, исход матча',
+    'Infinite combat loop: casting rod, continuous clicks': 'Главный цикл: заброс удочки, автоклики, сбор',
+    'Secondary loop: parallel orb collection or skill spam': 'Второй цикл: параллельный сбор или спам навыков',
 
     // --- подсказки в пустых фазах: они и объясняют смысл каждой фазы ---
     'Drag Place Unit, Setting, Auto Upgrade Unit, Click, or Wait blocks here -- only those are possible before the match starts.':
@@ -855,6 +894,13 @@
     'Retry every': 'Повторять каждые',
     '0 searches = unlimited. After a limit, Else runs. Then runs once per match.':
       '0 — без ограничения. Когда попытки кончились, идёт ветка «не нашлось». Ветка «нашлось» выполняется один раз на совпадение.',
+
+    // --- Кастомизация подблоков карточки Controls ---
+    'Card Sections': 'Разделы карточки',
+    'Streak & Stats': 'Стрик и статистика',
+    'Task Details': 'Параметры задачи',
+    'Active Automations': 'Автоматизации',
+    'Services:': 'Сервисы:',
   };
 
   // ------------------------------------------------------- ДИНАМИЧЕСКИЕ СТРОКИ
@@ -998,7 +1044,10 @@
 
   function setLang(next) {
     lang = next;
-    localStorage.setItem('ui_lang', lang);
+    try { localStorage.setItem('ui_lang', lang); } catch (_) {}
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.set_setting) {
+      try { window.pywebview.api.set_setting('lang', lang); } catch (_) {}
+    }
     apply(document.body);
     updateToggle();
   }

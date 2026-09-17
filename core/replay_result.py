@@ -532,8 +532,8 @@ def send_webhook(webhook_cfg: dict, result: str, recording: str, duration: str,
     # Поля собирает core/stats_report.py — там же, где их собирает автомат.
     # Своё здесь только то, чем повтор от автомата отличается: вместо карты,
     # этапа и сложности — имя записи и номер круга.
-    fields = stats_report.report_fields("⚔️ Match", [
-        ("Result", "Victory \U0001F3C6" if is_win else "Defeat \U0001F480"),
+    fields = stats_report.report_fields("Match", [
+        ("Result", "Victory" if is_win else "Defeat"),
         ("Duration", duration or "-"),
         ("Запись", recording or "-"),
         ("Круг", loop_num or "-"),
@@ -547,7 +547,7 @@ def send_webhook(webhook_cfg: dict, result: str, recording: str, duration: str,
 
     version = stats.get("version")
     main_embed = {
-        "title": "Victory! \U0001F3C6" if is_win else "Defeat \U0001F480",
+        "title": "Victory" if is_win else "Defeat",
         "color": 0x3FBF6F if is_win else 0xE05A6D,
         "description": description,
         "fields": fields,

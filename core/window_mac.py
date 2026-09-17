@@ -487,9 +487,10 @@ class MacWindowManager(BaseWindowManager):
     """Same shape as window_win.WindowManager -- locate a window by title
     (or, for Roblox, by owning app) and do coordinate/resize helpers."""
 
-    def __init__(self, title_substring: str = config.ROBLOX_WINDOW_TITLE):
+    def __init__(self, title_substring: str = config.ROBLOX_WINDOW_TITLE, pid: Optional[int] = None):
         super().__init__(title_substring=title_substring)
         self.hwnd = None
+        self.pid = pid
 
     def find_window(self):
         return self.find()
@@ -548,5 +549,21 @@ class MacWindowManager(BaseWindowManager):
 
     def bring_to_front(self) -> None:
         activate_window(self._require_hwnd())
+
+
+def is_zoomed(hwnd: int) -> bool:
+    """Заглушка для macOS: в darwin окна управляются через AXUIElement."""
+    return False
+
+
+def maximize_window(hwnd: int) -> None:
+    """Заглушка для macOS."""
+    pass
+
+
+def restore_window(hwnd: int) -> None:
+    """Заглушка для macOS."""
+    pass
+
 
 WindowManager = MacWindowManager

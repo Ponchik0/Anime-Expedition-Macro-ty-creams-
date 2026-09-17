@@ -1,0 +1,1688 @@
+<!doctype html>
+<html lang="en" data-theme="onyx" data-density="default" data-corners="default" data-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AE Macro · Glass Concept</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-screen="home">
+
+<!-- ======================== SVG sprite (stroke icons, one family) ======================== -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M12 3l2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11.5 12 4.5l8 7"/><path d="M6.5 10.2V19h11v-8.8"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><circle cx="5.4" cy="6.5" r="1" fill="currentColor" stroke="none"/><circle cx="5.4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="5.4" cy="17.5" r="1" fill="currentColor" stroke="none"/><path d="M9.5 6.5H20M9.5 12H20M9.5 17.5H20"/></symbol>
+    <symbol id="i-blocks" viewBox="0 0 24 24"><path d="M12 4l8 4.5-8 4.5-8-4.5Z"/><path d="M4 13.5 12 18l8-4.5"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h8.5M17.5 7H20M4 12h3.5M12.5 12H20M4 17h10.5M19.5 17H20"/><circle cx="15" cy="7" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17" cy="17" r="2.2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8.6 5.6 18 12l-9.4 6.4Z" fill="currentColor" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5.8v12.4M15 5.8v12.4"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.7 7V5.2h4.6V7M7 7l.9 12.2h8.2L17 7M10.2 10.6v5.4M13.8 10.6v5.4"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M5 19l.9-3.9L16.4 4.6a1.9 1.9 0 0 1 2.7 2.7L8.6 17.8 5 19Z"/><path d="M14.6 6.4l2.7 2.7"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M6 15h-.5A1.5 1.5 0 0 1 4 13.5v-8A1.5 1.5 0 0 1 5.5 4h8A1.5 1.5 0 0 1 15 5.5V6"/></symbol>
+    <symbol id="i-popout" viewBox="0 0 24 24"><path d="M9.5 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V14.5"/><path d="M14 4h6v6M20 4l-8.5 8.5"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.4"/><path d="M5 19.5c1.3-3.4 4-5 7-5s5.7 1.6 7 5"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2.5h-15Z"/><path d="M10 21a2.2 2.2 0 0 0 4 0"/></symbol>
+    <symbol id="i-droplet" viewBox="0 0 24 24"><path d="M12 4C9 8.5 6.5 11.5 6.5 14.7a5.5 5.5 0 0 0 11 0C17.5 11.5 15 8.5 12 4Z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M17.5 3.5V7H21"/></symbol>
+    <symbol id="i-bug" viewBox="0 0 24 24"><path d="M12 7.5V4.8M8.2 9C6.3 7.6 5.2 7.6 4 8.1M15.8 9c1.9-1.4 3-1.4 4.2-.9M7 13H4M17 13h3M8 17c-1.9 1.4-3 1.4-4.2 1.6M16 17c1.9 1.4 3 1.4 4.2 1.6"/><rect x="8" y="7.5" width="8" height="12" rx="4"/><path d="M12 10v7"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><rect x="4" y="7.5" width="16" height="12" rx="2.5"/><circle cx="12" cy="13.5" r="3.2"/><path d="M9 7.5l1.2-2h3.6L15 7.5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10.5 13.5 13.5 10.5"/><path d="M8.5 12l-1.7 1.7a3.2 3.2 0 0 0 4.5 4.5L13 16.5M11 7.5l1.7-1.7a3.2 3.2 0 0 1 4.5 4.5L15.5 12"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h4l2 2.5h7A1.5 1.5 0 0 1 20 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17Z"/></symbol>
+    <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="8" y="3.5" width="8" height="17" rx="4"/><path d="M12 7.5v3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 16V8.5M8.8 11.2 12 8l3.2 3.2"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4.5 12.5 11 19a1.8 1.8 0 0 0 2.5 0l5.5-5.5a1.8 1.8 0 0 0 0-2.5L12.5 4.5H6A1.5 1.5 0 0 0 4.5 6v6.5Z"/><circle cx="8.6" cy="8.6" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6.5" cy="6" r="2.2"/><circle cx="6.5" cy="18" r="2.2"/><circle cx="17.5" cy="12" r="2.2"/><path d="M6.5 8.2v7.6M8.7 6.5h4.3a2.3 2.3 0 0 1 2.3 2.3v1.2M15.3 14v.9a2.3 2.3 0 0 1-2.3 2.3H8.7"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h3.5l2.5-6 4 12 2.5-6H21"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="17.5" r="2.2"/><circle cx="18" cy="6.5" r="2.2"/><path d="M8.2 17.5H14a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h5.8"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 4l7 2.5v5c0 4.4-3 7.4-7 8.5-4-1.1-7-4.1-7-8.5v-5Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.5 12.5 10 17 18.5 8"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 20 20"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="13" rx="2"/><path d="M4 9.5h16"/><circle cx="6.8" cy="7.5" r=".7" fill="currentColor" stroke="none"/><circle cx="9" cy="7.5" r=".7" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.5 14.5a7.5 7.5 0 1 1 15 0"/><path d="M12 14.5 15.5 10"/><circle cx="12" cy="14.5" r="1.3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4.5 21 19H3Z"/><path d="M12 10.5v4M12 17.2h.01"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.9c-.7.3-1 .8-1 1.6v.3"/><path d="M12 16.8h.01"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></symbol>
+    <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+    <symbol id="i-minimize" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M3 4h3l2.2 11h11.2l2-8H6.5"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3c1 4 4 6 4 10a6 6 0 1 1-12 0c0-3 2-6 4-8 0 3 2 4 4 4-1-2 0-4 0-6z"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 18h16M4 18l1.5-10 4.5 4 2-8 2 8 4.5-4 1.5 10H4z"/></symbol>
+    <symbol id="i-swords" viewBox="0 0 24 24"><path d="M14.5 17.5 3.5 6.5V3.5h3l11 11M9.5 17.5 20.5 6.5V3.5h-3l-11 11M2.5 21.5l3.5-3.5M21.5 21.5l-3.5-3.5"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"/><path d="M17.64 15 22 10.64a2.5 2.5 0 0 0 0-3.54l-3.1-3.1a2.5 2.5 0 0 0-3.54 0L11 8.36"/><path d="m14 6 4 4"/></symbol>
+    <symbol id="i-fuel" viewBox="0 0 24 24"><path d="M3 22V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v17"/><path d="M13 10h4a2 2 0 0 1 2 2v6a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V9l-3-3"/><rect x="5" y="6" width="6" height="5" rx="1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  </defs>
+</svg>
+
+<!-- ======================== Background ======================== -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-art"></div>
+  <div class="bg-glow"></div>
+  <div class="bg-grain"></div>
+</div>
+
+<!-- ======================== Titlebar ======================== -->
+<header class="titlebar pywebview-drag-region">
+  <div class="tb-left pywebview-drag-region">
+    <div class="brand-group pywebview-drag-region">
+      <svg class="ic app-logo pywebview-drag-region"><use href="#i-mark"/></svg>
+      <span class="brand-name brand-font pywebview-drag-region">Anime Expeditions</span>
+    </div>
+
+    <div class="pop-anchor" id="updAnchor">
+      <button class="ver-pill" id="updBtn" title="Check updates">
+        <svg class="ic"><use href="#i-refresh"/></svg>
+        <span class="mono" id="appVer">v2.0.0</span>
+      </button>
+      <div class="upd-pop glass-card" id="updPop" hidden>
+        <div class="upd-pop-head">
+          <strong id="updPopTitle">Update available</strong>
+          <span class="chip mono">2.0.0</span>
+        </div>
+        <div class="changelog" id="updChangelog"></div>
+        <button class="btn btn-primary btn-sm upd-dl" id="btnUpdDownload">
+          <span class="upd-dl-fill"></span>
+          <span class="upd-dl-label" data-i18n="upd_download">Download</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="pop-anchor" id="bellAnchor">
+      <button class="icon-btn bell-btn" id="bellBtn" aria-label="Notifications" title="Notifications">
+        <svg class="ic"><use href="#i-bell"/></svg>
+      </button>
+      <div class="bell-pop glass-card" id="bellPop" hidden>
+        <div class="section-label" data-i18n="bell_title">System warnings</div>
+        <div id="bellList"></div>
+      </div>
+    </div>
+
+    <button class="lang-flag" id="langToggle" aria-label="Switch language">
+      <span class="flag flag-en">
+        <svg viewBox="0 0 20 13"><rect width="20" height="13" fill="#f2f2f2"/><g fill="#d64545"><rect y="0" width="20" height="1.45"/><rect y="2.9" width="20" height="1.45"/><rect y="5.8" width="20" height="1.45"/><rect y="8.7" width="20" height="1.45"/><rect y="11.55" width="20" height="1.45"/></g><rect width="8.5" height="7.25" fill="#3c5b9b"/></svg>
+      </span>
+      <span class="flag flag-ru">
+        <svg viewBox="0 0 20 13"><rect width="20" height="13" fill="#f2f2f2"/><rect y="4.33" width="20" height="4.34" fill="#3a6bc7"/><rect y="8.66" width="20" height="4.34" fill="#d64545"/></svg>
+      </span>
+    </button>
+  </div>
+
+  <nav class="topnav pywebview-drag-region" aria-label="Screens">
+    <button class="tnav is-active" data-screen="home">
+      <svg class="ic"><use href="#i-home"/></svg><span data-i18n="nav_home">Home</span>
+    </button>
+    <button class="tnav" data-screen="tasks">
+      <svg class="ic"><use href="#i-queue"/></svg><span data-i18n="nav_tasks">Tasks</span>
+    </button>
+    <button class="tnav" data-screen="scenarios">
+      <svg class="ic"><use href="#i-blocks"/></svg><span data-i18n="nav_scenarios">Scenarios</span>
+    </button>
+    <button class="tnav" data-screen="resources">
+      <svg class="ic"><use href="#i-shield"/></svg><span data-i18n="nav_resources">Resources</span>
+    </button>
+    <button class="tnav" data-screen="recordings">
+      <svg class="ic"><use href="#i-rec"/></svg><span data-i18n="nav_recordings">Recordings</span>
+    </button>
+    <button class="tnav" data-screen="settings">
+      <svg class="ic"><use href="#i-sliders"/></svg><span data-i18n="nav_settings">Settings</span>
+    </button>
+    <button class="tnav" data-screen="help">
+      <svg class="ic"><use href="#i-help"/></svg><span data-i18n="nav_help">Help</span>
+    </button>
+  </nav>
+
+  <div class="tb-right pywebview-drag-region">
+    <div class="win-controls mac-traffic-lights" aria-label="Window controls">
+      <button class="win-btn win-min" id="tlMin" aria-label="Minimize">
+        <svg viewBox="0 0 12 12" class="mac-glyph mac-glyph-min"><path d="M2.5 6h7"/></svg>
+      </button>
+      <button class="win-btn win-max" id="tlMax" aria-label="Maximize">
+        <svg viewBox="0 0 12 12" class="mac-glyph mac-glyph-max">
+          <polygon points="2.5,2.5 7.5,2.5 2.5,7.5"/>
+          <polygon points="9.5,9.5 4.5,9.5 9.5,4.5"/>
+        </svg>
+      </button>
+      <button class="win-btn win-close" id="tlClose" aria-label="Close">
+        <svg viewBox="0 0 12 12" class="mac-glyph mac-glyph-close"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ======================== Content ======================== -->
+<main class="content" id="content">
+
+  <!-- ============================================================ HOME -->
+  <!-- ============================================================ HOME -->
+  <section class="screen is-active screen-home" id="screen-home">
+    <!-- Верхний ярус: Статичный слот Roblox 1152x756 и гибкая боковая панель справа -->
+    <div class="home-grid" id="homeGrid">
+      <!-- Статичный слот Roblox: строго 1152 × 756px, зафиксирован в (x=0, y=44), не двигается и не скрывается -->
+      <div class="dash-slot slot-main" id="slotMain" data-slot="slotMain">
+        <div class="glass-card game-card dash-card is-static" id="gameCard" data-card-id="game">
+          <div class="game-stage" id="gameStage">
+            <div class="game-frame" id="gameFrame">
+              <div class="game-empty" id="gameEmpty">
+                <svg class="ic ic-lg"><use href="#i-window"/></svg>
+                <strong data-i18n="game_title">Roblox docks here</strong>
+                <span id="gameEmptySub">Embedded game window · 1152 × 756</span>
+                <button class="btn btn-ghost btn-sm" id="btnAttach">
+                  <svg class="ic"><use href="#i-link"/></svg><span data-i18n="attach">Attach window</span>
+                </button>
+                <div class="game-res-wrap">
+                  <div class="game-res-title" data-i18n="game_resolution">Game Resolution</div>
+                  <div class="game-res-pills" id="gameResPills">
+                    <button type="button" class="res-pill is-on" data-w="1152" data-h="756">1152×756</button>
+                    <button type="button" class="res-pill" data-w="1024" data-h="768">1024×768</button>
+                    <button type="button" class="res-pill" data-w="1024" data-h="672">1024×672</button>
+                    <button type="button" class="res-pill" data-w="960" data-h="630">960×630</button>
+                    <button type="button" class="res-pill" data-w="800" data-h="600">800×600</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Боковая колонка справа от Roblox: забирает всю ширину монитора (calc(100% - 1152px)) -->
+      <div class="home-side" id="homeSide">
+        <!-- Плашка восстановления скрытых карточек (появляется при скрытии любой карточки) -->
+        <div class="dash-restore-banner" id="dashRestoreBanner" hidden>
+          <div class="restore-banner-left">
+            <svg class="ic restore-banner-ic"><use href="#i-eye-off"/></svg>
+            <span class="restore-banner-label" data-i18n="hidden_cards_label">Hidden:</span>
+            <div class="restore-banner-chips" id="restoreBannerChips"></div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-xs restore-all-btn" id="btnRestoreAllCards" title="Restore all hidden cards">
+            <svg class="ic"><use href="#i-refresh"/></svg>
+            <span data-i18n="btn_restore_all">Restore all</span>
+          </button>
+        </div>
+
+        <div class="dash-slot slot-side-top" id="slotSideTop" data-slot="slotSideTop">
+          <!-- Карточка управления (Controls) -->
+          <div class="glass-card run-card dash-card is-idle" id="runCard" data-card-id="controls">
+            <div class="run-card-top">
+              <div class="run-card-eyebrow">
+                <div class="card-drag-handle">
+                  <svg class="ic grip card-drag-grip"><use href="#i-grip"/></svg>
+                </div>
+                <span data-i18n="card_macro_engine">Macro Engine</span>
+              </div>
+              <div class="run-card-top-actions">
+                <div class="run-mode-chip" id="runModeChip" style="cursor: pointer;" title="Toggle Auto / Replay mode">
+                  <span class="mode-label" data-i18n="runmode">Mode</span>
+                  <span class="chip chip-mode" id="runModeText" data-i18n="mode_auto">Auto</span>
+                </div>
+                <button type="button" class="btn edit-layout-btn" id="btnEditLayout" aria-label="Customize" title="Customize dashboard">
+                  <svg class="ic"><use href="#i-sliders"/></svg>
+                  <span data-i18n="dash_customize">Customize</span>
+                </button>
+                <button type="button" class="card-hide-btn" title="Hide card">&times;</button>
+              </div>
+            </div>
+            <div class="run-state">
+              <div class="run-state-header">
+                <span class="run-label" id="runStateLabel" data-i18n="task_queue_title">Task Queue</span>
+              </div>
+            </div>
+            <div class="run-controls">
+              <button class="btn btn-primary" id="btnStart"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="btn_start">Start</span><kbd class="btn-kbd">F1</kbd></button>
+              <button class="btn btn-ghost" id="btnPause" disabled><svg class="ic"><use href="#i-pause"/></svg><span id="btnPauseText" data-i18n="btn_pause">Pause</span><kbd class="btn-kbd">F5</kbd></button>
+              <button class="btn btn-danger-ghost" id="btnStop" disabled><svg class="ic"><use href="#i-stop"/></svg><span data-i18n="btn_stop">Stop</span><kbd class="btn-kbd">F2</kbd></button>
+            </div>
+            <div class="run-quick-actions-grid">
+              <button type="button" class="btn btn-ghost quick-action-btn" id="btnAutoRestartLoop" title="Auto-Restart Loop: Instant restart on win/loss">
+                <svg class="ic"><use href="#i-refresh"/></svg>
+                <span class="qa-text" data-i18n="auto_restart_loop">Auto-Restart</span>
+                <kbd class="btn-kbd" id="kbdAutoRestart">Alt+F5</kbd>
+              </button>
+              <button type="button" class="btn btn-ghost quick-action-btn" id="btnVipRejoin" title="VIP Lobby Rejoin: Auto reconnect to private server">
+                <svg class="ic"><use href="#i-link"/></svg>
+                <span class="qa-text" data-i18n="vip_rejoin">VIP Rejoin</span>
+                <kbd class="btn-kbd" id="kbdVipRejoin">Alt+F6</kbd>
+              </button>
+            </div>
+            <!-- Кастомизируемый контейнер подблоков (от Стрика до Автоматизаций) -->
+            <div class="run-sub-blocks-wrap" id="runSubBlocksWrap">
+              <!-- 1. Стрик и статистика -->
+              <div class="run-sub-block run-telemetry-strip" id="runTelemetryStrip" data-sub-id="streak">
+                <div class="sub-block-handle" title="Reorder / Hide">
+                  <div class="sub-block-grip"><svg class="ic grip"><use href="#i-grip"/></svg><span data-i18n="sub_streak">Streak</span></div>
+                  <div class="sub-block-actions">
+                    <button type="button" class="sub-btn sub-btn-hide" title="Hide section" aria-label="Hide section">&times;</button>
+                  </div>
+                </div>
+                <div class="telemetry-cell" title="Current consecutive wins">
+                  <div class="telemetry-tag">
+                    <svg class="ic telemetry-ic ic-flame"><use href="#i-flame"/></svg>
+                    <span class="telemetry-label" data-i18n="hud_streak">STREAK</span>
+                  </div>
+                  <span class="telemetry-val mono" id="runStreakCount">0</span>
+                </div>
+                <div class="telemetry-divider"></div>
+                <div class="telemetry-cell" title="Best win streak this session">
+                  <div class="telemetry-tag">
+                    <svg class="ic telemetry-ic ic-crown"><use href="#i-crown"/></svg>
+                    <span class="telemetry-label" data-i18n="hud_record">RECORD</span>
+                  </div>
+                  <span class="telemetry-val mono" id="runBestStreakCount">0</span>
+                </div>
+                <div class="telemetry-divider"></div>
+                <div class="telemetry-cell" id="runChallengeCell" title="Time until next Challenge stage / Session win rate">
+                  <div class="telemetry-tag">
+                    <svg class="ic telemetry-ic ic-swords"><use href="#i-swords"/></svg>
+                    <span class="telemetry-label" data-i18n="hud_challenge">CHALLENGE</span>
+                  </div>
+                  <span class="telemetry-val mono" id="runChallengeTimer">—</span>
+                </div>
+              </div>
+
+              <!-- 2. Параметры задачи -->
+              <div class="run-sub-block run-meta-grid" id="runMetaGrid" data-sub-id="meta">
+                <div class="sub-block-handle" title="Reorder / Hide">
+                  <div class="sub-block-grip"><svg class="ic grip"><use href="#i-grip"/></svg><span data-i18n="sub_meta">Task Details</span></div>
+                  <div class="sub-block-actions">
+                    <button type="button" class="sub-btn sub-btn-hide" title="Hide section" aria-label="Hide section">&times;</button>
+                  </div>
+                </div>
+                <div class="run-meta-item">
+                  <span class="run-meta-label" data-i18n="lbl_task">Task</span>
+                  <span class="run-meta-val" id="runMetaTask">—</span>
+                </div>
+                <div class="run-meta-item">
+                  <span class="run-meta-label" data-i18n="lbl_action">Action</span>
+                  <span class="run-meta-val" id="runMetaAction">—</span>
+                </div>
+                <div class="run-meta-item">
+                  <span class="run-meta-label" data-i18n="lbl_repeat">Repeat</span>
+                  <span class="run-meta-val mono" id="runMetaRepeat">—</span>
+                </div>
+                <div class="run-meta-item">
+                  <span class="run-meta-label" data-i18n="lbl_map">Map</span>
+                  <span class="run-meta-val" id="runMetaMap">—</span>
+                </div>
+                <div class="run-meta-item">
+                  <span class="run-meta-label" data-i18n="lbl_mode">Mode</span>
+                  <span class="run-meta-val" id="runMetaMode">—</span>
+                </div>
+                <div class="run-meta-item">
+                  <span class="run-meta-label" data-i18n="lbl_last_run">Last Run</span>
+                  <span class="run-meta-val mono" id="runMetaLastRun">—</span>
+                </div>
+              </div>
+
+              <!-- 3. Очередь задач -->
+              <div class="run-sub-block mini-queue-wrap" id="miniQueueWrap" data-sub-id="queue">
+                <div class="sub-block-handle" title="Reorder / Hide">
+                  <div class="sub-block-grip"><svg class="ic grip"><use href="#i-grip"/></svg><span data-i18n="sub_queue">Queue</span></div>
+                  <div class="sub-block-actions">
+                    <button type="button" class="sub-btn sub-btn-hide" title="Hide section" aria-label="Hide section">&times;</button>
+                  </div>
+                </div>
+                <div class="mini-queue-header">
+                  <div class="mini-queue-title-box">
+                    <span class="mini-queue-title" data-i18n="lbl_queue_preview">Upcoming Queue</span>
+                    <span class="mini-queue-count" id="miniQueueCount">0</span>
+                  </div>
+                  <div class="mini-queue-actions">
+                    <button type="button" class="btn btn-ghost btn-xxs mini-queue-manage-btn" id="btnMiniQueueSkip" title="Skip current task">
+                      <span data-i18n="skip_task">Skip</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-xxs mini-queue-manage-btn" id="btnMiniQueueManage" title="Manage tasks in queue">
+                      <span data-i18n="manage_tasks">Manage</span>
+                      <svg class="ic"><use href="#i-chevron-right"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="mini-queue-list" id="miniQueueList">
+                  <!-- Populated dynamically via JS -->
+                </div>
+              </div>
+
+              <!-- 4. Блок фоновых сервисов автоматизации (Active Automations) -->
+              <div class="run-sub-block automations-wrap" id="automationsWrap" data-sub-id="automations">
+                <div class="sub-block-handle" title="Reorder / Hide">
+                  <div class="sub-block-grip"><svg class="ic grip"><use href="#i-grip"/></svg><span data-i18n="sub_automations">Automations</span></div>
+                  <div class="sub-block-actions">
+                    <button type="button" class="sub-btn sub-btn-hide" title="Hide section" aria-label="Hide section">&times;</button>
+                  </div>
+                </div>
+                <div class="automations-header">
+                  <div class="automations-title-box">
+                    <span class="automations-title" data-i18n="sec_automations">Active Automations</span>
+                  </div>
+                  <span class="automations-counter" id="automationsActiveCount">0/4 active</span>
+                </div>
+                <div class="automations-grid" id="automationsGrid">
+                  <!-- 1. Auto-Shop -->
+                  <div class="auto-cell" id="autoCellShop" data-auto-id="shop" role="button" tabindex="0" title="Auto-Shop: Click to toggle ON/OFF">
+                    <button type="button" class="auto-cell-hide-btn" title="Hide Auto-Shop">&times;</button>
+                    <div class="auto-cell-head">
+                      <div class="auto-cell-title">
+                        <svg class="ic auto-cell-ic"><use href="#i-cart"/></svg>
+                        <span class="auto-cell-name" data-i18n="auto_shop">Auto-Shop</span>
+                      </div>
+                      <span class="auto-cell-pill mono" id="autoShopPill">OFF</span>
+                    </div>
+                    <div class="auto-cell-body">
+                      <span class="auto-cell-sub" id="autoShopSub">Off</span>
+                    </div>
+                  </div>
+
+                  <!-- 2. Bounty Hunter -->
+                  <div class="auto-cell" id="autoCellBounty" data-auto-id="bounty" role="button" tabindex="0" title="Bounty Hunter: Click to toggle ON/OFF">
+                    <button type="button" class="auto-cell-hide-btn" title="Hide Bounty">&times;</button>
+                    <div class="auto-cell-head">
+                      <div class="auto-cell-title">
+                        <svg class="ic auto-cell-ic"><use href="#i-target"/></svg>
+                        <span class="auto-cell-name" data-i18n="bounty">Bounty</span>
+                      </div>
+                      <span class="auto-cell-pill mono" id="autoBountyPill">OFF</span>
+                    </div>
+                    <div class="auto-cell-body">
+                      <span class="auto-cell-sub" id="autoBountySub">Off</span>
+                    </div>
+                  </div>
+
+                  <!-- 3. Auto-Crafting -->
+                  <div class="auto-cell" id="autoCellCraft" data-auto-id="craft" role="button" tabindex="0" title="Auto-Craft: Click to toggle ON/OFF">
+                    <button type="button" class="auto-cell-hide-btn" title="Hide Crafting">&times;</button>
+                    <div class="auto-cell-head">
+                      <div class="auto-cell-title">
+                        <svg class="ic auto-cell-ic"><use href="#i-hammer"/></svg>
+                        <span class="auto-cell-name" data-i18n="crafting">Crafting</span>
+                      </div>
+                      <span class="auto-cell-pill mono" id="autoCraftPill">OFF</span>
+                    </div>
+                    <div class="auto-cell-body">
+                      <span class="auto-cell-sub" id="autoCraftSub">Off</span>
+                    </div>
+                  </div>
+
+                  <!-- 4. Fuel Watchdog -->
+                  <div class="auto-cell" id="autoCellFuel" data-auto-id="fuel" role="button" tabindex="0" title="Fuel Watchdog: Click to toggle ON/OFF">
+                    <button type="button" class="auto-cell-hide-btn" title="Hide Fuel">&times;</button>
+                    <div class="auto-cell-head">
+                      <div class="auto-cell-title">
+                        <svg class="ic auto-cell-ic"><use href="#i-fuel"/></svg>
+                        <span class="auto-cell-name" data-i18n="fuel">Fuel</span>
+                      </div>
+                      <span class="auto-cell-pill mono" id="autoFuelPill">OFF</span>
+                    </div>
+                    <div class="auto-cell-body">
+                      <span class="auto-cell-sub" id="autoFuelSub">Off</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Разделитель между карточками боковой колонки -->
+        <div class="dash-resizer dash-resizer-side" id="sideResizer" title="Resize panels">
+          <div class="resizer-handle"></div>
+        </div>
+
+        <div class="dash-slot slot-side-bottom" id="slotSideBottom" data-slot="slotSideBottom">
+          <!-- Карточка статистики сессии (Session) -->
+          <div class="glass-card stats-card dash-card" id="statsCard" data-card-id="stats">
+            <div class="stats-head-row">
+              <div class="card-head-left">
+                <div class="card-drag-handle">
+                  <svg class="ic grip card-drag-grip"><use href="#i-grip"/></svg>
+                </div>
+                <div class="section-label" data-i18n="sec_session">Session</div>
+              </div>
+              <div class="stat-tiles-manage" id="statTilesManage">
+                <button type="button" class="btn btn-ghost btn-xs stat-restore-btn" id="btnRestoreStats" title="Reset stats">
+                  <svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="btn_restore_stats">Reset stats</span>
+                </button>
+                <div class="stat-add-wrap" id="statAddWrap">
+                  <button type="button" class="btn btn-ghost btn-xs stat-add-btn" id="btnAddStatTile" title="Add stat tile">
+                    <svg class="ic"><use href="#i-plus"/></svg>
+                  </button>
+                  <div class="stat-add-pop glass-card" id="statAddPop" hidden>
+                    <div class="stat-add-pop-head">
+                      <span data-i18n="stat_add_tile_title">Add to Session</span>
+                    </div>
+                    <div class="stat-add-list" id="statAddList"></div>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="card-hide-btn" title="Hide card">&times;</button>
+            </div>
+            <div class="stat-grid" id="statGrid">
+              <div class="stat" data-stat-id="runs">
+                <button type="button" class="stat-remove-btn" data-hide-stat="runs" title="Hide Runs">&times;</button>
+                <span class="stat-num" id="stRuns">0</span>
+                <span class="stat-cap" data-i18n="st_runs">Runs</span>
+              </div>
+              <div class="stat" data-stat-id="wins">
+                <button type="button" class="stat-remove-btn" data-hide-stat="wins" title="Hide Wins">&times;</button>
+                <span class="stat-num good" id="stWins">0</span>
+                <span class="stat-cap" data-i18n="st_wins">Wins</span>
+              </div>
+              <div class="stat" data-stat-id="losses">
+                <button type="button" class="stat-remove-btn" data-hide-stat="losses" title="Hide Losses">&times;</button>
+                <span class="stat-num bad" id="stLoss">0</span>
+                <span class="stat-cap" data-i18n="st_losses">Losses</span>
+              </div>
+              <div class="stat" data-stat-id="time">
+                <button type="button" class="stat-remove-btn" data-hide-stat="time" title="Hide Time">&times;</button>
+                <span class="stat-num mono" id="stTime">00:00</span>
+                <span class="stat-cap" data-i18n="st_time">Time</span>
+              </div>
+            </div>
+            <div class="stats-foot">
+              <span><span data-i18n="all_time">All time</span> <strong class="mono" id="stAllTime">0 / 0</strong></span>
+              <span><span data-i18n="rate">Rate</span> <strong class="mono" id="stRate">-</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Нижний ярус: строго ниже y=756 контента (y=800 окна), поэтому Roblox НИКОГДА его не перекрывает -->
+    <div class="home-lower" id="homeLower">
+      <div class="dash-slot slot-lower-left" id="slotLowerLeft" data-slot="slotLowerLeft">
+        <!-- Журнал процесса (Process Log) -->
+        <div class="glass-card log-card dash-card" id="logCard" data-card-id="log">
+          <div class="card-head">
+            <div class="card-head-left">
+              <div class="card-drag-handle">
+                <svg class="ic grip card-drag-grip"><use href="#i-grip"/></svg>
+              </div>
+              <div class="section-label">
+                <span class="live-dot"></span>
+                <span data-i18n="sec_log">Process Log</span>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="icon-btn" id="logExpand" title="Expand / Restore"><svg class="ic"><use href="#i-maximize"/></svg></button>
+              <button class="icon-btn" id="logCopy" title="Copy log"><svg class="ic"><use href="#i-copy"/></svg></button>
+              <button class="icon-btn" id="logClear" title="Clear log"><svg class="ic"><use href="#i-trash"/></svg></button>
+              <button type="button" class="card-hide-btn" title="Hide card">&times;</button>
+            </div>
+          </div>
+          <div class="log-feed" id="logFeed" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <!-- Разделитель между Журналом и Историей -->
+      <div class="dash-resizer dash-resizer-lower" id="lowerResizer" title="Resize log / history width">
+        <div class="resizer-handle"></div>
+      </div>
+
+      <div class="dash-slot slot-lower-right" id="slotLowerRight" data-slot="slotLowerRight">
+        <!-- История забегов (Run History) -->
+        <div class="glass-card history-card dash-card" id="historyCard" data-card-id="history">
+          <div class="card-head">
+            <div class="card-head-left">
+              <div class="card-drag-handle">
+                <svg class="ic grip card-drag-grip"><use href="#i-grip"/></svg>
+              </div>
+              <div class="section-label">
+                <span data-i18n="sec_hist">Run History</span>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="icon-btn" id="histExpand" title="Expand / Restore"><svg class="ic"><use href="#i-maximize"/></svg></button>
+              <button class="icon-btn" id="histClear" title="Clear history"><svg class="ic"><use href="#i-trash"/></svg></button>
+              <button type="button" class="card-hide-btn" title="Hide card">&times;</button>
+            </div>
+          </div>
+          <div class="hist-list" id="histList">
+            <div class="hist-empty" data-i18n="no_runs_yet">No runs yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ TASKS -->
+  <section class="screen" id="screen-tasks">
+    <div class="tasks-layout">
+      <!-- Левая колонка: Очередь задач и Пресеты -->
+      <div class="tasks-col-left">
+        <div class="glass-card">
+          <div class="card-head">
+            <div style="display: flex; align-items: center;">
+              <div class="section-label" data-i18n="task_queue">Task Queue</div>
+              <span id="taskQueueCount" class="task-count-pill mono">0 tasks</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-ghost btn-xs" id="btnImportTasks" title="Import tasks from JSON" data-i18n-title="tt_import_tasks"><svg class="ic"><use href="#i-download"/></svg><span data-i18n="import">Import</span></button>
+              <button class="btn btn-ghost btn-xs" id="btnExportTasks" title="Export tasks to JSON" data-i18n-title="tt_export_tasks"><svg class="ic"><use href="#i-share"/></svg><span data-i18n="export">Export</span></button>
+              <button class="btn btn-danger-ghost btn-xs" id="btnClearTasks" title="Clear all tasks" data-i18n-title="tt_clear_tasks"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="clear">Clear</span></button>
+            </div>
+          </div>
+
+          <!-- Панель управления сохранёнными пресетами -->
+          <div class="tasks-presets-bar">
+            <label class="select-wrap" style="flex: 1; min-width: 0;" title="Saved task presets on this machine" data-i18n-title="tt_task_presets">
+              <select id="selTaskPreset">
+                <option value="" data-i18n="opt_no_presets">No saved presets</option>
+              </select>
+            </label>
+            <button class="btn btn-ghost btn-xs" id="btnLoadTaskPreset" title="Load selected preset" data-i18n-title="tt_load_preset" data-i18n="btn_load">Load</button>
+            <input type="text" id="inpTaskPresetName" class="tasks-preset-input" placeholder="Preset name" spellcheck="false" title="Preset name" data-i18n-placeholder="ph_preset_name" data-i18n-title="tt_preset_name">
+            <button class="btn btn-primary btn-xs" id="btnSaveTaskPreset" title="Save current queue as preset" data-i18n-title="tt_save_preset" data-i18n="btn_save">Save</button>
+            <button class="btn btn-danger-ghost btn-xs" id="btnDeleteTaskPreset" title="Delete preset" data-i18n-title="tt_del_preset"><svg class="ic"><use href="#i-trash"/></svg></button>
+            <button class="btn btn-ghost btn-xs" id="btnOpenTaskPresetsFolder" title="Open presets folder in Explorer" data-i18n-title="tt_folder_presets"><svg class="ic"><use href="#i-folder"/></svg></button>
+          </div>
+
+          <!-- Список задач в очереди -->
+          <div id="taskQueueList" class="tasks-list">
+            <!-- Динамически рендерится из realTasksList -->
+          </div>
+
+          <button class="add-row" id="btnNewTask"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="btn_add_task">+ Add Task</span></button>
+        </div>
+      </div>
+
+      <!-- Правая колонка: Task Builder (редактор выбранной задачи) -->
+      <div class="tasks-col-right">
+        <div class="glass-card task-builder-card" id="taskBuilderCard">
+          <div class="card-head">
+            <div>
+              <div class="section-label" data-i18n="task_builder">Task Builder</div>
+              <span id="taskBuilderSubtitle" class="task-builder-sub" data-i18n="sub_select_task">Select a task on the left to edit</span>
+            </div>
+            <div class="card-actions" id="taskBuilderActions" style="display: none;">
+              <button class="btn btn-ghost btn-xs" id="btnCloneTask" title="Clone this task" data-i18n-title="tt_clone_task"><svg class="ic"><use href="#i-copy"/></svg><span data-i18n="btn_clone">Clone</span></button>
+              <button class="btn btn-danger-ghost btn-xs" id="btnDeleteTask" title="Delete this task" data-i18n-title="tt_del_task"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="btn_delete">Delete</span></button>
+            </div>
+          </div>
+
+          <div id="taskBuilderBody" class="task-builder-body">
+            <div class="empty-task-builder">
+              <svg class="ic"><use href="#i-queue"/></svg>
+              <span data-i18n="empty_task_builder_desc">Select a task on the left to configure it, or click "+ Add Task" to create one.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ SCENARIOS -->
+  <section class="screen" id="screen-scenarios">
+
+    <div class="glass-card scen-bar">
+      <div class="scen-title">
+        <svg class="ic scen-ic"><use href="#i-blocks"/></svg>
+        <div>
+          <strong id="scenTitle">Inf Summer</strong>
+          <span id="scenStats">4 phases · 0 blocks</span>
+        </div>
+      </div>
+      <div class="scen-actions">
+        <div class="scen-name-wrap">
+          <input type="text" id="scenNameInput" class="scen-name-input" placeholder="Scenario name" spellcheck="false" title="Scenario name" data-i18n-placeholder="ph_scen_name" data-i18n-title="tt_scen_name">
+        </div>
+        <label class="select-wrap" title="Select scenario" data-i18n-title="tt_select_scen">
+          <select id="scenSelect"></select>
+        </label>
+        <button class="btn btn-primary btn-sm" id="btnSaveScen" title="Save scenario" data-i18n-title="tt_save_scen">
+          <svg class="ic"><use href="#i-save"/></svg><span data-i18n="btn_save">Save</span>
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btnNewScen" title="New scenario" data-i18n-title="tt_new_scen">
+          <svg class="ic"><use href="#i-plus"/></svg><span data-i18n="btn_new">New</span>
+        </button>
+        <button class="btn btn-ghost btn-sm btn-danger-hover" id="btnDelScen" title="Delete loaded scenario" data-i18n-title="tt_del_scen">
+          <svg class="ic"><use href="#i-trash"/></svg>
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btnFolderScen" title="Open templates folder in Explorer" data-i18n-title="tt_folder_scen">
+          <svg class="ic"><use href="#i-folder"/></svg>
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btnTestRun" title="Validate all blocks in scenario" data-i18n-title="tt_validate_scen">
+          <svg class="ic"><use href="#i-play"/></svg><span data-i18n="btn_test_run">Test run</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="glass-card scen-guide-card" id="scenGuideCard">
+      <div class="scen-guide-head">
+        <div class="scen-guide-title">
+          <svg class="ic"><use href="#i-help"/></svg>
+          <span data-i18n="scen_guide_title">How Scenarios Work (Execution Phases)</span>
+        </div>
+        <button class="btn btn-ghost btn-xs" id="btnToggleScenGuide" title="Toggle guide" data-i18n-title="tt_toggle_guide">
+          <span id="scenGuideToggleText" data-i18n="scen_guide_hide">Hide</span>
+        </button>
+      </div>
+      <div class="scen-guide-body" id="scenGuideBody">
+        <div class="scen-guide-steps">
+          <div class="guide-step">
+            <div class="guide-num">1</div>
+            <div>
+              <strong data-i18n="scen_g1_title">Pre Start (Initial Setup)</strong>
+              <p data-i18n="scen_g1_desc">Runs ONCE when match starts before waves appear. Use for: walk path, hotbar selection, first fishing rod cast, or starter unit placements.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">2</div>
+            <div>
+              <strong data-i18n="scen_g2_title">Battle (Combat Flow)</strong>
+              <p data-i18n="scen_g2_desc">Runs DURING the match. Use for: wave-triggered placements, unit upgrades, selling units, and detecting victory/defeat outcome screens.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">3</div>
+            <div>
+              <strong data-i18n="scen_g3_title">Loop A & B (Continuous Loops)</strong>
+              <p data-i18n="scen_g3_desc">Runs REPEATEDLY alongside Battle throughout the entire game. Perfect for fishing (Loop A: cast + reel in), continuous clicking, or collecting orbs.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scen-cols">
+      <div class="scen-col-wrap">
+        <div class="scen-col-head">
+          <div>
+            <div class="section-label"><span data-i18n="scen_prestart">Pre Start</span> <em class="label-side" data-i18n="scen_prestart_sub">setup</em></div>
+            <div class="scen-col-desc" data-i18n="scen_prestart_hint">Before round: walk, equip, initial actions</div>
+          </div>
+          <span class="scen-col-count" id="countPrestart">0</span>
+        </div>
+        <div class="glass-card block-col" data-col="prestart" id="colPrestart"></div>
+      </div>
+
+      <div class="scen-col-wrap">
+        <div class="scen-col-head">
+          <div>
+            <div class="section-label"><span data-i18n="scen_battle">Battle</span> <em class="label-side" data-i18n="scen_battle_sub">combat</em></div>
+            <div class="scen-col-desc" data-i18n="scen_battle_hint">During battle: wave placements, upgrades, results</div>
+          </div>
+          <span class="scen-col-count" id="countBattle">0</span>
+        </div>
+        <div class="glass-card block-col" data-col="battle" id="colBattle"></div>
+      </div>
+
+      <div class="scen-col-wrap">
+        <div class="scen-col-head">
+          <div>
+            <div class="section-label"><span data-i18n="scen_loop_a">Loop A</span> <em class="label-side" data-i18n="scen_loop_sub">repeats</em></div>
+            <div class="scen-col-desc" data-i18n="scen_loop_a_hint">Main loop: continuous casting, clicks, catches</div>
+          </div>
+          <span class="scen-col-count" id="countLoopA">0</span>
+        </div>
+        <div class="glass-card block-col" data-col="loop_a" id="colLoopA"></div>
+      </div>
+
+      <div class="scen-col-wrap">
+        <div class="scen-col-head">
+          <div>
+            <div class="section-label"><span data-i18n="scen_loop_b">Loop B</span> <em class="label-side" data-i18n="scen_loop_sub">repeats</em></div>
+            <div class="scen-col-desc" data-i18n="scen_loop_b_hint">Secondary loop: parallel orb collection or skill spam</div>
+          </div>
+          <span class="scen-col-count" id="countLoopB">0</span>
+        </div>
+        <div class="glass-card block-col" data-col="loop_b" id="colLoopB"></div>
+      </div>
+    </div>
+
+    <div class="glass-card scen-palette-card">
+      <div class="scen-palette-head">
+        <div class="section-label" data-i18n="scen_palette">Palette</div>
+        <span class="scen-palette-hint" data-i18n="scen_palette_hint">Click to add to active phase, or drag directly into any column</span>
+      </div>
+      <div class="chip-row" id="palette">
+        <button class="chip chip-btn" draggable="true" data-kind="place_unit"><svg class="ic"><use href="#i-up"/></svg><span data-i18n="scen_place_unit">Place Unit</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="upgrade_unit"><svg class="ic"><use href="#i-up"/></svg><span data-i18n="scen_upgrade_unit">Upgrade Unit</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="auto_upgrade_unit"><svg class="ic"><use href="#i-up"/></svg><span data-i18n="scen_auto_upgrade">Auto Upgrade</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="sell_unit"><svg class="ic"><use href="#i-tag"/></svg><span data-i18n="scen_sell_unit">Sell Unit</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="target_priority"><svg class="ic"><use href="#i-activity"/></svg><span data-i18n="scen_target_priority">Target Priority</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="walk_path"><svg class="ic"><use href="#i-route"/></svg><span data-i18n="scen_walk_path">Walk Path</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="walk"><svg class="ic"><use href="#i-route"/></svg><span data-i18n="scen_walk">Walk</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="wait_ms"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="scen_wait_ms">Wait (ms)</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="wait_wave"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="scen_wait_wave">Wait Wave</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="leave_at_minute"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="scen_leave_minute">Leave Minute</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="click"><svg class="ic"><use href="#i-mouse"/></svg><span data-i18n="scen_click">Click</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="drag"><svg class="ic"><use href="#i-mouse"/></svg><span data-i18n="scen_drag">Drag</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="send_key"><svg class="ic"><use href="#i-sliders"/></svg><span data-i18n="scen_send_key">Send Key</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="record"><svg class="ic"><use href="#i-rec"/></svg><span data-i18n="scen_record">Record</span></button>
+        <button class="chip chip-btn" draggable="true" data-kind="detect"><svg class="ic"><use href="#i-branch"/></svg><span data-i18n="scen_detect">Detect</span></button>
+      </div>
+    </div>
+
+  </section>
+
+
+  <!-- ============================================================ RECORDINGS -->
+  <section class="screen" id="screen-recordings">
+
+    <div class="rec-grid">
+      <div class="glass-card rec-card">
+        <div class="rec-status" id="recStatus">
+          <i class="rec-dot" id="recDot"></i>
+          <div class="rec-status-main">
+            <strong id="recTitle" data-i18n="rec_status_not_rec">Not recording</strong>
+            <span id="recHint" data-i18n="rec_hint_hotkey">Recording runs entirely from the hotkey. Play one match by hand.</span>
+          </div>
+          <span class="rec-timer mono" id="recTimer">00:00</span>
+        </div>
+
+        <div class="section-label" data-i18n="rec_settings_title">Recorder Settings</div>
+        <div class="row-list">
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-shield"/></svg></div><div class="opt-main"><strong data-i18n="rec_req_focus">Require game in focus</strong><span data-i18n="rec_req_focus_desc">Pause playback when Roblox is hidden or loses focus</span></div><label class="switch"><input type="checkbox" id="swRecFocusOnly" checked><i></i></label></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-clock"/></svg></div><div class="opt-main"><strong data-i18n="rec_start_delay">Start delay</strong><span data-i18n="rec_start_delay_desc">Pause before the first replayed action</span></div>
+            <label class="select-wrap"><select id="selRecStartDelay"><option value="1000">1 s</option><option value="2000" selected>2 s</option><option value="3000">3 s</option><option value="5000">5 s</option></select></label>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-refresh"/></svg></div><div class="opt-main"><strong data-i18n="rec_loops">Loops</strong><span data-i18n="rec_loops_desc">Number of times to replay (0 or empty for endless)</span></div>
+            <input type="number" id="inpRecLoops" class="mono" style="width: 70px; padding: 4px 8px; border-radius: var(--r-sm, 6px); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--tx);" value="0" min="0" max="99999">
+          </div>
+        </div>
+        <div class="rec-empty-note" data-i18n="rec_note_f8">Press <kbd>F8</kbd> anywhere to start or stop recording. The macro records clicks, keys, and hold timings tick-for-tick with zero game injection.</div>
+      </div>
+
+      <div class="glass-card rec-lib">
+        <div class="card-head">
+          <div class="section-label" data-i18n="rec_library">Library</div>
+          <div class="card-actions" style="display: flex; gap: 6px;">
+            <button class="icon-btn" id="btnExportRecordings" title="Export bundle" data-i18n-title="tt_export_bundle"><svg class="ic"><use href="#i-save"/></svg></button>
+            <button class="icon-btn" id="btnImportRecordings" title="Import bundle" data-i18n-title="tt_import_bundle"><svg class="ic"><use href="#i-plus"/></svg></button>
+            <button class="icon-btn" id="btnOpenRecordingsFolder" title="Open folder" data-i18n-title="tt_open_folder"><svg class="ic"><use href="#i-folder"/></svg></button>
+          </div>
+        </div>
+        <div class="rec-list" id="recList">
+          <!-- Populated dynamically by renderRecordings() -->
+        </div>
+        <div class="rec-empty-note" data-i18n="rec_empty_note">A recording replays tick for tick. The macro needs no setup: no templates, no coordinates.</div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================ RESOURCES -->
+  <section class="screen" id="screen-resources">
+
+    <div class="tabs" id="resTabs">
+      <button class="tab is-on" data-rtab="crafting"><svg class="ic"><use href="#i-blocks"/></svg><span data-i18n="res_tab_crafting">Auto Crafting</span></button>
+      <button class="tab" data-rtab="fuel"><svg class="ic"><use href="#i-flame"/></svg><span data-i18n="res_tab_fuel">Auto Fuel</span></button>
+      <button class="tab" data-rtab="shop"><svg class="ic"><use href="#i-cart"/></svg><span data-i18n="res_tab_shop">Auto Shop</span></button>
+      <button class="tab" data-rtab="challenge"><svg class="ic"><use href="#i-shield"/></svg><span data-i18n="res_tab_challenge">Auto Challenge</span></button>
+    </div>
+
+    <!-- 1. Auto Crafting -->
+    <div class="tab-panel is-on" data-rpanel="crafting">
+      <div class="glass-card">
+        <div class="section-label" data-i18n="res_crafting_title">Auto Crafting</div>
+        <div class="row-list">
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-blocks"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_crafting_enable">Enable Auto Crafting</strong>
+              <span data-i18n="res_crafting_enable_desc">After every N qualifying wins, leaves to the Crafting area, crafts chosen sprites, then resumes farming</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="toggleCrafting" checked><i></i></label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-clock"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_craft_every">Craft every</strong>
+              <span><span data-i18n="res_craft_every_desc">Wins that count: Mastery (Story) and Challenge victories</span>. Progress: <b class="mono" id="craftingProgress">0 / 20</b></span>
+            </div>
+            <div class="chip-row">
+              <label class="select-wrap"><select id="craftingEvery"><option>10 wins</option><option selected>20 wins</option><option>30 wins</option><option>50 wins</option></select></label>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-droplet"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_sprites_craft">Sprites to Craft</strong>
+              <span data-i18n="res_sprites_desc">Priority list: Trait Crystal ×5, Mana Flask ×10, Cursed Boba ×2</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnCraftingSprites"><svg class="ic"><use href="#i-pencil"/></svg><span data-i18n="btn_choose_sprites">Choose sprites</span></button>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-refresh"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_reset_progress">Reset Progress</strong>
+              <span data-i18n="res_reset_progress_desc">Set the win counter back to 0</span>
+            </div>
+            <button class="btn btn-danger-ghost btn-sm" id="btnCraftingReset" data-i18n="btn_reset_counter">Reset counter</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Auto Fuel -->
+    <div class="tab-panel" data-rpanel="fuel">
+      <div class="glass-card">
+        <div class="section-label" data-i18n="res_fuel_title">Auto Fuel</div>
+        <div class="row-list">
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-flame"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_fuel_enable">Enable Auto Fuel</strong>
+              <span data-i18n="res_fuel_enable_desc">Refills fuel at safe Task Queue boundaries</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="toggleFuel" checked><i></i></label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-clock"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_refill_interval">Refill interval</strong>
+              <span data-i18n="res_refill_desc">Auto refills after 8 hours or numeric fuel duration</span>
+            </div>
+            <div class="chip-row">
+              <button class="chip is-active" id="btnFuelAuto" data-i18n="btn_auto_8h">Auto (8h)</button>
+              <label class="select-wrap"><select id="fuelInterval"><option>Every 30 min</option><option selected>Every 1 hour</option><option>Every 2 hours</option><option>Every 4 hours</option></select></label>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-gauge"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_resource_drill">Resource Drill</strong>
+              <span>Refill status: <span class="upd-ok">Ready</span> · next refill immediate</span>
+            </div>
+            <div class="chip-row">
+              <label class="switch"><input type="checkbox" checked><i></i></label>
+              <span class="chip mono">Max</span>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-gauge"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_gold_mine">Gold Mine</strong>
+              <span>Refill status: <span class="mono upd-check">in 4h 12m</span></span>
+            </div>
+            <div class="chip-row">
+              <label class="switch"><input type="checkbox" checked><i></i></label>
+              <span class="chip mono">Max</span>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-route"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_walking_paths">Walking Paths</strong>
+              <span data-i18n="res_paths_desc">Record and assign the three routes used inside Expedition Hub</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnFuelPaths"><svg class="ic"><use href="#i-route"/></svg><span data-i18n="btn_configure_paths">Configure paths</span></button>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-refresh"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_reset_fuel_timer">Reset Fuel Timer</strong>
+              <span data-i18n="res_reset_fuel_desc">Makes every enabled resource ready for an immediate refill</span>
+            </div>
+            <button class="btn btn-danger-ghost btn-sm" id="btnFuelReset" data-i18n="btn_reset_timer">Reset timer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Auto Shop -->
+    <div class="tab-panel" data-rpanel="shop">
+      <div class="glass-card">
+        <div class="section-label" data-i18n="res_shop_title">Auto Shop</div>
+        <div class="row-list">
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-cart"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_shop_enable">Enable Auto Shop</strong>
+              <span data-i18n="res_shop_enable_desc">Runs enabled shops at safe task boundaries, daily UTC reset</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="toggleShop" checked><i></i></label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-tag"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_gold_shop_order">Gold Shop purchase order</strong>
+              <span data-i18n="res_gold_shop_desc">Items are bought in priority order until sold out</span>
+            </div>
+            <span class="chip mono">Reset: 00:00 UTC</span>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-grip"/></svg></div>
+            <div class="opt-main"><strong>Mythic Shard</strong><span>Category: Ascension · Priority 1</span></div>
+            <div class="chip-row"><span class="chip mono">Max</span><label class="switch"><input type="checkbox" checked><i></i></label></div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-grip"/></svg></div>
+            <div class="opt-main"><strong>Stat Scroll</strong><span>Category: Upgrade · Priority 2</span></div>
+            <div class="chip-row"><span class="chip mono">×5</span><label class="switch"><input type="checkbox" checked><i></i></label></div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-grip"/></svg></div>
+            <div class="opt-main"><strong>Speed Potion</strong><span>Category: Boost · Priority 3</span></div>
+            <div class="chip-row"><span class="chip mono">×10</span><label class="switch"><input type="checkbox" checked><i></i></label></div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-grip"/></svg></div>
+            <div class="opt-main"><strong>Gold Sack</strong><span>Category: Currency · Priority 4</span></div>
+            <div class="chip-row"><span class="chip mono">Max</span><label class="switch"><input type="checkbox"><i></i></label></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Auto Challenge -->
+    <div class="tab-panel" data-rpanel="challenge">
+      <div class="glass-card">
+        <div class="section-label" data-i18n="res_challenge_title">Auto Challenge</div>
+        <div class="row-list">
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-shield"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_daily_challenge">Enable Daily Challenge</strong>
+              <span data-i18n="res_daily_challenge_desc">Runs the once-per-game-day Daily Challenge first (resets 00:00 UTC)</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip upd-ok mono">Ready</span>
+              <label class="switch"><input type="checkbox" id="toggleDailyChallenge" checked><i></i></label>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-activity"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_regular_challenge">Enable Regular Challenge</strong>
+              <span data-i18n="res_regular_challenge_desc">Runs every ready stage once before the Task Queue on Start</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="toggleRegularChallenge" checked><i></i></label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-user"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_challenge_mode">Challenge Play Mode</strong>
+              <span data-i18n="res_challenge_mode_desc">Solo or Matchmaking for Daily and Regular stages</span>
+            </div>
+            <label class="select-wrap"><select id="challengePlayMode"><option selected>Solo</option><option>Matchmaking</option></select></label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-route"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_story_map_setup">Story Map Setup</strong>
+              <span data-i18n="res_story_map_desc">Assign a Macro Operation to each Story map the challenge can land on</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnChallengeMaps"><svg class="ic"><use href="#i-route"/></svg><span data-i18n="btn_story_maps">Story maps</span></button>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-queue"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_stages_progress">Stages 1-3 progress</strong>
+              <span data-i18n="res_stages_progress_desc">Per-stage limits, cooldowns, and completed counts</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip">Stage 1 <b class="mono">0/3</b></span>
+              <span class="chip">Stage 2 <b class="mono">0/3</b></span>
+              <span class="chip">Stage 3 <b class="mono">0/3</b></span>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-refresh"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="res_reset_challenge_status">Reset Challenge Status</strong>
+              <span data-i18n="res_reset_challenge_desc">Clears Daily completion, counts, and cooldowns</span>
+            </div>
+            <button class="btn btn-danger-ghost btn-sm" id="btnChallengeReset" data-i18n="btn_reset_counters">Reset counters</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================ HELP -->
+  <section class="screen" id="screen-help">
+
+    <div class="tabs" id="helpTabs">
+      <button class="tab is-on" data-htab="faq"><svg class="ic"><use href="#i-help"/></svg><span data-i18n="help_tab_faq">FAQ & Troubleshooting</span></button>
+      <button class="tab" data-htab="authors"><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="help_tab_authors">Authors & Community</span></button>
+    </div>
+
+    <div class="tab-panel is-on" data-hpanel="faq">
+      <div class="glass-card">
+        <div class="card-head">
+          <div class="section-label" data-i18n="help_faq_title">Help & Troubleshooting FAQ</div>
+        <div class="faq-search-wrap">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input type="text" id="faqSearchInput" placeholder="Search questions (e.g., Act 3, virus, camera, OCR, updater)...">
+          <button class="icon-btn" id="faqSearchClear" hidden title="Clear search"><svg class="ic"><use href="#i-trash"/></svg></button>
+        </div>
+      </div>
+
+      <div class="faq-list" id="faqList">
+
+        <div class="faq-item" data-keywords="virus virustotal safe trojan malware security threat defender false positive pyinstaller">
+          <button class="faq-q">
+            <span>Is this macro safe? Windows Defender / VirusTotal flagged it</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p><strong>Yes, 100% safe and open source.</strong> The macro is compiled from open-source Python code using PyInstaller. Antivirus engines frequently flag PyInstaller-bundled executables as generic heuristic threats (such as <i>Trojan.Agent</i> or <i>Generic.Malware</i>) simply because they unpack an interpreter to memory, and because the macro hooks the keyboard to handle emergency stop keys (<kbd>F2</kbd>).</p>
+            <p>You can inspect all source code directly in the GitHub repository or build it yourself. To prevent Defender from deleting the file, add the macro folder to Windows Defender Exclusions.</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="roblox detect dock attach window f4 hwnd embed">
+          <button class="faq-q">
+            <span>Roblox isn't detected or the game window doesn't dock</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>Start Roblox and join the game first, then press <kbd>F4</kbd> or click <b>Attach window</b> on the Home screen. The macro finds the Roblox process window and embeds it via Windows <code>SetParent</code> at the fixed resolution of <b>1152 × 756</b>.</p>
+            <p>Make sure Roblox and the macro are running under the same user privileges (do not run Roblox as Administrator if the macro was launched as normal user).</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="click clicks nothing swallow minimize focus background input">
+          <button class="faq-q">
+            <span>The macro finds buttons in the log, but clicks do nothing</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>Windows intentionally discards synthetic mouse clicks if the game window is minimized to the taskbar. Keep the macro window visible on your screen.</p>
+            <p>You can navigate between tabs in the macro without minimizing. If clicks stop working, press <kbd>F4</kbd> twice to re-dock and refresh window input focus.</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="wave counter ocr language pack fallback infinite stuck timer">
+          <button class="faq-q">
+            <span>Wave counter doesn't read or says Windows OCR is missing</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>The wave counter uses native <b>Windows Media OCR</b> (en-US). If missing, click the <b>Bell notification</b> in the top titlebar and hit <b>Install</b>, or install it via <i>Windows Settings → Time & Language → Language → English (United States) → Add OCR</i>.</p>
+            <p>Even without OCR, the macro has a built-in <b>time-based fallback timer</b> that automatically safeguards Infinite runs and restarts on schedule without freezing.</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="camera view zoom portal navigation stuck lobby 3rd person">
+          <button class="faq-q">
+            <span>Camera and view alignment issues in lobby</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>Roblox camera zoom and pitch must remain in the standard default third-person view. If zoomed in to first-person mode, image recognition for portals and lobby NPCs will fail.</p>
+            <p>Ensure graphics quality is set to low (level 1-3) in Roblox Settings for stable framerates and consistent template matching.</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="template scenario recording json folder path cream import">
+          <button class="faq-q">
+            <span>Where do scenarios and recordings live?</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>Scenarios are JSON files stored in the <b>Templates</b> folder. Action recordings are stored in <b>Recordings</b>.</p>
+            <p>You can import templates from friends or paste CREAM share codes directly via <b>Tasks → Import JSON</b>. All recordings replay tick-for-tick without needing template configuration.</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="discord webhook notifications card victory defeat screenshot">
+          <button class="faq-q">
+            <span>How do I set up Discord Webhooks?</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>Open <b>Settings → Discord</b>, paste your Discord Channel Webhook URL, and enable match notifications. The macro generates OpenCV match outcome status cards with wave count, duration, and victory/defeat badges, and includes automatic retries on Discord rate limits.</p>
+          </div></div>
+        </div>
+
+        <div class="faq-item" data-keywords="dpi scaling resolution blurry templates 1024 768 125 150">
+          <button class="faq-q">
+            <span>Resolution & High DPI Scaling (125% / 150%)</span>
+            <svg class="ic"><use href="#i-chev-down"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">
+            <p>If you use Windows display scaling (e.g. 125% or 150%), image recognition might miss templates if Windows blurs the game window.</p>
+            <p>Right-click <code>RobloxPlayerBeta.exe</code> → <b>Properties → Compatibility → Change high DPI settings → Override high DPI scaling behavior: set to Application</b>.</p>
+          </div></div>
+        </div>
+
+      </div>
+    </div>
+    </div>
+
+    <!-- Вкладка авторов и сообщества -->
+    <div class="tab-panel" data-hpanel="authors">
+      <div class="glass-card">
+        <div class="section-label" data-i18n="help_authors_title">Authors & Community Links</div>
+        <div class="row-list">
+          <!-- Усовершенствование макроса: форк Ponchik0 -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-mark"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="author_fork_title">Anime Expeditions Macro — Enhanced Edition</strong>
+              <span data-i18n="author_fork_desc">Enhanced edition · Ponchik0 fork · Concept Glass UI, Replay mode, adaptive lobby and Discord webhooks</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnOurFork">
+              <svg class="ic"><use href="#i-popout"/></svg><span data-i18n="author_fork_btn">GitHub Fork</span>
+            </button>
+          </div>
+
+          <!-- Главный разработчик: Creams -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-branch"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="author_creams_title">Cweamy (Creams) — Original Macro Engine</strong>
+              <span data-i18n="author_creams_desc">Lead developer of original macro for Anime Expeditions · Official Creams repository</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnCreamsMacro">
+              <svg class="ic"><use href="#i-popout"/></svg><span data-i18n="author_creams_btn">Creams Repo</span>
+            </button>
+          </div>
+
+          <!-- Обучающий видео-гайд от Cweamy -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-camera"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="author_guide_title">YouTube Video Guide by Cweamy</strong>
+              <span data-i18n="author_guide_desc">Official video guide for configuring and farming Anime Expeditions</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnYoutubeGuide">
+              <svg class="ic"><use href="#i-popout"/></svg><span data-i18n="author_guide_btn">Watch Video</span>
+            </button>
+          </div>
+
+          <!-- Экспорт отчета об ошибках для отладки -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-bug"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="author_report_title">Export Failure Report</strong>
+              <span data-i18n="author_report_desc">Packages screenshots, log, and config into a .zip archive on Desktop for fast technical support</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnExportReport">
+              <svg class="ic"><use href="#i-folder"/></svg><span data-i18n="author_report_btn">Export .zip</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================ SETTINGS -->
+  <section class="screen" id="screen-settings">
+
+    <div class="tabs" id="setTabs">
+      <button class="tab is-on" data-tab="window" data-i18n="tab_window">Game Window</button>
+      <button class="tab" data-tab="automation" data-i18n="tab_automation">Automation</button>
+      <button class="tab" data-tab="hotkeys" data-i18n="tab_hotkeys">Hotkeys</button>
+      <button class="tab" data-tab="appearance" data-i18n="tab_appearance">Appearance</button>
+      <button class="tab" data-tab="discord" data-i18n="tab_discord">Discord</button>
+      <button class="tab" data-tab="updates" data-i18n="tab_updates">Updates</button>
+      <button class="tab" data-tab="debug" data-i18n="tab_debug">Debug</button>
+    </div>
+
+    <div class="tab-panel is-on" data-panel="window">
+      <div class="glass-card">
+        <div class="row-list">
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-window"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_roblox_win_title">Select Roblox Window</strong>
+              <span data-i18n="set_roblox_win_desc">Target process to dock and control</span>
+            </div>
+            <label class="select-wrap">
+              <select id="selRobloxWindow">
+                <option value="">Auto-detect Roblox</option>
+              </select>
+            </label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-link"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_attach_title">Window Attachment</strong>
+              <span data-i18n="set_attach_desc">Dock or detach the live Roblox window</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button type="button" class="btn btn-ghost btn-xs" id="btnAttachRoblox" data-i18n="attach">Attach</button>
+              <button type="button" class="btn btn-danger-ghost btn-xs" id="btnUnattachRoblox" data-i18n="detach">Detach</button>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-refresh"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_force_rejoin_title">Force Rejoin Lobby</strong>
+              <span data-i18n="set_force_rejoin_desc">Relaunch Roblox straight back into the lobby via deep-link</span>
+            </div>
+            <button type="button" class="btn btn-ghost btn-xs" id="btnForceRejoin" data-i18n="rejoin_now">Rejoin Now</button>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-camera"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_flicker_free_title">Flicker-Free Capture</strong>
+              <span data-i18n="set_flicker_free_desc">Read game window directly to prevent display white flashing</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="swFlickerFree" checked><i></i></label>
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-shield"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_wgc_title">Hardware Capture Fix (WGC)</strong>
+              <span data-i18n="set_wgc_desc">Windows.Graphics.Capture for setups where game captures black</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="swWgcCapture"><i></i></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Вкладка глубокой настройки автоматизации -->
+    <div class="tab-panel" data-panel="automation">
+      <div class="glass-card">
+        <div class="row-list">
+          <!-- Защита от слива винрейта: остановка при N поражениях подряд -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-shield"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_loss_streak_title">Loss streak safety stop</strong>
+              <span data-i18n="set_loss_streak_desc">Automatically stop macro after consecutive defeats to protect stats</span>
+            </div>
+            <label class="select-wrap">
+              <select id="selLossStreakStop">
+                <option value="1">After 1 loss</option>
+                <option value="2">After 2 losses</option>
+                <option value="3" selected>After 3 losses</option>
+                <option value="5">After 5 losses</option>
+                <option value="0">Never stop</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Защита фокуса окна -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-mouse"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_focus_guard_title">Focus guard</strong>
+              <span data-i18n="set_focus_guard_desc">Pause replay/actions when Roblox window is not active or hidden</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="swFocusGuard" checked><i></i></label>
+          </div>
+
+          <!-- Звуковые оповещения -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-bell"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_sound_alerts_title">Sound notifications</strong>
+              <span data-i18n="set_sound_alerts_desc">Play audio tone on match victory, defeat, or critical error</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="btn btn-ghost btn-xs" id="btnTestSound" title="Play test tone">
+                <svg class="ic"><use href="#i-play"/></svg><span data-i18n="test_sound">Test</span>
+              </button>
+              <label class="switch"><input type="checkbox" id="swSoundAlerts" checked><i></i></label>
+            </div>
+          </div>
+
+          <!-- Авто-скриншот при поражении или ошибке -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-camera"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_auto_screenshot_title">Auto-screenshot on failure</strong>
+              <span data-i18n="set_auto_screenshot_desc">Automatically capture a debug screenshot when a run fails or desyncs</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="swAutoScreenshot" checked><i></i></label>
+          </div>
+
+          <!-- Хуманизатор кликов (Safe click delay) -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-clock"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_humanizer_title">Input humanizer (Anti-cheat jitter)</strong>
+              <span data-i18n="set_humanizer_desc">Add micro-delays between mouse clicks to simulate natural player timing</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="swClickHumanizer" checked><i></i></label>
+          </div>
+
+          <!-- Авто-реконнект на приватный сервер -->
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-link"/></svg></div>
+            <div class="opt-main">
+              <strong data-i18n="set_vip_reconnect_title">Private server VIP link</strong>
+              <span data-i18n="set_vip_reconnect_desc">Used to automatically rejoin your private server upon disconnect</span>
+            </div>
+            <input type="text" id="setVipLink" class="mono" placeholder="https://www.roblox.com/games/...?privateServerLinkCode=..." style="width: 280px; max-width: 100%; background: var(--bg-lo); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px 10px; color: var(--tx); font-size: 11px;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="hotkeys">
+      <div class="glass-card">
+        <div class="hotk-grid">
+          <div class="hotk"><span data-i18n="hk_macro_start">Macro start</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="macro_start">F1</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="macro_start" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_macro_stop">Macro stop</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="macro_stop">F2</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="macro_stop" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_macro_pause">Macro pause</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="macro_pause">F5</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="macro_pause" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_debug_screenshot">Debug screenshot</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="debug_screenshot">F3</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="debug_screenshot" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_toggle_game">Toggle game</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="toggle_game">F4</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="toggle_game" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_auto_restart">Auto-Restart Loop</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="auto_restart_loop">Alt+F5</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="auto_restart_loop" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_vip_rejoin">VIP Lobby Rejoin</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="vip_rejoin">Alt+F6</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="vip_rejoin" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_toggle_record">Toggle record</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="toggle_record">F8</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="toggle_record" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_open_replay">Open replay</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="open_replay">F10</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="open_replay" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+          <div class="hotk"><span data-i18n="hk_toggle_walk_record">WASD Walk Recording</span><div class="hotk-bind-wrap"><button class="kbd-btn mono" data-hotkey="toggle_walk_record">Alt+9</button><button type="button" class="hotk-clear-btn" data-hotkey-clear="toggle_walk_record" title="Reset / Clear" aria-label="Clear hotkey">&times;</button></div></div>
+        </div>
+        <div class="rec-empty-note" data-i18n="hk_note">Click a key, then press the new combination. <kbd>Esc</kbd> cancels.</div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+          <button type="button" class="btn btn-ghost btn-xs" id="btnResetHotkeys">
+            <svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="hk_reset_default">Reset hotkeys to default</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="appearance">
+      <div class="glass-card">
+        <div class="row-list">
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-droplet"/></svg></div><div class="opt-main"><strong data-i18n="set_theme">Theme</strong><span data-i18n="set_theme_desc">Glass atmosphere of the panel</span></div>
+            <div class="theme-picker" id="themePicker">
+              <button class="theme-card is-on" data-theme-set="onyx"><i></i><span>Onyx</span></button>
+              <button class="theme-card" data-theme-set="pearl"><i></i><span>Pearl</span></button>
+            </div>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-pencil"/></svg></div><div class="opt-main"><strong data-i18n="set_font_scale_title">Font scale</strong><span data-i18n="set_font_scale_desc">Adjust text scale across the interface</span></div>
+            <div class="segmented" id="fontScaleSeg">
+              <button data-font-scale-set="compact" data-i18n="font_compact">Compact</button>
+              <button class="is-on" data-font-scale-set="default" data-i18n="font_standard">Standard</button>
+              <button data-font-scale-set="large" data-i18n="font_large">Large</button>
+            </div>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-queue"/></svg></div><div class="opt-main"><strong data-i18n="set_density">Density</strong><span data-i18n="set_density_desc">Row spacing across the panel</span></div>
+            <div class="segmented" id="densitySeg"><button class="is-on" data-density-set="default" data-i18n="opt_default">Default</button><button data-density-set="compact" data-i18n="font_compact">Compact</button></div>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-blocks"/></svg></div><div class="opt-main"><strong data-i18n="set_corners">Corners</strong><span data-i18n="set_corners_desc">Card and control rounding</span></div>
+            <div class="segmented" id="cornersSeg"><button class="is-on" data-corners-set="default" data-i18n="opt_default">Default</button><button data-corners-set="soft" data-i18n="opt_soft">Soft</button></div>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-activity"/></svg></div><div class="opt-main"><strong data-i18n="set_ambient_motion">Ambient motion</strong><span data-i18n="set_ambient_motion_desc">Background drift and live indicators</span></div>
+            <div class="segmented" id="motionSeg"><button class="is-on" data-motion-set="full" data-i18n="opt_full">Full</button><button data-motion-set="calm" data-i18n="opt_calm">Calm</button><button data-motion-set="off" data-i18n="opt_off">Off</button></div>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-droplet"/></svg></div><div class="opt-main"><strong data-i18n="set_glass_blur_title">Glass blur level</strong><span data-i18n="set_glass_blur_desc">Background backdrop filter intensity</span></div>
+            <div class="segmented" id="glassBlurSeg">
+              <button class="is-on" data-glass-blur-set="ultra" data-i18n="blur_ultra">Ultra (28px)</button>
+              <button data-glass-blur-set="soft" data-i18n="blur_soft">Soft (14px)</button>
+              <button data-glass-blur-set="off" data-i18n="blur_off">Off</button>
+            </div>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-sliders"/></svg></div><div class="opt-main"><strong data-i18n="dash_customize">Dashboard</strong><span data-i18n="dash_layout_sec">Customize cards, slots and layout</span></div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button type="button" class="btn btn-ghost btn-xs" id="btnSetOpenCustom" data-i18n="dash_customize">Customize</button>
+              <button type="button" class="btn btn-ghost btn-xs" id="btnSetResetDashboard" data-i18n="reset">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="discord">
+      <div class="glass-card">
+        <div class="link-card">
+          <div class="link-avatar"><svg class="ic"><use href="#i-bell"/></svg></div>
+          <div class="link-main">
+            <strong>Webhook connected</strong>
+            <span>Match results are posted to your channel with a rendered card</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost btn-sm" id="btnSendStatusNow">Send status now</button>
+            <button class="btn btn-primary btn-sm" id="btnTestHook">Send test</button>
+          </div>
+        </div>
+        <div class="row-list">
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-link"/></svg></div>
+            <div class="opt-main"><strong>Webhook URL</strong><span>Discord webhook endpoint to send match logs</span></div>
+            <input type="text" id="setWebhookUrl" class="mono" placeholder="https://discord.com/api/webhooks/..." style="width: 280px; max-width: 100%; background: var(--bg-lo); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px 10px; color: var(--tx); font-size: 11px;">
+          </div>
+          <div class="opt-row">
+            <div class="opt-ic"><svg class="ic"><use href="#i-user"/></svg></div>
+            <div class="opt-main"><strong>Mention ID</strong><span>User or Role ID to ping on alerts (optional)</span></div>
+            <input type="text" id="setWebhookMention" class="mono" placeholder="123456789012345678" style="width: 280px; max-width: 100%; background: var(--bg-lo); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px 10px; color: var(--tx); font-size: 11px;">
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-check"/></svg></div><div class="opt-main"><strong>Result notifications</strong><span>Victory and defeat cards after every match</span></div><label class="switch"><input type="checkbox" id="swWebhookResults" checked><i></i></label></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-activity"/></svg></div><div class="opt-main"><strong>Progress pings</strong><span>Wave and stage milestones mid-run</span></div><label class="switch"><input type="checkbox" id="swWebhookPings"><i></i></label></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-clock"/></svg></div><div class="opt-main"><strong>Status reports</strong><span>Summary digest on a schedule</span></div>
+            <label class="select-wrap"><select id="selWebhookInterval"><option value="3600">Every 1 h</option><option value="10800">Every 3 h</option><option value="21600" selected>Every 6 h</option><option value="43200">Every 12 h</option></select></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="updates">
+      <div class="glass-card">
+        <div class="row-list">
+            <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-refresh"/></svg></div><div class="opt-main"><strong><span data-i18n="lbl_version">Version</span> <b class="mono" id="setVer">2.0.0</b></strong><span id="updState" class="upd-ok" data-i18n="upd_state_ok">Up to date</span></div>
+            <button class="btn btn-ghost btn-sm" id="btnCheckUpd"><svg class="ic"><use href="#i-search"/></svg><span data-i18n="btn_check_upd">Check</span></button>
+          </div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-shield"/></svg></div><div class="opt-main"><strong data-i18n="set_auto_update">Install automatically</strong><span data-i18n="set_auto_update_desc">Download and apply releases in background</span></div><label class="switch"><input type="checkbox" id="swAutoUpdate" checked><i></i></label></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="debug">
+      <div class="glass-card">
+        <div class="row-list">
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-camera"/></svg></div><div class="opt-main"><strong data-i18n="set_diag_screenshot">Save screenshot</strong><span data-i18n="set_diag_screenshot_desc">Full window capture into the debug folder</span></div><button class="btn btn-ghost btn-sm" id="btnDebugScreenshot"><kbd>F3</kbd></button></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-activity"/></svg></div><div class="opt-main"><strong data-i18n="set_diag_system">System Diagnostics</strong><span data-i18n="set_diag_system_desc">Run comprehensive subsystem health check</span></div><button class="btn btn-ghost btn-sm" id="btnHealthCheck" data-i18n="btn_health_check">Run Health Check</button></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-blocks"/></svg></div><div class="opt-main"><strong data-i18n="set_diag_templates">Check Templates</strong><span data-i18n="set_diag_templates_desc">Verify vision reference templates and coordinates</span></div><button class="btn btn-ghost btn-sm" id="btnCheckTemplates" data-i18n="btn_check_templates">Check Templates</button></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-folder"/></svg></div><div class="opt-main"><strong data-i18n="set_diag_assets">Assets folder</strong><span data-i18n="set_diag_assets_desc">Reference images used by vision search</span></div><button class="btn btn-ghost btn-sm" id="btnOpenAssetsFolder" data-i18n="btn_open">Open</button></div>
+          <div class="opt-row"><div class="opt-ic"><svg class="ic"><use href="#i-bug"/></svg></div><div class="opt-main"><strong data-i18n="set_diag_report">Export failure report</strong><span data-i18n="set_diag_report_desc">Bundle logs and screenshots for bug report</span></div><button class="btn btn-ghost btn-sm" id="btnExportFailureReport" data-i18n="btn_export_zip">Export ZIP</button></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<!-- ======================== Block edit modal ======================== -->
+<div class="modal-backdrop" id="blockModal" hidden>
+  <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="blockModalTitle">
+    <div class="card-head">
+      <div class="section-label" id="blockModalTitle" data-i18n="modal_edit_block">Edit Block</div>
+      <button class="icon-btn btn-danger-hover" id="blockModalClose" title="Close" data-i18n-title="btn_close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div id="blockModalBody">
+      <!-- Dynamic form fields rendered per block type -->
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger-ghost btn-sm" id="blockDelete"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="btn_delete">Delete</span></button>
+      <span class="modal-spacer"></span>
+      <button class="btn btn-ghost btn-sm" id="blockCancel" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="blockSave"><svg class="ic"><use href="#i-check"/></svg><span data-i18n="btn_save">Save</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== Insert Action modal ======================== -->
+<div class="modal-backdrop" id="insertActionModal" hidden>
+  <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="insertActionTitle" style="max-width: 580px;">
+    <div class="card-head">
+      <div>
+        <div class="section-label" id="insertActionTitle" data-i18n="modal_insert_action">Insert Action</div>
+        <span id="insertActionSub" class="task-builder-sub" data-i18n="modal_insert_sub">Choose an action to insert at this step</span>
+      </div>
+      <button class="icon-btn btn-danger-hover" id="insertActionClose" title="Close" data-i18n-title="btn_close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="insert-action-grid" id="insertActionGrid">
+      <!-- Generated dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- ======================== Save Recorded Path Modal ======================== -->
+<div class="modal-backdrop" id="savePathModal" hidden>
+  <div class="modal glass-card" role="dialog" aria-modal="true" style="max-width: 440px;">
+    <div class="card-head">
+      <div class="section-label" style="display:flex; align-items:center; gap:8px;">
+        <svg class="ic" style="color: var(--primary-bg, #38bdf8);"><use href="#i-route"/></svg>
+        <span data-i18n="modal_save_path_title">Save Recorded Walk Path</span>
+      </div>
+      <button class="icon-btn btn-danger-hover" id="savePathClose" title="Close" data-i18n-title="btn_close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div style="padding: 16px 20px;">
+      <label for="savePathInput" data-i18n="lbl_save_path_name" style="font-size:12.5px; font-weight: 500; color:var(--tx-2); display:block; margin-bottom:8px;">Name for this WASD route:</label>
+      <div class="glass-input-wrap">
+        <svg class="ic glass-input-ic"><use href="#i-route"/></svg>
+        <input type="text" id="savePathInput" class="glass-input" placeholder="e.g. Inf Summer Walk" data-i18n-placeholder="ph_save_path" spellcheck="false" autocomplete="off">
+      </div>
+      <div style="margin-top: 10px; font-size: 11px; color: var(--tx-3); display: flex; align-items: center; gap: 6px;">
+        <svg class="ic" style="width: 12px; height: 12px; flex: none; color: var(--tx-3);"><use href="#i-check"/></svg>
+        <span>Enter = Save · Esc = Discard</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost btn-sm" id="savePathDiscard" data-i18n="btn_discard">Discard</button>
+      <span class="modal-spacer"></span>
+      <button class="btn btn-primary btn-sm" id="savePathConfirm"><svg class="ic"><use href="#i-check"/></svg><span data-i18n="btn_save_path">Save Path</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== Crafting Sprites Modal ======================== -->
+<div class="modal-backdrop" id="craftingSpritesModal" hidden>
+  <div class="modal glass-card" role="dialog" aria-modal="true" style="max-width: 480px;">
+    <div class="card-head">
+      <div class="section-label" data-i18n="modal_crafting_sprites_title">Choose Sprites to Craft</div>
+      <button class="icon-btn btn-danger-hover" id="craftingSpritesClose" title="Close" data-i18n-title="btn_close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 10px;" id="craftingSpritesList">
+      <!-- Populated dynamically with craftable items, checkboxes and amounts -->
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost btn-sm" id="craftingSpritesCancel" data-i18n="btn_cancel">Cancel</button>
+      <span class="modal-spacer"></span>
+      <button class="btn btn-primary btn-sm" id="craftingSpritesSave"><svg class="ic"><use href="#i-check"/></svg><span data-i18n="btn_save">Save</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== Fuel Walking Paths Modal ======================== -->
+<div class="modal-backdrop" id="fuelPathsModal" hidden>
+  <div class="modal glass-card" role="dialog" aria-modal="true" style="max-width: 520px;">
+    <div class="card-head">
+      <div class="section-label" data-i18n="modal_fuel_paths_title">Expedition Hub Walking Paths</div>
+      <button class="icon-btn btn-danger-hover" id="fuelPathsClose" title="Close" data-i18n-title="btn_close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 12px;" id="fuelPathsList">
+      <!-- 3 routes: hub_to_well, hub_to_mine, hub_to_drill -->
+    </div>
+    <div class="modal-foot">
+      <span class="modal-spacer"></span>
+      <button class="btn btn-primary btn-sm" id="fuelPathsDone"><svg class="ic"><use href="#i-check"/></svg><span data-i18n="btn_done">Done</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== Challenge Story Maps Modal ======================== -->
+<div class="modal-backdrop" id="challengeMapsModal" hidden>
+  <div class="modal glass-card" role="dialog" aria-modal="true" style="max-width: 540px;">
+    <div class="card-head">
+      <div class="section-label" data-i18n="modal_challenge_maps_title">Story Map Macro Setup</div>
+      <button class="icon-btn btn-danger-hover" id="challengeMapsClose" title="Close" data-i18n-title="btn_close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;" id="challengeMapsList">
+      <!-- 6 Story maps with taskTemplates dropdowns -->
+    </div>
+    <div class="modal-foot">
+      <span class="modal-spacer"></span>
+      <button class="btn btn-primary btn-sm" id="challengeMapsDone"><svg class="ic"><use href="#i-check"/></svg><span data-i18n="btn_done">Done</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== F10 Recordings Drawer (Right Edge) ======================== -->
+<div class="rec-drawer-backdrop" id="recDrawerBackdrop" hidden></div>
+<aside class="rec-drawer glass-panel" id="recDrawer" hidden aria-label="Recordings Drawer">
+  <div class="rec-drawer-head">
+    <div class="rec-drawer-title-box">
+      <div class="rec-drawer-title-row">
+        <svg class="ic rec-drawer-title-ic"><use href="#i-rec"/></svg>
+        <span class="rec-drawer-title-text" data-i18n="drawer_recordings_title">Recordings</span>
+        <span class="rec-drawer-count-badge mono" id="recDrawerCount">0</span>
+      </div>
+      <span class="rec-drawer-sub" data-i18n="drawer_recordings_sub">Select or play recorded routes · F10</span>
+    </div>
+    <div class="rec-drawer-head-actions">
+      <button class="btn btn-ghost btn-xs" id="btnDrawerNewRec" title="Start Recording (F8)" data-i18n-title="tt_start_rec">
+        <svg class="ic"><use href="#i-plus"/></svg><span data-i18n="btn_record">Record</span>
+      </button>
+      <button class="icon-btn btn-danger-hover" id="recDrawerClose" title="Close" data-i18n-title="btn_close">
+        <svg class="ic"><use href="#i-close"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="rec-drawer-search-bar">
+    <div class="glass-input-wrap">
+      <svg class="ic glass-input-ic"><use href="#i-search"/></svg>
+      <input type="text" id="recDrawerSearch" class="glass-input" placeholder="Search recordings..." data-i18n-placeholder="ph_search_recordings" spellcheck="false" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="rec-drawer-body">
+    <div class="rec-drawer-list" id="recDrawerList">
+      <!-- Populated dynamically via JS -->
+    </div>
+  </div>
+
+  <div class="rec-drawer-foot">
+    <div class="rec-drawer-mode-toggle">
+      <div class="rec-drawer-mode-label">
+        <strong data-i18n="lbl_macro_start_mode">Start button mode</strong>
+        <span id="recDrawerModeDesc" data-i18n="desc_start_mode_auto">Start executes the task queue</span>
+      </div>
+      <button type="button" class="btn btn-ghost btn-xs" id="btnDrawerToggleMode">
+        <span id="recDrawerModeText">Auto</span>
+      </button>
+    </div>
+    <div class="rec-drawer-foot-bottom">
+      <span class="rec-drawer-hint" data-i18n="hint_drawer_esc">Esc or F10 to close</span>
+      <button class="btn btn-primary btn-sm" id="btnDrawerDone" data-i18n="btn_done">Done</button>
+    </div>
+  </div>
+</aside>
+
+<!-- ======================== Floating Recording HUD ======================== -->
+<div id="recPopout" class="rec-popout-glass" hidden style="display: none;">
+  <div class="rec-popout-icon">
+    <svg class="ic"><use href="#i-route"/></svg>
+  </div>
+  <div class="rec-popout-info">
+    <span id="recPopoutTitle" class="rec-popout-title" data-i18n="rec_popout_title">WASD Recording</span>
+    <span id="recPopoutText" class="rec-popout-text" data-i18n="rec_popout_text">Move in game · 1.8s idle saves path</span>
+  </div>
+  <button type="button" class="btn btn-ghost btn-sm rec-popout-stop" id="btnStopPathRec" title="Stop & Save">
+    <svg class="ic" style="width:12px; height:12px;"><use href="#i-stop"/></svg>
+    <span data-i18n="btn_stop">Stop</span>
+  </button>
+</div>
+
+<!-- ======================== Window states (mac traffic lights) ======================== -->
+<div class="app-closed" id="appClosed" hidden>
+  <div class="glass-card app-closed-card">
+    <strong data-i18n="app_closed_title">Panel closed</strong>
+    <span data-i18n="app_closed_text">Macro stopped. Click below to reopen.</span>
+    <button class="btn btn-primary btn-sm" id="btnReopen"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="btn_reopen">Reopen panel</span></button>
+  </div>
+</div>
+
+<button class="restore-pill" id="restorePill" hidden>
+  <i></i><span data-i18n="restore_pill">AE Macro · minimized</span>
+</button>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

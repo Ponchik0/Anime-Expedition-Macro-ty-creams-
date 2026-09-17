@@ -470,6 +470,112 @@ def test_inf_summer_retries_restart_until_successful_without_leaving(monkeypatch
     assert len(left) == 0, "Никаких попыток выйти в лобби не должно быть совершено"
 
 
+def test_run_kind_categorizes_infinite_event_and_fishing_properly():
+    """Ловит баг, когда Summer Fishing и Event Infinite определялись как обычный
+    'Event' или 'Story', из-за чего в истории забегов и отчётах невозможно было
+    понять, что именно фармилось."""
+    # Summer Fishing по разным признакам
+    assert MacroRunner._run_kind({"macro": "Inf Summer"}) == "Summer Fishing"
+    assert MacroRunner._run_kind({"mode": "event", "map": "Summer", "stage": "infinite"}) == "Summer Fishing"
+    assert MacroRunner._run_kind({"mode": "event", "stage": "Summer Infinite"}) == "Summer Fishing"
+    assert MacroRunner._run_kind({"mode": "event", "macro": "fishing"}) == "Summer Fishing"
+
+    # Event Infinite (без признаков рыбалки)
+    assert MacroRunner._run_kind({"mode": "event", "stage": "infinite"}) == "Event Infinite"
+    assert MacroRunner._run_kind({"mode": "event", "stage": "1", "infinite_wave_limit": 40}) == "Event Infinite"
+
+    # Story Infinite
+    assert MacroRunner._run_kind({"mode": "story", "stage": "Infinite"}) == "Story Infinite"
+    assert MacroRunner._run_kind({"mode": "story", "stage": "1", "infinite_wave_limit": 50}) == "Story Infinite"
+
+    # Portals
+    assert MacroRunner._run_kind({"mode": "portals"}) == "Portals"
+
+
+def test_infinite_restarted_match_records_win_and_reports_in_background(monkeypatch):
+    """Ловит критический баг, когда завершение бесконечного режима по лимиту волн
+    с рестартом прямо в игре (result == 'restarted') делало continue без вызова
+    _record_result, из-за чего в истории забегов и счётчиках побед оставался 0."""
+    runner = _runner()
+    recorded = []
+    runner._record_result = lambda *a, **kw: recorded.append((a, kw))
+    runner._send_result_webhook = lambda *a, **kw: None
+
+    # Выполняем фоновый поток синхронно внутри теста
+    monkeypatch.setattr(
+        runner_module.threading, "Thread",
+        lambda target, args=(), kwargs=None, **k: type("T", (), {"start": lambda self: target(*args, **(kwargs or {}))})()
+    )
+
+    task = {
+        "mode": "event",
+        "map": "Summer",
+        "stage": "infinite",
+        "macro": "Inf Summer",
+        "infinite_wave_limit": 30,
+        "repeat": 1,
+    }
+
+    stop_event = threading.Event()
+    monkeypatch.setattr(runner, "_run_task_setup", lambda *a, **kw: True)
+    monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
+
+    def fake_play(*a, **kw):
+        stop_event.set()
+        return "restarted"
+
+    monkeypatch.setattr(runner, "_play_one_match", fake_play)
+    runner._run_task(123, stop_event, task, 1, 1, {}, 1, 0, {}, {})
+
+    assert len(recorded) > 0, "Победа должна быть записана в историю при restarted!"
+    res, m_name, dur = recorded[0][0][:3]
+    assert res == "win"
+    assert m_name == "Summer"
+    assert recorded[0][1].get("kind") == "Summer Fishing"
+
+
+def test_infinite_wave_limit_leave_records_win_and_reports(monkeypatch):
+    """Ловит баг, когда выход из бесконечного режима в лобби (result == 'wave_limit')
+    помечался как left_live_match и пропускал _handle_match_result без записи в историю."""
+    runner = _runner()
+    recorded = []
+    runner._record_result = lambda *a, **kw: recorded.append((a, kw))
+    runner._send_result_webhook = lambda *a, **kw: None
+
+    # Выполняем фоновый поток синхронно внутри теста
+    monkeypatch.setattr(
+        runner_module.threading, "Thread",
+        lambda target, args=(), kwargs=None, **k: type("T", (), {"start": lambda self: target(*args, **(kwargs or {}))})()
+    )
+
+    task = {
+        "mode": "event",
+        "map": "Summer",
+        "stage": "infinite",
+        "macro": "Inf Summer",
+        "infinite_wave_limit": 30,
+        "repeat": 1,
+    }
+
+    stop_event = threading.Event()
+    monkeypatch.setattr(runner, "_run_task_setup", lambda *a, **kw: True)
+    monkeypatch.setattr(runner_module.time, "sleep", lambda _s: None)
+
+    def fake_play(*a, **kw):
+        stop_event.set()
+        return "wave_limit"
+
+    monkeypatch.setattr(runner, "_play_one_match", fake_play)
+    runner._run_task(123, stop_event, task, 1, 1, {}, 1, 0, {}, {})
+
+    assert len(recorded) > 0, "Победа должна быть записана при выходе по wave_limit!"
+    res, m_name, dur = recorded[0][0][:3]
+    assert res == "win"
+    assert m_name == "Summer"
+    assert recorded[0][1].get("kind") == "Summer Fishing"
+
+
+
 
 
 

@@ -35,6 +35,7 @@ from . import stats_report
 from . import vision
 from . import wave as wave_module
 from .diagnostics import FailureCategory, RecoveryAction, FailureReport, create_failure_report, save_failure_snapshot
+from . import settings as cfg
 from . import window as wm
 from .runner_constants import *  # noqa: F401,F403 -- see runner_constants' docstring
 from .runner_blocks import BlockOps
@@ -142,10 +143,12 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                  set_bounty_remaining=None, get_fuel_settings=None,
                  mark_fuel_refill_result=None, get_hotkeys=None,
                  get_auto_shop_settings=None,
-                 save_auto_shop_item_state=None, save_auto_shop_shop_state=None):
+                 save_auto_shop_item_state=None, save_auto_shop_shop_state=None,
+                 push_ui=None):
         self._mouse = mouse
         self._keyboard = keyboard
         self._log = log
+        self._push_ui = push_ui or (lambda *a, **kw: None)
         # Live click-point overrides -- replaced with the user's saved values
         # at the top of _run; defaults here so the Settings > Debug test
         # paths (which never go through _run) still resolve every key.
@@ -154,6 +157,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # (Start pressed from inside a stage); consumed one-shot by
         # _run_task to skip the first task's lobby/stage entry.
         self._skip_first_task_setup = False
+        # Запрос на досрочный пропуск текущей задачи (кнопка Skip в очереди)
+        self._skip_task_requested = False
         # Team/equipment successfully applied by the most recent loadout
         # operation. A matching task can keep using it when the queue moves
         # to the next stage instead of reopening Team Loadout every time.
@@ -562,6 +567,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
     def resume(self) -> dict:
         self._pause_event.clear()
+        return {"ok": True}
+
+    def skip_current_task(self) -> dict:
+        """Помечает текущую задачу на пропуск. На ближайшей безопасной границе
+        (между повторами или по окончании текущего раунда) макрос выйдет в лобби
+        и перейдёт к следующей задаче из очереди tasks."""
+        self._skip_task_requested = True
+        self._log("[Macro] Task skip requested. Will advance queue at next safe boundary.")
         return {"ok": True}
 
     def _timer_expired(self, task: dict) -> bool:
@@ -1420,6 +1433,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # ДО отметки о ходе задачи: по таймеру мы отсюда уходим, и
                 # писать «идёт повтор N» ради матча, который не начнётся,
                 # значило бы соврать уведомлению о прогрессе.
+                if getattr(self, "_skip_task_requested", False):
+                    self._skip_task_requested = False
+                    self._log("[Macro] Task skip requested by user -- breaking out of repeat loop.")
+                    break
                 if self._timer_expired(task):
                     break
                 self._is_last_repeat = (repeat_index == repeat_total)
@@ -1442,6 +1459,19 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # поэтому следующий повтор начинается сразу без лобби и поиска режима.
                 if result == "restarted":
                     self._log("[Macro] Match restarted in-game via Settings -> beginning next repeat directly.")
+                    self._consecutive_losses = 0
+                    self._consecutive_loss_map = None
+                    self._note_win_for_crafting(task, "win")
+                    placement = dict(getattr(self, "_placement_tally", None) or {})
+                    # Завершение по лимиту волн с перезапуском в игре (Summer Event / Inf Summer / Infinite)
+                    # является полноценной победой (успешным забегом). Фиксируем результат в истории
+                    # и отправляем карточку уведомления в фоновом потоке.
+                    threading.Thread(
+                        target=self._finish_match_result_background,
+                        args=("win", map_name, duration, task, webhook, None, placement),
+                        kwargs={"record": True},
+                        daemon=True,
+                    ).start()
                     fresh_entry = True
                     time.sleep(5.0)
                     if (self._is_fishing_task(task) or str(task.get("macro") or "").strip().lower() == "inf summer") and repeat_index >= repeat_total:
@@ -1502,7 +1532,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     self._consecutive_loss_map = None
                 restart_needed = self._consecutive_losses >= MAX_CONSECUTIVE_LOSSES_SAME_MAP
 
-                is_last_repeat = repeat_index == repeat_total
+                skip_wants_out = bool(getattr(self, "_skip_task_requested", False))
+                is_last_repeat = (repeat_index == repeat_total) or skip_wants_out
                 # Challenge used to only ever get checked once, right at the
                 # very start of a Start press, before the Task Queue even
                 # began -- a task with a huge repeat count (effectively
@@ -1549,7 +1580,22 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 # The bounded-Infinite path and the Leave-at-Minute block
                 # (left_live_match) already left the live match, so there is no
                 # Victory/Defeat screen to process here.
-                if not left_live_match and not self._handle_match_result(
+                if left_live_match:
+                    # Завершение бесконечного режима по лимиту волн ("wave_limit") или выход
+                    # по таймеру минут ("left") — матч уже покинут в лобби, экрана Victory/Defeat
+                    # ждать не нужно. Раунд завершён успешно (победа) — фиксируем исход
+                    # в истории забегов и отправляем карточку уведомления в фоновом потоке.
+                    self._consecutive_losses = 0
+                    self._consecutive_loss_map = None
+                    self._note_win_for_crafting(task, "win")
+                    placement = dict(getattr(self, "_placement_tally", None) or {})
+                    threading.Thread(
+                        target=self._finish_match_result_background,
+                        args=("win", map_name, duration, task, webhook, None, placement),
+                        kwargs={"record": True},
+                        daemon=True,
+                    ).start()
+                elif not self._handle_match_result(
                         hwnd, stop_event, task, result, duration, webhook,
                         repeat=(not is_last_repeat) and not challenge_wants_in
                         and not crafting_wants_in and not fuel_wants_in
@@ -1561,6 +1607,11 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     break
                 if self._checkpoint(stop_event):
                     return False
+
+                if skip_wants_out or getattr(self, "_skip_task_requested", False):
+                    self._skip_task_requested = False
+                    self._log("[Macro] Task skip processed after match -- leaving stage and advancing queue.")
+                    break
 
                 if restart_needed:
                     self._log(f'[Macro] Lost {self._consecutive_losses}x in a row on "{map_name}" -- '
@@ -2903,7 +2954,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     # задачи вернёт в лобби и заново отработает Pre Start.
                     self._exp_stuck = False
                     self._send_event_webhook(
-                        webhook, task, "Expedition застряла \U000026A0\U0000FE0F",
+                        webhook, task, "Expedition застряла",
                         "Кнопка старта появлялась снова и снова, а забег не дошёл ни до "
                         "одного чекпойнта.\n\nВыхожу в лобби и захожу заново — иначе "
                         "следующий заход пошёл бы без юнитов.",
@@ -2988,7 +3039,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # скриншотом: по нему сразу видно, что было на экране, а без него
         # причину пришлось бы искать по логам заново.
         self._send_event_webhook(
-            webhook, task, "Матч не закончился \U000026A0\U0000FE0F",
+            webhook, task, "Матч не закончился",
             f"За {MATCH_RESULT_TIMEOUT / 60:.0f} минут не появилось ни «Victory», ни «Defeat».\n"
             f"Обычно это значит, что макрос застрял на экране, который не понимает, "
             f"либо эталоны баннеров перестали совпадать.\n\n"
@@ -3176,11 +3227,35 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         Отличает его только метка is_challenge — и в истории эти строки обязаны
         отличаться, иначе половина забегов выглядит как Story, хотя игралось
         совсем другое.
+        Аналогично: Event Infinite и Summer Fishing (рыбалка) — это не просто
+        обычный Event, а бесконечные режимы.
         """
         task = task or {}
         if task.get("is_challenge"):
             return "Daily Challenge" if task.get("is_daily_challenge") else "Challenge"
-        mode = str(task.get("mode") or "").strip()
+        mode = str(task.get("mode") or "").strip().lower()
+        macro_name = str(task.get("macro") or task.get("name") or "").strip().lower()
+        map_name = str(task.get("map") or "").strip().lower()
+        stage = str(task.get("stage") or "").strip().lower()
+        event_kind = str(task.get("event_kind") or "").strip().lower()
+
+        is_fishing = (
+            any(kw in macro_name for kw in ("fish", "рыба", "summer", "inf summer"))
+            or (mode == "event" and "summer" in map_name)
+            or ("summer" in stage or "fish" in stage)
+        )
+        if is_fishing:
+            return "Summer Fishing"
+        if mode == "event":
+            if stage == "infinite" or "infinite" in event_kind or task.get("infinite_wave_limit"):
+                return "Event Infinite"
+            return "Event"
+        if mode == "story":
+            if stage == "infinite" or task.get("infinite_wave_limit"):
+                return "Story Infinite"
+            return "Story"
+        if mode == "portals":
+            return "Portals"
         return mode.capitalize() if mode else ""
 
     @staticmethod
@@ -3357,6 +3432,14 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
             repeat = False
             self._force_fresh_reentry = True
 
+        # Если активирован Auto-Restart Loop, то при победе или поражении (кроме экспедиций и матчмейкинга)
+        # не возвращаемся в лобби, а немедленно жмём Repeat Stage для максимально быстрого цикла.
+        auto_restart_loop = bool(cfg.load().get("auto_restart_loop", False))
+        if auto_restart_loop and not is_matchmaking and not expedition_loss:
+            if not repeat:
+                self._log("[Macro] Auto-Restart Loop активен: мгновенный повтор матча без выхода в лобби.")
+                repeat = True
+
         if repeat and not is_matchmaking:
             # More repeats left on this task -- Repeat Stage re-queues the
             # same stage directly, skipping the lobby/gamemode/map/stage
@@ -3505,7 +3588,10 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         if mode in ("tower", "portals"):
             stage = "-"
         elif mode in ("raid", "event"):
-            stage = f"Act {raw_stage}" if raw_stage != "-" else "-"
+            if str(raw_stage).lower() == "infinite":
+                stage = "Infinite"
+            else:
+                stage = f"Act {raw_stage}" if raw_stage != "-" else "-"
         elif str(raw_stage).isdigit():
             stage = f"Stage {raw_stage}"
         else:
@@ -3542,11 +3628,24 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         # добавить её дважды -- то есть рано или поздно один раз. Здесь
         # остаётся только блок «Match»: он и есть то, чем уведомления двух
         # режимов отличаются по существу.
-        fields = stats_report.report_fields("⚔️ Match", [
-            ("Result", ("Victory \U0001F3C6" if is_win else "Defeat \U0001F480")
+        match_rows = [
+            ("Result", ("Victory" if is_win else "Defeat")
                         if outcome_known else "не распознан"),
             ("Duration", duration or "-"),
-        ] + ([("Stage", where)] if where else []), snap)
+        ]
+        infinite_limit = self._infinite_wave_limit(task)
+        last_wave = getattr(self, "_last_detected_wave", 0)
+        if last_wave > 0 or infinite_limit is not None:
+            if infinite_limit and last_wave > 0:
+                match_rows.append(("Wave", f"{last_wave} / {infinite_limit}"))
+            elif infinite_limit:
+                match_rows.append(("Wave", f"{infinite_limit}"))
+            elif last_wave > 0:
+                match_rows.append(("Wave", f"{last_wave}"))
+        if where:
+            match_rows.append(("Stage", where))
+
+        fields = stats_report.report_fields("Match", match_rows, snap)
         # РАССТАНОВКА -- поле появляется только когда с ней было не всё в
         # порядке. Освободившееся от «Links» место отдано тому, что реально
         # решает исход забега: юнит, не вставший до старта, стоит матча, а
@@ -3562,7 +3661,7 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                 rows.append(("Не встало", f'{tally["failed"]} ({", ".join(tally.get("failed_names") or [])})'))
             if tally.get("skipped"):
                 rows.append(("Пропущено", f'{tally["skipped"]} ({", ".join(tally.get("skipped_names") or [])})'))
-            fields.append({"name": "\U000026A0\U0000FE0F Расстановка", "inline": False,
+            fields.append({"name": "Расстановка", "inline": False,
                             "value": self._tree_rows(rows)})
 
         # Блока «Links» (Discord • YouTube • GitHub) здесь больше нет: он
@@ -3594,8 +3693,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
         version = snap.get("version")
         footer = "Anime Expeditions" + (f" · v{version}" if version else "")
         main_embed = {
-            "title": ("Victory! \U0001F3C6" if is_win else "Defeat \U0001F480")
-                      if outcome_known else "Раунд отыгран \U0001F3C1",
+            "title": ("Victory" if is_win else "Defeat")
+                      if outcome_known else "Раунд отыгран",
             "color": (0x3FBF6F if is_win else 0xE05A6D) if outcome_known else 0xE3B158,
             "description": description,
             "fields": fields,
@@ -5171,8 +5270,9 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
 
         # 2. Адаптивный fallback для нестандартных/сжатых окон (1024x672, 800x600)
         # и случаев, когда кнопка Play перекрыта другими игроками или уведомлением:
-        # проверяем Play, Event, Items, Summon с мягким порогом 0.78.
-        lobby_anchors = ("nav_play", "nav_event", "nav_items", "nav_summon")
+        # проверяем Play, Event, Items с мягким порогом 0.78.
+        # nav_summon убран: такого шаблона на диске нет, якорь молча пропускался.
+        lobby_anchors = ("nav_play", "nav_event", "nav_items")
         deadline = time.time() + max(1.0, LOBBY_CHECK_TIMEOUT - 2.0)
         while time.time() < deadline:
             if stop_event.is_set():

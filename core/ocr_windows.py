@@ -106,6 +106,16 @@ def is_available() -> bool:
     return _engine is not None
 
 
+def reset_cache() -> None:
+    """Сбрасывает кэш проверки, чтобы перепроверить доступность движка
+    после установки языкового пакета (например, через Language.OCR)."""
+    global _backend, _engine, _checked, _unavailable_reason
+    _checked = False
+    _backend = None
+    _engine = None
+    _unavailable_reason = ""
+
+
 def backend_name() -> str:
     """Name of the active WinRT projection, or an empty string if unavailable."""
     return _backend.name if is_available() else ""

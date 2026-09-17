@@ -229,24 +229,23 @@ def _streak_line(derived: dict) -> str:
 
 def extra_fields(stats: dict) -> list:
     """Блоки, которых в карточке раньше не было: серия, длина матча, откуда
-    забеги. Считаются из журнала, поэтому появляются только когда журнал есть —
-    пустые поля-заглушки в уведомлении это ровно то, из-за чего его перестают
-    читать."""
-    derived = (stats or {}).get("derived") or {}
-    if not derived.get("history_len"):
-        return []
+    забеги, активные сервисы автоматизации."""
+    stats = stats or {}
+    derived = stats.get("derived") or {}
+    fields = []
 
-    fields = [{
-        "name": "\U0001F525 Серия", "inline": True, "value": tree_rows([
-            ("Сейчас", _streak_line(derived)),
-            ("Лучшая", derived.get("best_streak") or 0),
-            ("Сегодня", f'{derived.get("today_wins", 0)}W · {derived.get("today_losses", 0)}L'),
-        ])}]
+    if derived.get("history_len"):
+        fields.append({
+            "name": "Серия", "inline": True, "value": tree_rows([
+                ("Сейчас", _streak_line(derived)),
+                ("Лучшая", derived.get("best_streak") or 0),
+                ("Сегодня", f'{derived.get("today_wins", 0)}W · {derived.get("today_losses", 0)}L'),
+            ])})
 
     avg, best = derived.get("avg_seconds"), derived.get("best_seconds")
     if avg or best:
         fields.append({
-            "name": "\U000023F1 Матчи", "inline": True, "value": tree_rows([
+            "name": "Матчи", "inline": True, "value": tree_rows([
                 ("Средний", format_duration(avg) if avg else "-"),
                 ("Лучший", format_duration(best) if best else "-"),
                 ("В журнале", derived.get("history_len", 0)),
@@ -260,7 +259,16 @@ def extra_fields(stats: dict) -> list:
     if len(by_source) > 1:
         rows = [(SOURCE_NAMES.get(name, name), f'{slot["wins"]}W · {slot["losses"]}L')
                 for name, slot in sorted(by_source.items())]
-        fields.append({"name": "\U0001F3AE Откуда", "inline": True, "value": tree_rows(rows)})
+        fields.append({"name": "Откуда", "inline": True, "value": tree_rows(rows)})
+
+    # АКТИВНЫЕ АВТОМАТИЗАЦИИ — отображаются отдельным компактным блоком,
+    # если в настройках включены фоновые сервисы (магазин, баунти, крафт, топливо).
+    automations = (stats or {}).get("automations") or {}
+    if automations:
+        rows = [(name, val) for name, val in automations.items() if val]
+        if rows:
+            fields.append({"name": "Automations", "inline": True, "value": tree_rows(rows)})
+
     return fields
 
 
@@ -269,8 +277,8 @@ def report_fields(head_name: str, head_rows, stats: dict) -> list:
     сводка из журнала.
 
     `head_name`/`head_rows` — то, чем отличаются уведомления: у автомата и
-    повтора это «⚔️ Match» с исходом матча, у периодического статуса —
-    «🎯 Сейчас» с тем, что макрос делает прямо в эту минуту. Всё остальное
+    повтора это «Match» с исходом матча, у периодического статуса —
+    «Сейчас» с тем, что макрос делает прямо в эту минуту. Всё остальное
     одинаково всюду по построению, а не по договорённости."""
     stats = stats or {}
     sw, sl = stats.get("session_wins", 0), stats.get("session_losses", 0)
@@ -287,7 +295,7 @@ def report_fields(head_name: str, head_rows, stats: dict) -> list:
     # перестаёт читаться вовсе — а нужна она ровно в тот единственный раз,
     # когда цифра не ноль.
     unknown = stats.get("session_unknown") or 0
-    fields.append({"name": "\U0001F4CA Session", "inline": True, "value": tree_rows([
+    fields.append({"name": "Session", "inline": True, "value": tree_rows([
         ("Elapsed", session_time),
         ("Record", f"{sw}W · {sl}L"),
         ("Rate", rate(sw, sl)),
@@ -298,7 +306,7 @@ def report_fields(head_name: str, head_rows, stats: dict) -> list:
     # All Time стал inline: с шестью полями Discord раскладывает их в две
     # ровные строки по три, а полноширинное поле посреди разрывало бы обе.
     all_unknown = stats.get("all_time_unknown") or 0
-    fields.append({"name": "\U0001F3C6 All Time", "inline": True, "value": tree_rows([
+    fields.append({"name": "All Time", "inline": True, "value": tree_rows([
         ("Record", f"{aw}W · {al}L"),
         ("Rate", rate(aw, al)),
         ("Матчей", aw + al),
@@ -332,9 +340,9 @@ def status_embed(stats: dict, *, window_seconds: float, window_wins: int,
     span = format_elapsed(window_seconds)
 
     if final:
-        title = "Прогон закончен · итог \U0001F3C1"
+        title = "Прогон закончен · итог"
     else:
-        title = f"Статус за {span} \U0001F4CA"
+        title = f"Статус за {span}"
 
     unknown = max(0, window_unknown or 0)
     if played:
@@ -363,7 +371,7 @@ def status_embed(stats: dict, *, window_seconds: float, window_wins: int,
         # «сегодня не везёт» от «распознавание сломано»: матч кончился, экран
         # результата был, а баннер с эталоном не совпал.
         share = f" — это {round(unknown * 100 / (played + unknown))}% всех матчей" if played else ""
-        description += (f"\n\U000026A0\U0000FE0F Ещё **{unknown}** "
+        description += (f"\nЕщё **{unknown}** "
                         f"{_matches_word(unknown)} кончилось без распознанного исхода"
                         f"{share}. В счёт они не пошли.\n"
                         f"Пересними баннеры «victory» и «defeat» своей вырезкой: "
@@ -374,7 +382,7 @@ def status_embed(stats: dict, *, window_seconds: float, window_wins: int,
         "title": title,
         "color": FINAL_COLOR if final else STATUS_COLOR,
         "description": description,
-        "fields": report_fields("\U0001F3AF Сейчас", now_rows or [], stats),
+        "fields": report_fields("Сейчас", now_rows or [], stats),
         "footer": {"text": "Anime Expeditions" + (f" · v{version}" if version else "")},
         "timestamp": timestamp,
     }

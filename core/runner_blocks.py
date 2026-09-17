@@ -254,7 +254,8 @@ class BlockOps:
                 done = True
                 self._battle_block_state = {}
             elif btype == "walk":
-                self._run_walk_block_tick(stop_event, block, self._battle_block_index + 1)
+                self._run_walk_block_tick(stop_event, block, self._battle_block_index + 1,
+                                          phase_label="Battle", macro_name=macro_name or "", hwnd=hwnd)
                 done = True
                 self._battle_block_state = {}
             elif btype == "record":
@@ -630,19 +631,135 @@ class BlockOps:
             time.sleep(min(0.1, deadline - time.time()))
 
     def _run_walk_block_tick(self, stop_event: threading.Event, block: dict, block_num: int,
-                              phase_label: str = "Battle") -> None:
-        """One-shot: replays a recorded walk path -- the same core.paths
-        record/load/replay system the pinned Pre Start Walk Path row
-        already uses (see _run_prestart), just picked by name here instead
-        of by map. Picks up wherever the player currently is; no position
-        tracking needed, same as every other Battle block that just fires
-        an action rather than needing to know where a unit was placed.
+                              phase_label: str = "Battle", macro_name: str = "", hwnd: int = 0) -> None:
+        """One-shot: replays or live-records a walk path.
 
-        Runs in either phase (phase_label): Pre Start allows several of these
-        so a routine can walk between multiple starter-placement spots before
-        the match begins, not just the single pinned Walk Path."""
-        path_name = block.get("params", {}).get("path") or ""
+        Если для блока включена запись на ходу (recordOnReach или пустой путь при создании),
+        макрос активирует окно игры Roblox, выводит плавающий HUD записи,
+        записывает WASD-ходьбу игрока и по паузе бездействия (1.8 с) автоматически
+        сохраняет маршрут в Paths/ и обновляет шаблон сценария на диске,
+        после чего сразу переходит к следующему действию.
+        """
+        params = block.get("params") or {}
+        path_name = params.get("path") or block.get("pathName") or ""
         label = f'{phase_label} block #{block_num} (Walk)'
+        record_on_reach = bool(block.get("recordOnReach") or params.get("recordOnReach") or (not path_name and block.get("recordOnFirstRun", False)))
+
+        if record_on_reach:
+            # Генерация безопасного и понятного имени для сохраняемого пути
+            if path_name:
+                target_name = path_name
+            else:
+                import re
+                safe_macro = re.sub(r"[^A-Za-z0-9 _-]", "", macro_name or "macro").strip() or "macro"
+                phase_slug = phase_label.lower().replace(" ", "_")
+                target_name = f"{safe_macro}_{phase_slug}_walk_{block_num}"
+
+            self._log(f'[Macro] {label}: starting live movement recording... Walk in Roblox with WASD. Auto-saves on pause.')
+            self._set_status(action='Recording live walk (WASD)...')
+
+            if hwnd and wm.is_window(hwnd):
+                try:
+                    wm.show_window(hwnd)
+                    wm.activate_window(hwnd)
+                    time.sleep(0.3)
+                except Exception:
+                    pass
+
+            push_fn = getattr(self, "_push_ui", None)
+            if callable(push_fn):
+                try:
+                    push_fn("onLiveWalkRecordStart", {
+                        "phase": phase_label,
+                        "block_num": block_num,
+                        "macro": macro_name,
+                        "path_name": target_name,
+                        "label": label,
+                    })
+                except Exception:
+                    pass
+
+            def _on_first_key():
+                self._log(f'[Macro] {label}: first movement step detected, recording active...')
+                self._set_status(action='Recording live walk (WASD)...')
+
+            events = walk_paths.record_live_path_until_idle(
+                stop_event=stop_event,
+                idle_seconds=1.8,
+                max_seconds=60.0,
+                wait_first_key_timeout=30.0,
+                on_first_key=_on_first_key,
+            )
+
+            if callable(push_fn):
+                try:
+                    push_fn("onLiveWalkRecordDone", {
+                        "saved": bool(events),
+                        "path_name": target_name,
+                        "count": len(events) if events else 0,
+                        "macro": macro_name,
+                        "block_num": block_num,
+                    })
+                except Exception:
+                    pass
+
+            if self._checkpoint(stop_event):
+                return
+
+            if events:
+                saved_name = walk_paths.save_path(target_name, events)
+                self._log(f'[Macro] {label}: recorded {len(events)} WASD events -> saved as "{saved_name}".')
+
+                # Обновляем блок в памяти для текущего прогона
+                if "params" not in block or not isinstance(block["params"], dict):
+                    block["params"] = {}
+                block["params"]["path"] = saved_name
+                block["pathName"] = saved_name
+                block["recordOnReach"] = False
+                block["params"]["recordOnReach"] = False
+                block.pop("recordOnFirstRun", None)
+
+                # Сохраняем обновленный блок в шаблон на диске, чтобы последующие прогоны сразу воспроизводили его
+                if macro_name:
+                    try:
+                        from . import templates as tpl
+                        tpl_data = tpl.load_template(macro_name)
+                        blocks_dict = tpl_data.get("blocks")
+                        if isinstance(blocks_dict, dict):
+                            phase_key = "prestart" if "pre" in phase_label.lower() else "battle"
+                            phase_blocks = blocks_dict.get(phase_key) or []
+                            block_id = block.get("id")
+                            updated = False
+                            if block_id:
+                                for b in phase_blocks:
+                                    if b.get("id") == block_id:
+                                        b.setdefault("params", {})["path"] = saved_name
+                                        b["pathName"] = saved_name
+                                        b["recordOnReach"] = False
+                                        b.get("params", {})["recordOnReach"] = False
+                                        updated = True
+                                        break
+                            if not updated and 0 <= block_num - 1 < len(phase_blocks):
+                                target_b = phase_blocks[block_num - 1]
+                                if target_b.get("type") == "walk":
+                                    target_b.setdefault("params", {})["path"] = saved_name
+                                    target_b["pathName"] = saved_name
+                                    target_b["recordOnReach"] = False
+                                    target_b.get("params", {})["recordOnReach"] = False
+                                    updated = True
+                            if updated:
+                                tpl.save_template(macro_name, blocks_dict)
+                                self._log(f'[Macro] Scenario "{macro_name}" updated on disk with path "{saved_name}".')
+                    except Exception as e:
+                        self._log(f'[Macro] Notice: could not persist path to template "{macro_name}": {e}')
+
+                self._log(f'[Macro] {label}: walk recorded & saved. Resuming scenario execution...')
+                self._set_status(action=f'Saved walk "{saved_name}", continuing...')
+                return
+            else:
+                self._log(f'[Macro] {label}: no movement recorded -- continuing scenario.')
+                return
+
         if not path_name:
             self._log(f'{label}: no path selected -- skipping.')
             return
@@ -1054,7 +1171,8 @@ class BlockOps:
         elif btype == "walk_path":
             self._run_walk_path_block(hwnd, stop_event, task, default_walk_paths or {}, block, first_repeat)
         elif btype == "walk":
-            self._run_walk_block_tick(stop_event, block, i, phase_label="Pre Start")
+            self._run_walk_block_tick(stop_event, block, i, phase_label="Pre Start",
+                                      macro_name=macro_name or "", hwnd=hwnd)
         elif btype == "record":
             self._run_record_macro_tick(hwnd, stop_event, block, i, phase_label="Pre Start")
         elif btype == "click":

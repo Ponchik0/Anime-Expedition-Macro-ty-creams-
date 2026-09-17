@@ -153,6 +153,105 @@ def is_recording() -> bool:
     return _recorder.active
 
 
+_live_record_finish_event = threading.Event()
+
+
+def finish_live_walk_record() -> None:
+    """Сигнализирует завершение текущей живой записи движения (например, по кнопке Стоп в HUD)."""
+    _live_record_finish_event.set()
+
+
+def record_live_path_until_idle(
+    stop_event: threading.Event = None,
+    idle_seconds: float = 1.8,
+    max_seconds: float = 60.0,
+    wait_first_key_timeout: float = 30.0,
+    on_first_key = None,
+    poll_interval: float = _POLL_INTERVAL,
+) -> list:
+    """Записывает движения игрока (WASD + I/O) на карте в реальном времени.
+
+    Начинает отсчёт времени t=0 с момента ПЕРВОГО нажатия клавиши движения,
+    чтобы исключить задержку перед началом ходьбы.
+    Автоматически завершает запись, когда все клавиши отпущены и игрок
+    остановился на idle_seconds (по умолчанию 1.8 секунды).
+
+    Поскольку события записываются только при изменении состояния (down/up),
+    последнее событие в списке — это момент отпускания последней клавиши.
+    Таким образом, финальная пауза в 1.8 секунды НЕ попадает в events,
+    и при воспроизведении нет лишней мёртвой задержки в конце маршрута.
+    """
+    _live_record_finish_event.clear()
+    held = {key: False for key in _WATCHED_KEYS}
+    events = []
+    start_time = None
+    idle_start = None
+    init_time = time.perf_counter()
+
+    try:
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                # Прерывание макроса пользователем
+                return []
+            if _live_record_finish_event.is_set():
+                # Принудительное завершение по клику в HUD
+                break
+
+            now = time.perf_counter()
+            if start_time is None:
+                if (now - init_time) > wait_first_key_timeout:
+                    # Игрок не нажал ни одной клавиши за время ожидания
+                    break
+            else:
+                if (now - start_time) > max_seconds:
+                    # Достигнут лимит максимальной длительности
+                    break
+
+            for key in _WATCHED_KEYS:
+                is_down = _input_backend.is_move_key_down(key)
+                if is_down != held[key]:
+                    if start_time is None:
+                        start_time = time.perf_counter()
+                        if on_first_key:
+                            try:
+                                on_first_key()
+                            except Exception:
+                                pass
+                    held[key] = is_down
+                    events.append({
+                        "t": round(time.perf_counter() - start_time, 3),
+                        "key": key,
+                        "state": "down" if is_down else "up",
+                    })
+
+            if start_time is not None:
+                any_down = any(held.values())
+                if any_down:
+                    idle_start = None
+                else:
+                    curr = time.perf_counter()
+                    if idle_start is None:
+                        idle_start = curr
+                    elif (curr - idle_start) >= idle_seconds:
+                        # Игрок закончил движение и постоял на месте idle_seconds
+                        break
+
+            time.sleep(poll_interval)
+    finally:
+        if start_time is not None:
+            t_fin = round(time.perf_counter() - start_time, 3)
+            for key, is_down in held.items():
+                if is_down:
+                    events.append({
+                        "t": t_fin,
+                        "key": key,
+                        "state": "up",
+                    })
+        _live_record_finish_event.clear()
+
+    return events
+
+
 def _safe_name(name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9 _-]", "", name or "").strip()
     return cleaned or "path"

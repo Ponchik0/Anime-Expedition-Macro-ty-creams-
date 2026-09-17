@@ -150,6 +150,22 @@ MAC_MARGIN = 24  # inset both windows from the top/left screen edges so their ti
 MAC_PANEL_MIN_W = PANEL_WIDTH  # narrower than the Windows panel column and it stops being usable
 MAC_PANEL_MAX_W = 560  # past this the single-column dashboard just looks stretched
 UI_INDEX = os.path.join(constants.UI_DIR, "index.html")
+# В версии 2.0.0 по умолчанию запускается современный стеклянный интерфейс (concept-glass).
+# Откат к классическому интерфейсу возможен через аргумент командной строки --classic
+# или опцию "use_glass_ui": false в settings.json.
+_use_glass_ui = (
+    "--glass" in sys.argv
+    or os.environ.get("AE_UI") == "glass"
+    or bool(cfg.load().get("use_glass_ui", True))
+)
+if "--classic" in sys.argv or cfg.load().get("use_glass_ui") is False:
+    _use_glass_ui = False
+
+if _use_glass_ui:
+    _glass_index = os.path.join(constants.UI_DIR, "concept-glass", "index.html")
+    if os.path.exists(_glass_index):
+        UI_INDEX = _glass_index
+
 LOGS_WINDOW_HTML = os.path.join(constants.UI_DIR, "logs_window.html")
 WAVE_MONITOR_HTML = os.path.join(constants.UI_DIR, "wave_monitor.html")
 LOGO_ICO = os.path.join(constants.BUNDLE_DIR, "logo.ico")
@@ -185,7 +201,7 @@ HOTKEY_DEFAULTS = {
     # Toggles the Image Manager from anywhere -- capturing a missing crop
     # right when a search fails shouldn't need clicking back through
     # Settings > General first.
-    "image_manager": "f6",
+    "image_manager": "",
     # Collapses the whole dashboard to a small always-on-top strip (and back)
     # -- for when the macro's running fine and the full UI is just clutter.
     "toggle_compact": "f7",
@@ -195,10 +211,15 @@ HOTKEY_DEFAULTS = {
     # — и рекордер такие клики намеренно не пишет (иначе нажатие на саму
     # кнопку «Запись» попало бы в файл). F8 свободна.
     "toggle_record": "f8",
-    # Список записей — окном по центру приложения. Пара к F8: этой клавишей
-    # открыл список и начал запись, а дальше окно само уходит с экрана.
-    # Повторное нажатие закрывает его.
-    "open_replay": "f9",
+    # Список записей — открывает шторку записей с правого края окна (F10).
+    "open_replay": "f10",
+    # Мгновенный перезапуск матча при победе/поражении без выхода в лобби
+    "auto_restart_loop": "alt+f5",
+    # Авто-перезаход в приватный сервер при вылете Roblox или по требованию
+    "vip_rejoin": "alt+f6",
+    # Запись движения WASD на карте. Запускает и останавливает опрос WASD
+    # клавиш в игре, не засоряя запись служебными кликами. Alt+9 свободна.
+    "toggle_walk_record": "alt+9",
 }
 
 # Имена клавиш из браузера -> имена, которые понимает библиотека keyboard.
@@ -240,6 +261,9 @@ HOTKEY_LABELS = {
     "image_manager": "Менеджер картинок", "toggle_compact": "Компактная полоса",
     "toggle_record": "Запись", "open_replay": "Список записей",
     "game_auto_upgrade": "Авто-апгрейд (в игре)",
+    "auto_restart_loop": "Быстрый рестарт (Auto-Restart Loop)",
+    "vip_rejoin": "Перезаход в VIP лобби",
+    "toggle_walk_record": "Запись маршрута WASD",
 }
 
 # Stage-detail panel (shown after clicking a stage row on the Select Stage
@@ -336,9 +360,13 @@ def _status_hours(data: dict) -> float:
 # перевести уже некому: в файл подпись обязана попасть готовой.
 RUN_KIND_RU = {
     "Story": "Story",
+    "Story Infinite": "Story Infinite",
     "Raid": "Raid",
     "Expedition": "Expedition",
     "Event": "Event",
+    "Event Infinite": "Event Infinite",
+    "Summer Fishing": "Рыбалка",
+    "Portals": "Порталы",
     "Tournament": "Tournament",
     "Challenge": "Челлендж",
     "Daily Challenge": "Дневной челлендж",
@@ -634,6 +662,13 @@ class Api:
         self.keyboard = Keyboard()
         self._path_test_stop = None
         self._pending_recording_events = None  # stopped-but-not-yet-named Record block capture (see stop_input_capture)
+        # При старте приложения сбрасываем любые зависшие записи движения или ввода
+        from core import paths as _paths
+        if _paths.is_recording():
+            _paths.cancel_recording()
+        from core import input_record as _input_record
+        if _input_record.is_recording():
+            _input_record.cancel_recording()
         # Apply the persisted Macro Speed delay before anything can click
         # (see core.pacing + set_setting's live-update hook).
         from core import pacing
@@ -670,7 +705,8 @@ class Api:
             self.set_bounty_remaining, self.get_fuel_settings, self.mark_fuel_refill_result,
             self.get_hotkeys,
             self.get_auto_shop_settings, self._save_auto_shop_item_state,
-            self._save_auto_shop_shop_state)
+            self._save_auto_shop_shop_state,
+            push_ui=self.push_ui)
         # Планировщик сводки поднимается последним: ему нужен self.runner, а
         # первый такт всё равно через STATUS_TICK_SECONDS. Демон -- умирает
         # вместе с процессом, плюс сам выходит по self.stopping.
@@ -696,6 +732,36 @@ class Api:
         # oldest->newest booleans so the card's activity grid reads left (old)
         # to right (recent), GitHub-contribution style.
         history = data.get("run_history", [])
+        # Статус активных сервисов автоматизации для отображения в сводках и вебхуках
+        automations = {}
+        try:
+            shop_cfg = self.get_auto_shop_settings() or {}
+            if shop_cfg.get("enabled"):
+                automations["Shop"] = "Active"
+        except Exception:
+            pass
+        try:
+            bounty_cfg = self.get_bounty_settings() or {}
+            if bounty_cfg.get("enabled"):
+                rem = bounty_cfg.get("remaining", 10)
+                mythic_pfx = "Mythic · " if bounty_cfg.get("mythic_only") else ""
+                automations["Bounty"] = f"{mythic_pfx}{rem}/10"
+        except Exception:
+            pass
+        try:
+            craft_cfg = self.get_crafting_settings() or {}
+            if craft_cfg.get("enabled"):
+                every = craft_cfg.get("every", 20)
+                automations["Crafting"] = f"Every {every}"
+        except Exception:
+            pass
+        try:
+            fuel_cfg = self.get_fuel_settings() or {}
+            if fuel_cfg.get("enabled"):
+                automations["Fuel"] = "Active"
+        except Exception:
+            pass
+
         return {
             "session_wins": self._session_wins,
             "session_losses": self._session_losses,
@@ -720,6 +786,7 @@ class Api:
             # уведомлении: снимок один, а читателей у него трое — карточка
             # автомата, карточка повтора и периодический статус.
             "derived": stats_report.derive(history),
+            "automations": automations,
             "run_history": history,
         }
 
@@ -932,10 +999,65 @@ class Api:
         # Панели рисуется по нему, а отдельный запрос ради одной строки дважды
         # в секунду был бы чистой тратой: cfg.load() здесь уже сделан.
         run_mode = data.get("run_mode", "auto")
+        # Подсчёт текущей серии побед (Win Streak) и рекорда
+        win_streak = 0
+        for h in history:
+            if h.get("result") == "win":
+                win_streak += 1
+            elif h.get("result") == "loss":
+                break
+        best_streak = int(data.get("best_streak", 0) or 0)
+        running_streak = 0
+        for h in reversed(history):
+            if h.get("result") == "win":
+                running_streak += 1
+                if running_streak > best_streak:
+                    best_streak = running_streak
+            elif h.get("result") == "loss":
+                running_streak = 0
+        if win_streak > best_streak:
+            best_streak = win_streak
+
+        # Фоновые службы автоматизации (Auto-Shop, Bounty, Crafting, Fuel)
+        shop_cfg = data.get("auto_shop") or {}
+        bounty_cfg = data.get("bounty") or {}
+        craft_cfg = data.get("crafting") or {}
+        fuel_cfg = data.get("fuel") or {}
+
+        shop_enabled = bool(shop_cfg.get("enabled", False))
+        bounty_enabled = bool(bounty_cfg.get("enabled", False))
+        craft_enabled = bool(craft_cfg.get("enabled", False))
+        fuel_enabled = bool(fuel_cfg.get("enabled", False))
+
+        auto_shop_status = "Active" if shop_enabled else "Disabled"
+        auto_shop_sub = "Gold & Event" if shop_enabled else "Off"
+
+        mythic = bounty_cfg.get("mythic_only", False)
+        rem_bounty = bounty_cfg.get("remaining", 10)
+        auto_bounty_status = f"{'Mythic' if mythic else 'Active'} · {rem_bounty}/10" if bounty_enabled else "Disabled"
+        auto_bounty_sub = ("Auto-Reroll" if mythic else "Auto-Claim") if bounty_enabled else "Off"
+
+        craft_every = craft_cfg.get("every", 20)
+        craft_count = craft_cfg.get("count", 0)
+        auto_craft_status = f"Active ({craft_count}/{craft_every})" if craft_enabled else "Disabled"
+        auto_craft_sub = f"Every {craft_every} runs" if craft_enabled else "Off"
+
+        auto_fuel_status = "Safeguard ON" if fuel_enabled else "Disabled"
+        auto_fuel_sub = "Auto-Refill" if fuel_enabled else "Off"
+
         return {
             "docked": self.docker.docked,
             "run_mode": run_mode if run_mode in ("auto", "replay") else "auto",
             "start_preview": self._start_preview(data),
+            "auto_restart_loop": bool(data.get("auto_restart_loop", False)),
+            "win_streak": win_streak,
+            "best_streak": best_streak,
+            "automations": {
+                "shop": {"enabled": shop_enabled, "status": auto_shop_status, "sub": auto_shop_sub},
+                "bounty": {"enabled": bounty_enabled, "status": auto_bounty_status, "sub": auto_bounty_sub},
+                "crafting": {"enabled": craft_enabled, "status": auto_craft_status, "sub": auto_craft_sub},
+                "fuel": {"enabled": fuel_enabled, "status": auto_fuel_status, "sub": auto_fuel_sub},
+            },
             **self._run_status,
             **self._replay_status(),
             "last_run": _format_ago(history[0]["at"]) if history else "-",
@@ -1134,7 +1256,18 @@ class Api:
         # mode="story" и в истории был неотличим от обычной Story-задачи.
         history.insert(0, {"result": result, "map": map_name or "-", "duration": duration or "-",
                            "at": time.time(), "source": source, "kind": kind or ""})
-        cfg.update({key: data.get(key, 0) + 1, "run_history": history[:RUN_HISTORY_LIMIT]})
+        updates = {key: data.get(key, 0) + 1, "run_history": history[:RUN_HISTORY_LIMIT]}
+        if is_win:
+            cur_streak = 0
+            for h in history:
+                if h.get("result") == "win":
+                    cur_streak += 1
+                elif h.get("result") == "loss":
+                    break
+            saved_best = int(data.get("best_streak", 0) or 0)
+            if cur_streak > saved_best:
+                updates["best_streak"] = cur_streak
+        cfg.update(updates)
 
     def clear_run_history(self) -> dict:
         """Стирает историю забегов и ВСЮ статистику побед/поражений.
@@ -1147,7 +1280,7 @@ class Api:
         """
         self._session_wins = 0
         self._session_losses = 0
-        cfg.update({"run_history": [], "all_time_wins": 0, "all_time_losses": 0})
+        cfg.update({"run_history": [], "all_time_wins": 0, "all_time_losses": 0, "best_streak": 0})
         self.push_log("[Stats] Run history and counters cleared.")
         return {"ok": True}
 
@@ -1190,6 +1323,8 @@ class Api:
     def get_settings(self) -> dict:
         data = cfg.load()
         return {
+            "lang": data.get("lang", "en"),
+            "use_glass_ui": data.get("use_glass_ui", True),
             "start_minimized": data.get("start_minimized", False),
             "theme": data.get("theme", "default"),  # legacy combined value -- kept for one-time migration, see app.js
             "theme_base": data.get("theme_base", ""),
@@ -2434,9 +2569,13 @@ class Api:
             return {"ok": False, "reason": "preflight_blocker", "message": reasons, "preflight": preflight}
 
         # Окружение в порядке — теперь решаем, ЧТО запускать.
-        # В режиме «Повтор» кнопка «Старт» крутит запись, а не очередь задач.
-        # Проверка идёт ДО сброса статуса: у повтора свой статус, и затирать
-        # его строкой про очередь задач нельзя.
+        # Если перед запуском осталась открыта или зависла ручная запись движения
+        # из модального окна сценариев, принудительно отменяем её, чтобы фоновый
+        # поток опроса клавиш не висел и не перехватывал управление в игре.
+        from core import paths
+        if paths.is_recording():
+            paths.cancel_recording()
+
         if cfg.load().get("run_mode") == "replay":
             return self.replay_play()
 
@@ -2614,6 +2753,18 @@ class Api:
         if st.get("recording"):
             return self.replay_stop_recording("")
         return self.replay_start_recording()
+
+    def hotkey_toggle_walk_record(self) -> dict:
+        """Переключает запись маршрута ходьбы WASD (старт / остановка)."""
+        from core import paths
+        if paths.is_recording():
+            self.push_log("[Paths] Остановка записи маршрута WASD по хоткею.")
+            self.push_ui("stopWalkRecordHotkey")
+            return {"ok": True, "action": "stop"}
+        else:
+            self.push_log("[Paths] Старт записи маршрута WASD по хоткею.")
+            self.push_ui("startWalkRecordHotkey")
+            return {"ok": True, "action": "start"}
 
     def replay_start_recording(self, name: str = "") -> dict:
         # Запись и автомат несовместимы: автомат сам двигает мышь, и это
@@ -3048,6 +3199,17 @@ class Api:
             return {"ok": False, "reason": str(exc)}
         return {"ok": True}
 
+    def open_recordings_folder(self) -> dict:
+        """Open Recordings folder in the OS file manager."""
+        from core import replay
+        try:
+            os.makedirs(replay.RECORDINGS_DIR, exist_ok=True)
+            self._open_in_file_manager(replay.RECORDINGS_DIR)
+        except OSError as exc:
+            self.push_log(f"[Replay] Couldn't open the recordings folder: {exc}")
+            return {"ok": False, "reason": str(exc)}
+        return {"ok": True}
+
     @staticmethod
     def _open_in_file_manager(path: str) -> None:
         """Reveal a folder in the OS file manager. os.startfile is
@@ -3132,6 +3294,11 @@ class Api:
         from core import paths
         paths.cancel_recording()
         self._pending_path_events = None
+        return {"ok": True}
+
+    def finish_live_walk_record(self) -> dict:
+        from core import paths
+        paths.finish_live_walk_record()
         return {"ok": True}
 
     def list_paths(self) -> list:
@@ -3220,8 +3387,23 @@ class Api:
 
     def get_hotkeys(self) -> dict:
         data = cfg.load()
+        saved = dict(data.get("hotkeys", {}))
+        # Автоматическая миграция устаревших дефолтов при обновлении со старых сборок:
+        # f6 -> alt+f5 (auto_restart_loop), f10 -> alt+f6 (vip_rejoin), f9 -> f10 (open_replay)
+        migrated = False
+        if saved.get("auto_restart_loop") == "f6":
+            saved["auto_restart_loop"] = "alt+f5"
+            migrated = True
+        if saved.get("vip_rejoin") == "f10":
+            saved["vip_rejoin"] = "alt+f6"
+            migrated = True
+        if saved.get("open_replay") == "f9":
+            saved["open_replay"] = "f10"
+            migrated = True
+        if migrated:
+            cfg.update({"hotkeys": saved})
         keys_ = dict(HOTKEY_DEFAULTS)
-        keys_.update(data.get("hotkeys", {}))
+        keys_.update(saved)
         return keys_
 
     def set_hotkey_capture(self, on: bool) -> dict:
@@ -3998,17 +4180,64 @@ class Api:
         win.events.closed += _on_closed
         return {"ok": True}
 
-    def push_ui(self, js_call: str) -> None:
+    def push_ui(self, js_call: str, data: dict = None) -> None:
         if not self._window:
             return
         try:
-            self._window.evaluate_js(f"window.{js_call} && window.{js_call}()")
+            if data is not None:
+                payload = json.dumps(data)
+                self._window.evaluate_js(f"window.{js_call} && window.{js_call}({payload})")
+            else:
+                self._window.evaluate_js(f"window.{js_call} && window.{js_call}()")
         except Exception:
             pass
 
     def minimize_window(self):
         if self._window:
             self._window.minimize()
+
+    def is_window_maximized(self) -> bool:
+        """Возвращает True, если окно приложения развернуто на весь экран."""
+        hwnd = getattr(self, "gui_hwnd", None) or WindowManager(GUI_TITLE, pid=os.getpid()).find()
+        if not hwnd or sys.platform != "win32":
+            return False
+        return wm.is_zoomed(hwnd)
+
+    def toggle_maximize_window(self) -> bool:
+        """Переключает окно макроса между развернутым на весь экран и обычным размером.
+        В отличие от браузерного fullscreen, разворачивает нативное Win32-окно через
+        SW_MAXIMIZE/SW_RESTORE, благодаря чему WebView2 перерисовывается на весь монитор,
+        а Roblox остаётся в своём исходном слоте (0, 44) без искажения координат."""
+        hwnd = getattr(self, "gui_hwnd", None) or WindowManager(GUI_TITLE, pid=os.getpid()).find()
+        if not hwnd or sys.platform != "win32":
+            if self._window:
+                try:
+                    self._window.toggle_fullscreen()
+                except Exception:
+                    pass
+            return False
+        if wm.is_zoomed(hwnd):
+            wm.restore_window(hwnd)
+            is_max = False
+        else:
+            wm.maximize_window(hwnd)
+            is_max = True
+
+        # Сохраняем и подтверждаем размер и позицию встроенного окна игры при смене режима окна
+        game_hwnd = getattr(self, "game_hwnd", None)
+        docker = getattr(self, "docker", None)
+        if game_hwnd and wm.is_window(game_hwnd) and docker:
+            gw = getattr(self, "game_width", config.FIXED_WIN_W)
+            gh = getattr(self, "game_height", config.FIXED_WIN_H)
+            try:
+                roblox_wm = WindowManager(config.ROBLOX_WINDOW_TITLE)
+                roblox_wm.hwnd = game_hwnd
+                roblox_wm.resize_client_to(gw, gh)
+                docker.dock(game_hwnd, hwnd, x=0, y=TITLEBAR_H, width=gw, height=gh)
+            except Exception:
+                pass
+
+        return is_max
 
     def show_game(self):
         # Only touches visibility, not docking state: the Roblox window stays
@@ -4122,7 +4351,7 @@ class Api:
             time.sleep(0.05)
             self._window.resize(width, height)
             time.sleep(0.25)
-            gui_hwnd = self.gui_hwnd or WindowManager(GUI_TITLE).find()
+            gui_hwnd = self.gui_hwnd or WindowManager(GUI_TITLE, pid=os.getpid()).find()
             if gui_hwnd:
                 left, _, right, _ = wm.get_window_rect_screen(gui_hwnd)
                 measured = right - left
@@ -4146,7 +4375,7 @@ class Api:
         window, so restore() first, then verify and fall back to a native
         MoveWindow if it was lost. Position is read back and preserved so the
         window shrinks toward its bottom-right instead of jumping to (0,0)."""
-        gui_hwnd = self.gui_hwnd or WindowManager(GUI_TITLE).find()
+        gui_hwnd = self.gui_hwnd or WindowManager(GUI_TITLE, pid=os.getpid()).find()
         x, y = 0, 0
         if gui_hwnd and wm.is_window(gui_hwnd):
             try:
@@ -4185,6 +4414,13 @@ class Api:
             height = max(480, min(1440, int(height)))
         except (TypeError, ValueError):
             return {"success": False, "error": "Invalid width/height"}
+
+        # Предотвращаем бесконечный пинг-понг между Python и JS и спам в журнал:
+        # если разрешение уже установлено, повторно ничего не перестраиваем и не шлём в UI.
+        current_w = getattr(self, "game_width", None)
+        current_h = getattr(self, "game_height", None)
+        if current_w == width and current_h == height:
+            return {"success": True, "width": width, "height": height, "unchanged": True}
 
         self.game_width = width
         self.game_height = height
@@ -4296,7 +4532,7 @@ class Api:
             self._window.resize(target_w, target_h)
             self._window.move(0, 0)
             time.sleep(0.3)
-            gui_hwnd = WindowManager(GUI_TITLE).find()
+            gui_hwnd = WindowManager(GUI_TITLE, pid=os.getpid()).find()
             if gui_hwnd:
                 left, top, right, bottom = wm.get_window_rect_screen(gui_hwnd)
                 if (right - left, bottom - top) != (target_w, target_h):
@@ -4459,6 +4695,60 @@ class Api:
             return {"ok": False, "reason": "no_roblox"}
         ok = self.runner.debug_force_rejoin(hwnd, lambda: self.game_hwnd)
         return {"ok": ok}
+
+    def toggle_auto_restart_loop(self) -> dict:
+        """Включает или выключает режим бесконечного быстрого перезапуска (Auto-Restart Loop).
+        При включении макрос мгновенно перезапускает матч при победе/поражении без выхода в лобби."""
+        data = cfg.load()
+        new_val = not bool(data.get("auto_restart_loop", False))
+        cfg.update({"auto_restart_loop": new_val})
+        state = "активирован" if new_val else "отключен"
+        self.push_log(f"[Macro] Auto-Restart Loop {state}.")
+        return {"ok": True, "enabled": new_val}
+
+    def quick_restart_match(self) -> dict:
+        """Мгновенно открывает настройки игры и нажимает Restart Game.
+        Работает как по кнопке, так и по горячей клавише F6."""
+        hwnd = self.game_hwnd
+        if not hwnd or not wm.is_window(hwnd):
+            self.push_log("[Macro] Quick Restart: окно Roblox не найдено.")
+            return {"ok": False, "reason": "no_roblox"}
+        self.push_log("[Macro] Quick Restart вызван вручную.")
+        stop_event = threading.Event()
+        ok = self.runner._trigger_in_game_restart(hwnd, stop_event)
+        return {"ok": ok}
+
+    def vip_lobby_rejoin(self) -> dict:
+        """Перезаходит в приватный VIP-сервер или общее лобби при вылете или по требованию.
+        Использует протокол roblox:// без открытия лишних окон браузера."""
+        self.push_log("[Macro] VIP Lobby Rejoin вызван...")
+        hwnd = self.game_hwnd
+        if hwnd and wm.is_window(hwnd):
+            ok = self.runner.debug_force_rejoin(hwnd, lambda: self.game_hwnd)
+            return {"ok": ok}
+        else:
+            return self.launch_roblox()
+
+    def skip_current_task(self) -> dict:
+        """Пропуск текущей задачи. Если макрос активен — передаёт команду
+        раннеру на выход из текущей задачи в лобби и переход к следующей.
+        Если макрос в ожидании (IDLE) — перемещает первую задачу очереди
+        в конец списка и сохраняет конфигурацию."""
+        if self.runner and hasattr(self.runner, "is_running") and self.runner.is_running():
+            self.runner.skip_current_task()
+            self.push_log("[Macro] Skip task requested -- finishing current match and advancing queue.")
+            return {"ok": True, "running": True}
+
+        tasks = self.get_tasks()
+        if not tasks or len(tasks) <= 1:
+            return {"ok": False, "reason": "no_tasks_to_skip", "tasks": tasks}
+
+        skipped_task = tasks.pop(0)
+        tasks.append(skipped_task)
+        cfg.update({"tasks": tasks})
+        task_name = skipped_task.get("name") or skipped_task.get("map") or "Task"
+        self.push_log(f'[Task] Skipped task "{task_name}" to end of queue.')
+        return {"ok": True, "running": False, "tasks": tasks}
 
     def debug_test_macro_operation(self, mode: str, macro_name: str) -> dict:
         # Settings > Debug > "Test Pre Start"/"Test Battle": runs a chosen
@@ -4751,6 +5041,168 @@ class Api:
             "windows_ocr": win_available,
             "tesseract_installed": tess_ok,
         }
+
+    def install_windows_ocr(self) -> dict:
+        # Колокольчик диагностики: кнопка «Install Windows OCR». Запускает
+        # Add-WindowsCapability через PowerShell с UAC-повышением (ShellExecuteExW
+        # runas), потому что без прав администратора команда молча падает с Access Denied.
+        # Работает в фоновом потоке: ждёт завершения процесса через WaitForSingleObject,
+        # проверяет код возврата, сбрасывает кэш ocr_windows и сигналит JS.
+        if sys.platform == "darwin":
+            return {"ok": False, "reason": "not_supported_on_mac"}
+
+        def run():
+            import base64
+            import ctypes
+            from ctypes import wintypes
+            from core import ocr_windows
+
+            class SHELLEXECUTEINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD),
+                    ("fMask", ctypes.c_ulong),
+                    ("hwnd", wintypes.HWND),
+                    ("lpVerb", wintypes.LPCWSTR),
+                    ("lpFile", wintypes.LPCWSTR),
+                    ("lpParameters", wintypes.LPCWSTR),
+                    ("lpDirectory", wintypes.LPCWSTR),
+                    ("nShow", ctypes.c_int),
+                    ("hInstApp", wintypes.HINSTANCE),
+                    ("lpIDList", ctypes.c_void_p),
+                    ("lpClass", wintypes.LPCWSTR),
+                    ("hkeyClass", wintypes.HKEY),
+                    ("dwHotKey", wintypes.DWORD),
+                    ("hIconOrMonitor", wintypes.HANDLE),
+                    ("hProcess", wintypes.HANDLE),
+                ]
+
+            try:
+                self.push_log("[OCR] Запускаем установку языкового пакета Windows OCR (en-US)...")
+                # Красивый скрипт с выводом прогресса и защитой от мгновенного закрытия при ошибках
+                ps_script = (
+                    "[Console]::Title = 'Installing Windows OCR Language Pack (en-US)'\n"
+                    "Write-Host ''\n"
+                    "Write-Host '===========================================================' -ForegroundColor Cyan\n"
+                    "Write-Host '   Anime Expeditions - Установка языкового пакета OCR      ' -ForegroundColor Cyan\n"
+                    "Write-Host '===========================================================' -ForegroundColor Cyan\n"
+                    "Write-Host ''\n"
+                    "Write-Host 'Пожалуйста, подождите. Идёт загрузка компонентов Windows...' -ForegroundColor Yellow\n"
+                    "Write-Host 'Это может занять 1-3 минуты (зависит от скорости интернета).' -ForegroundColor Gray\n"
+                    "Write-Host ''\n"
+                    "try {\n"
+                    "    $res = Add-WindowsCapability -Online -Name 'Language.OCR~~~en-US~0.0.1.0'\n"
+                    "    if ($res.State -eq 'Installed' -or $res.RestartNeeded -eq $false) {\n"
+                    "        Write-Host ''\n"
+                    "        Write-Host '[OK] Языковой пакет Windows OCR успешно установлен!' -ForegroundColor Green\n"
+                    "        Write-Host 'Окно закроется автоматически через несколько секунд...' -ForegroundColor Gray\n"
+                    "        Start-Sleep -Seconds 3\n"
+                    "        exit 0\n"
+                    "    } else {\n"
+                    "        Write-Host ''\n"
+                    "        Write-Host \"[!] Статус установки: $($res.State)\" -ForegroundColor Yellow\n"
+                    "        Start-Sleep -Seconds 4\n"
+                    "        exit 0\n"
+                    "    }\n"
+                    "} catch {\n"
+                    "    Write-Host ''\n"
+                    "    Write-Host \"[X] Ошибка при установке: $_\" -ForegroundColor Red\n"
+                    "    Write-Host 'Проверьте подключение к интернету или службу Windows Update.' -ForegroundColor Gray\n"
+                    "    Write-Host ''\n"
+                    "    Write-Host 'Нажмите любую клавишу для закрытия этого окна...' -ForegroundColor White\n"
+                    "    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')\n"
+                    "    exit 2\n"
+                    "}\n"
+                )
+                enc_cmd = base64.b64encode(ps_script.encode("utf-16le")).decode("ascii")
+                params = f"-NoProfile -ExecutionPolicy Bypass -EncodedCommand {enc_cmd}"
+
+                SEE_MASK_NOCLOSEPROCESS = 0x00000040
+                SW_SHOWNORMAL = 1
+
+                info = SHELLEXECUTEINFO()
+                info.cbSize = ctypes.sizeof(SHELLEXECUTEINFO)
+                info.fMask = SEE_MASK_NOCLOSEPROCESS
+                info.hwnd = None
+                info.lpVerb = "runas"
+                info.lpFile = "powershell.exe"
+                info.lpParameters = params
+                info.lpDirectory = None
+                info.nShow = SW_SHOWNORMAL
+
+                ok = ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info))
+                if not ok or not info.hProcess:
+                    err = ctypes.windll.kernel32.GetLastError()
+                    self.push_log(f"[OCR] Пользователь отклонил UAC или ошибка запуска (код {err}).")
+                    self.push_ui("windowsOcrInstallFailed")
+                    return
+
+                self.push_log("[OCR] Окно установщика открыто. Ожидаем завершения...")
+                # Ждём завершения PowerShell процесса (до 10 минут)
+                WAIT_TIMEOUT = 0x00000102
+                INFINITE = 0xFFFFFFFF
+                ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, INFINITE)
+
+                exit_code = wintypes.DWORD()
+                ctypes.windll.kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(exit_code))
+                ctypes.windll.kernel32.CloseHandle(info.hProcess)
+
+                if exit_code.value == 0:
+                    # Сбрасываем кэш ocr_windows и проверяем результат
+                    ocr_windows.reset_cache()
+                    now_avail = ocr_windows.is_available()
+                    self.push_log(
+                        f"[OCR] Установка завершена успешно (код 0). "
+                        f"Windows OCR доступен: {now_avail}."
+                    )
+                    # Если симуляция была включена — выключаем её после установки
+                    if cfg.load().get("simulate_missing_ocr", False):
+                        cfg.update({"simulate_missing_ocr": False})
+                    self.push_ui("windowsOcrInstallDone")
+                else:
+                    self.push_log(f"[OCR] Установка завершилась с ошибкой (код {exit_code.value}).")
+                    self.push_ui("windowsOcrInstallFailed")
+
+            except Exception as exc:
+                self.push_log(f"[OCR] Ошибка процесса установки: {exc}")
+                self.push_ui("windowsOcrInstallFailed")
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"ok": True}
+
+    def get_diagnostics(self) -> dict:
+        # Колокольчик диагностики: возвращает список активных предупреждений,
+        # которые требуют действия от пользователя. JS показывает колокольчик
+        # в шапке, только если список непустой.
+        # Поддерживает режим симуляции (simulate_missing_ocr в settings.json)
+        # для локальной проверки отображения.
+        from core import ocr_windows
+        issues = []
+        simulate = bool(cfg.load().get("simulate_missing_ocr", False))
+        if sys.platform != "darwin" and (simulate or not ocr_windows.is_available()):
+            reason = "Режим проверки отображения (тестовая симуляция)" if simulate else (ocr_windows.unavailable_reason() or "no language packs")
+            issues.append({
+                "id": "windows_ocr_missing",
+                "severity": "warn",
+                "title": "Windows OCR unavailable",
+                "detail": (
+                    "Wave counter uses fallback mode. "
+                    "Click Install to add the en-US OCR language pack."
+                ),
+                "action": "install_windows_ocr",
+                "action_label": "Install",
+                "reason": reason,
+            })
+        return {"ok": True, "issues": issues}
+
+    def toggle_simulate_missing_ocr(self) -> dict:
+        # Переключает режим симуляции отсутствия Windows OCR для локальной
+        # проверки внешнего вида колокольчика и модального окна.
+        current = bool(cfg.load().get("simulate_missing_ocr", False))
+        new_val = not current
+        cfg.update({"simulate_missing_ocr": new_val})
+        self.push_log(f"[Debug] Режим симуляции отсутствия OCR: {new_val}")
+        return {"ok": True, "simulate_missing_ocr": new_val}
+
 
 
     def list_roblox_windows(self) -> list:
@@ -5124,6 +5576,21 @@ class Api:
         import webbrowser
         webbrowser.open(updater.RELEASES_PAGE_URL)
         return {"ok": True}
+
+    def open_url(self, url: str) -> dict:
+        """Открывает внешний URL в системном браузере пользователя по умолчанию.
+        Проверяет протокол (http/https), предотвращая небезопасные схемы."""
+        if not url or not isinstance(url, str):
+            return {"ok": False, "error": "Invalid URL"}
+        url_stripped = url.strip()
+        if not (url_stripped.startswith("http://") or url_stripped.startswith("https://")):
+            return {"ok": False, "error": "Only HTTP/HTTPS allowed"}
+        try:
+            import webbrowser
+            webbrowser.open(url_stripped)
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def open_youtube_channel(self) -> dict:
         # ФОРК: ссылка на YouTube-канал автора движка убрана вместе с окном
@@ -5774,7 +6241,7 @@ def _launch_ui():
                        f"clicks/detection landing slightly wrong. Set it to 100% in Settings > System > Display, "
                        f"then restart your computer (not just the macro) so it fully takes effect.")
         api.push_ui("showScaleWarning")
-    gui_wm = WindowManager(GUI_TITLE)
+    gui_wm = WindowManager(GUI_TITLE, pid=os.getpid())
     roblox_wm = WindowManager(config.ROBLOX_WINDOW_TITLE)  # only used for its resize/client-rect helpers below
 
     screen_w, screen_h = wm.get_screen_size()
@@ -5809,7 +6276,7 @@ def _launch_ui():
         height=start_h,
         x=start_x,
         y=start_y,
-        resizable=False,
+        resizable=bool(_use_glass_ui),
         frameless=True,
         easy_drag=False,  # dragging is handled by the .pywebview-drag-region element in ui/index.html instead
     )
@@ -6168,6 +6635,12 @@ def _launch_ui():
             # Список записей — через интерфейс: окно по дороге возвращает
             # экран на Панель и прячет/возвращает окно игры.
             "open_replay": lambda: api.push_ui("toggleRecordingsOverlay"),
+            # Быстрый рестарт матча или переключение бесконечного цикла
+            "auto_restart_loop": lambda: api.push_ui("toggleAutoRestartLoop"),
+            # Быстрый перезаход в приватный сервер / VIP лобби
+            "vip_rejoin": lambda: api.push_ui("triggerVipRejoin"),
+            # Запуск и остановка записи маршрута WASD по хоткею
+            "toggle_walk_record": lambda: api.hotkey_toggle_walk_record(),
         }
         failed = []
         for action, fn in actions.items():
@@ -6198,6 +6671,12 @@ def _launch_ui():
         api._on_hotkeys_changed = _register_hotkeys
         if cfg.load().get("start_minimized", False):
             window.minimize()
+        elif _use_glass_ui or cfg.load().get("start_maximized", False):
+            # В полноэкранном стеклянном интерфейсе сразу разворачиваем окно на весь экран монитора,
+            # чтобы боковая панель и нижний ярус получили максимум пространства
+            hwnd = gui_wm.find()
+            if hwnd:
+                wm.maximize_window(hwnd)
 
     def on_closing():
         # Fallback for close paths other than our custom titlebar button

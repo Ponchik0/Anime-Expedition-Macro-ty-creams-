@@ -4,23 +4,20 @@
 
 # Anime Expeditions
 
-**Auto-farm macro for Anime Expeditions on Roblox**
+**Auto-farm macro for Anime Expeditions on Roblox — Version 2.0.0**
 
 <p align="center">
   <b>English</b> • <a href="README.ru.md">Русский</a>
 </p>
 
-Works via computer vision: captures the screen and detects images.<br>
-No process injection, no memory reading.<br>
-Roblox docks directly inside the macro window — full farming automation.
+Vision-driven macro: real-time screen capture and template detection.<br>
+Zero process injection, zero memory manipulation.<br>
+Roblox embeds directly into the macro interface for fully autonomous farming.
 
 <br>
 
 <a href="https://github.com/Ponchik0/ae/releases/latest">
-  <img src="https://img.shields.io/github/v/release/Ponchik0/ae?style=for-the-badge&color=c9a227&labelColor=1c1c1c&label=version" alt="Latest Version">
-</a>
-<a href="https://github.com/Ponchik0/ae/releases">
-  <img src="https://img.shields.io/github/downloads/Ponchik0/ae/total?style=for-the-badge&color=c9a227&labelColor=1c1c1c&label=downloads" alt="Downloads">
+  <img src="https://img.shields.io/badge/version-2.0.0-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="Version 2.0.0">
 </a>
 <img src="https://img.shields.io/badge/platform-Windows-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="Windows">
 <img src="https://img.shields.io/badge/python-3.10+-c9a227?style=for-the-badge&labelColor=1c1c1c" alt="Python 3.10+">
@@ -30,87 +27,104 @@ Roblox docks directly inside the macro window — full farming automation.
 
 <br><br>
 
-[Features](#features) · [Installation](#installation) · [First Launch](#first-launch) · [Updates](#updates) · [Documentation](#documentation) · [Credits](#credits)
+[Overview](#overview) · [Interface Showcase](#interface-showcase) · [Key Capabilities](#key-capabilities) · [Installation](#installation) · [First Launch](#first-launch) · [Webhooks](#discord-webhooks) · [Documentation](#documentation) · [Credits](#credits)
 
 </div>
 
 ---
 
-## About
+## Overview
 
-A custom build and feature-rich fork of [Cream's Macro](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro) for Anime Expeditions on Roblox.
+A specialized, feature-complete fork of [Cream's Macro](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro) built for Anime Expeditions on Roblox.
 
-**Core engine credit goes to [Cweamy](https://github.com/Cweamy)**: image detection, stage progression, Roblox window docking, OCR, webhooks, and installer packaging were designed by him, with upstream improvements regularly ported over.
+**Core engine credit**: The base computer vision algorithms, stage navigation structure, Roblox window docking mechanisms (`SetParent`), OCR, and packaging were originally architected by [Cweamy](https://github.com/Cweamy). Upstream enhancements are continuously tracked and integrated.
 
-**This fork adds**:
-- A completely overhauled, clean dark/neutral user interface with bilingual English & Russian support (`ui/i18n.js`).
-- Full **Portals mode** automation: lobby inventory entry, continuous chain-farming directly through the chooser without lobby re-entry, and in-round 3-portal offer card selection.
-- **In-Game Auto Play** integration: seamless toggle between macro unit placement and native Roblox Auto Play, with camera drag bypass and persistent state preservation across portal runs.
-- **Auto Shop Meat**: added Food/Meat auto-purchasing (up to 200 stock) with aligned purchase grids.
-- **Action Recorder (Replay Mode)**: TinyTask-style mouse & keyboard recorder/replayer that faithfully preserves in-match wait times using high-precision timers (`time.perf_counter()`).
-- **Universal Import & Dynamic Layout**: Accepts any `.json` task/template structure, CREAM share codes, and auto-adapts window layout across any Roblox resolution without button clipping.
-- **Fishing & Hotbar Safety**: Multi-rank fishing rod auto-detection (Novice to Grandmaster) and placeable fish unequip protection.
-- Auto-reconnect via `roblox://` deep links on disconnects, template verification tool, customizable theme engine, and PDF run reports.
+**Version 2.0.0 highlights**:
+- **Atmospheric Glass UI**: Complete visual overhaul featuring frosted glass surfaces, centered floating navigation, high-contrast typography, and zero emoji clutter.
+- **Modular Dashboard Customization**: Reorderable dashboard slots, granular sub-block toggles, and instant visual layout management.
+- **Resolution Preservation & Fullscreen**: Maximizing or resizing the macro window automatically preserves Roblox's calibrated 1152x756 game canvas, accompanied by non-intrusive HUD notifications.
+- **Active Automations Hub**: Centralized monitoring and one-click controls for Auto-Shop, Bounty Hunter (Mythic-only rerolls), Auto-Crafting, and Fuel Watchdog.
+- **Clean Discord Webhook Telemetry**: Upstream-aligned Discord embeds without emoji spam, featuring live match results, win streaks, session winrate bars, active automations, and OpenCV status cards.
+- **High-Precision Input Replay**: TinyTask-style mouse and keyboard recorder operating on `time.perf_counter()`, faithfully preserving in-match idle times.
 
-Historical AutoHotkey coordinates, thresholds, and observations are documented in [`docs/from_ahk.md`](docs/from_ahk.md).
+Legacy AutoHotkey coordinates, thresholds, and operational findings remain documented in [`docs/from_ahk.md`](docs/from_ahk.md).
 
-## Features
+---
 
-| Feature | Description |
+## Interface Showcase
+
+<p align="center">
+  <img src="docs/media/glass_home.png" alt="Anime Expeditions v2.0.0 Home Dashboard" width="100%">
+  <em>v2.0.0 Home: Embedded Roblox canvas, live task queue, win streak telemetry, active automations, real-time process logs, and session history.</em>
+</p>
+
+<p align="center">
+  <img src="docs/media/glass_tasks.png" alt="Tasks & Queue Management" width="100%">
+  <em>v2.0.0 Tasks: Multi-mode queue builder, universal JSON import/export, and flexible task configuration.</em>
+</p>
+
+<p align="center">
+  <img src="docs/media/glass_scenarios.png" alt="Scenarios & Macro Builder" width="100%">
+  <em>v2.0.0 Scenarios: Visual phase-based macro editor (Pre Start, Battle, Loop A & B) with real-time WASD movement paths and modular palette.</em>
+</p>
+
+---
+
+## Key Capabilities
+
+| System | Technical Details |
 |:--|:--|
-| **Docked Roblox Window** | The game embeds directly inside the macro window (`SetParent`). Keystrokes and clicks land accurately even when other windows overlap |
-| **Multi-Mode Task Queue** | Story, Expedition, Raid, Tower, Challenge, and Portals. Set map, stage, difficulty, solo/matchmaking, and repeats |
-| **Portals Automation** | Opens portals from inventory or chains them directly through the result chooser; picks the middle portal card during matches |
-| **In-Game Auto Play** | Let the game play itself when desired — automatically toggles Auto Play and skips unnecessary camera manipulation |
-| **Pre Start Builder** | Set up starter units with placement checks, toggle settings via hotkeys, and run "Once" blocks on first repeats only |
-| **Action Recorder (Replay)** | F8 starts/stops recording input; F9 opens the recordings overlay. In-match idle time is preserved and accurately replayed |
-| **Smart Recovery** | Automatically returns to lobby on stalled matches, failed clicks, or black screens; restarts Roblox on 25m stalls |
-| **Discord Notifications** | Result screenshots, generated win/loss status cards, hourly summaries, and PDF reports |
-| **Theme Customization** | Six backgrounds, six accent colors, adjustable UI density, and border radius |
-| **Custom Templates & Crops** | Missing a specific button crop? Drop your own PNG into `Assets/` without needing to recompile |
+| **Docked Roblox Window** | Roblox embeds directly into the macro window (`core/dock.py`). Keystrokes and mouse inputs remain strictly bounded, allowing other desktop tasks without interference. |
+| **Resolution Integrity** | Window maximization preserves the internal 1152x756 game aspect ratio without pixel distortion or coordinate drift. HUD toasts display active resolution state. |
+| **Multi-Mode Task Queue** | Story, Expedition, Raid, Tower, Challenge, and Portals. Supports map, stage, difficulty, matchmaking/solo selection, and repeat counters. |
+| **Portals Automation** | Opens portals directly from inventory, navigates lobby selection, picks mid-battle offer cards, and chains next portals directly through results. |
+| **In-Game Auto Play** | Autonomous toggle for built-in Roblox Auto Play, suppressing redundant camera movement while maintaining persistent run states. |
+| **Pre Start Builder** | Structured starter unit routines with placement verification, retry offsets, game settings toggles via hotkeys, and first-repeat execution limits. |
+| **Action Recorder (Replay)** | F8 starts/stops recording; F9 toggles the overlay. Preserves exact in-match waiting durations using monotonic absolute clocks. |
+| **Active Automations** | Background modules: Auto-Shop hourly sweeps, Bounty Hunter mythic objective rerolls, periodic Auto-Crafting, and Fuel Watchdog monitoring. |
+| **Smart Recovery** | Auto-returns to lobby on unexpected UI stalls, missing clicks, or black screens. Relaunches Roblox via `roblox://` deep-links upon disconnects. |
+| **Discord Notifications** | Formatted embed telemetry: Victory/Defeat verification, duration, wave count, streak tracking, session winrate bars, and OpenCV status cards. |
 
 <details>
-<summary><b>Detailed Automation Features</b> — click to expand</summary>
+<summary><b>Detailed Automation Systems</b> — click to inspect</summary>
 
 <br>
 
-- **Embedded Roblox Window**: Game embeds as a native child window. Clicks and inputs stay contained even if you work in another application.
-- **Portals Mode**: Full support for Portal farming — opens from inventory, joins lobbies, auto-picks the middle card during the round, and chains into the next portal from the chooser window without extra lobby loads.
-- **In-Game Auto Play**: Switch between macro-controlled unit placement and Roblox's built-in Auto Play. Prevents unnecessary camera drags and preserves Auto Play state across portal chains.
-- **Task Queue & Repeat Recovery**: Runs a queued sequence of tasks. If a match stalls or a click misses, the macro safely returns to the lobby and restarts rather than breaking an overnight session.
-- **Pre Start Unit Placement**: Validates tile availability, retries if a position shifts, adjusts placement offset, and runs one-time setup on the initial repeat.
-- **Recorded Movement Paths**: Walk paths recorded on WASD run automatically during Pre Start.
-- **Multi-Scale Image Search**: Templates are tested across multiple scale steps, reliably matching even when Windows display scaling differs.
-- **Auto Shop**: Automatically sweeps the shop on schedule, buying tickets, traits, and meat.
+- **Autonomous Portals Farming**: Operates portal cycles directly from the player inventory. Selects the middle modifier card in-game and transitions into subsequent portals via the completion screen without returning to the lobby.
+- **Roblox Window Docking**: Uses Win32 `SetParent` integration. The game canvas is maintained at 1152x756. Minimizing or moving the macro window moves the game container synchronously.
+- **Bounty Hunter Automation**: Automatically checks the Event Bounty Board, re-rolls daily objective cards until Mythic rarity is confirmed, and proceeds to map execution.
+- **Scheduled Auto-Shop**: Scans the event merchant on schedule, purchasing tickets, trait crystals, stat rolls, and meat supplies according to user quotas.
+- **Fuel Watchdog**: Automatically monitors expedition fuel reserves, executes navigation paths between stations, and refills resources at defined intervals.
+- **Stall Detection Watchdog**: Monitors action heartbeat. If the client freezes or remains inactive for 25 minutes, the macro terminates Roblox, executes deep-link reconnection, and restores the active task.
 
 </details>
 
-<details>
-<summary><b>Fork Enhancements</b> — additions created for this build</summary>
+---
 
-<br>
+## Discord Webhooks
 
-- **Redesigned Interface**: Neutral dark theme, high-contrast palette, dense layout, consistent margins, and responsive hover/focus states.
-- **Bilingual Interface**: Seamless EN/RU toggle in the header with persistent language preference. The run log stays in English to avoid breaking unit coordinate parsing.
-- **UI Customization**: Six background tones (from OLED black to light dark), six accents, compact/comfortable density, and customizable border radius.
-- **Private Server Support**: Deep-link launch directly into your private server without opening extra browser tabs.
-- **Action Recorder (Replay Mode)**: TinyTask-style F8/F9 recording. Tracks mouse and keyboard input only while Roblox is active and in focus. Includes full wait time so mid-match idle phases are preserved.
-- **Template Checker**: One-click scanner that checks all reference images against your current game screen, highlighting verified, borderline, and missing templates.
-- **Task Timers**: Set duration limits on tasks to transition cleanly after the current match ends.
-- **Stall & Disconnect Watchdog**: Detects 25-minute stalls or black screens, cleanly relaunches Roblox, and resumes the task queue.
-- **Self-Updater**: Checks releases directly against `Ponchik0/ae` and seamlessly updates the executable while preserving custom assets and settings.
+Webhooks provide structured match reporting matching the clean upstream aesthetic without emoji noise:
 
-</details>
+- **Match Verdict**: Victory, Defeat, or Round Finished with duration, map, stage, difficulty, and wave counters.
+- **Session Telemetry**: Total elapsed runtime, session record (W/L), winrate percentage, runs per hour, and Challenge reset countdown.
+- **All-Time Metrics**: Total match history, cumulative winrate, and persistent uptime counter.
+- **Streak & Performance**: Current consecutive win/loss streak, all-time best streak, and today's local calendar record.
+- **Active Automations**: Real-time operational state of Shop, Bounty, Crafting, and Fuel services.
+- **Visual Status Card**: Programmatically generated OpenCV BGR card attached alongside the raw screenshot.
+
+---
 
 ## Requirements
 
-| Requirement | Details |
+| Requirement | Specification |
 |:--|:--|
-| **Windows 10 or 11** | Primary supported platform |
-| **[Roblox](https://www.roblox.com/)** | Anime Expeditions game |
-| **Python 3.10+** | For running from source |
-| **[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)** | UI renderer (installed by default on most modern Windows systems) |
-| **[Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)** / **RapidOCR** | Optional: for reading reward item names and in-depth stats |
+| **Operating System** | Windows 10 or Windows 11 (64-bit) |
+| **Roblox Client** | Official desktop client running Anime Expeditions |
+| **Python** | 3.10 or higher (for source execution) |
+| **WebView2 Runtime** | Pre-installed on Windows 10/11 (Edge runtime) |
+| **OCR Engines** | RapidOCR / Tesseract OCR (optional, for reward text scanning) |
+
+---
 
 ## Installation
 
@@ -122,18 +136,13 @@ cd ae
 pip install -r requirements.txt
 ```
 
-Launch:
+Run application:
 
 ```bash
 python main.py
 ```
 
-Or double-click `run.bat`.
-
-> [!TIP]
-> On a new machine (or RDP), ensure you run `pip install -r requirements.txt` to avoid `ModuleNotFoundError`.
-
-Headless diagnostics:
+Optional diagnostic run:
 
 ```bash
 python main.py --test
@@ -141,81 +150,54 @@ python main.py --test
 
 ### Binary Release
 
-Download `Anime Expeditions Macro Setup.exe` from [Releases](https://github.com/Ponchik0/ae/releases/latest) and run the installer.
+Download `Anime Expeditions Macro Setup.exe` from [GitHub Releases](https://github.com/Ponchik0/ae/releases/latest) and execute the installer. Settings and assets are preserved across updates.
+
+---
 
 ## First Launch
 
-1. Start Roblox and enter Anime Expeditions — the macro will automatically detect and dock the game window.
-2. **Tasks** — build your queue: game mode (Story, Expedition, Portals, Tower, etc.), stage, difficulty, repeats, and auto-play preference.
-3. **Creation (Macro Manager)** — configure your Pre Start routines: unit placements, settings toggles, walk paths, and save as a template.
-4. **Dashboard** — assign templates to tasks and press **Start**.
-5. **Settings** — configure hotkeys, Discord webhook, private server link, UI theme, and calibrated coordinates.
+1. Start Roblox and enter Anime Expeditions — the macro detects and embeds the game canvas automatically.
+2. **Tasks**: Configure your target playlist: game mode (Story, Portals, Raid, Expedition), map, stage, and repetitions.
+3. **Macro Manager**: Build Pre Start routines: unit placement points, initial settings toggles, and movement paths.
+4. **Dashboard**: Select your configured templates, arrange dashboard blocks via Customize Layout, and click **Start**.
+5. **Settings**: Adjust hotkeys, Discord webhook URL, private server link, and visual density.
 
-If an element fails detection, open **Settings → Template Check** to see match scores on your resolution, then capture a custom crop via **Image Manager**.
+---
 
-> [!IMPORTANT]
-> When cropping button templates, crop closely around the text without extra background, as background animations in the game can alter matching scores.
+## Verification & Testing
 
-## Updates
-
-The macro compares the local `VERSION` file against the latest GitHub Release on startup, or manually when clicking the version badge in the header.
-
-Updating never touches `settings.json`, custom templates, paths, or existing images in `Assets` — only new files are added.
-
-## Documentation
-
-| Document | Purpose |
-|:--|:--|
-| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Comprehensive user manual |
-| [`docs/architecture.md`](docs/architecture.md) | Codebase and module architecture overview |
-| [`docs/from_ahk.md`](docs/from_ahk.md) | Coordinate references and lessons learned from the legacy AHK macro |
-| [`AGENTS.md`](AGENTS.md) | Contributor guidelines, testing standards, and release workflow |
-
-<details>
-<summary><b>Project Structure</b></summary>
-
-<br>
-
-```
-main.py                 Entry point; pywebview API bridge between UI and Python
-core/                   Core engine: vision, runner, blocks, OCR, webhooks, dock
-core/replay.py          Player input recorder & playback (Replay mode)
-core/joinlink.py        Roblox join links & private server handling
-core/template_check.py  Template validation utility
-ui/                     Frontend: HTML, CSS, JS
-ui/i18n.js              Russian translation dictionary
-Assets/ui/              Reference button & UI crops
-Assets/portals/         Portal reference crops
-Assets/cards/           Upgrade card reference crops
-Paths/defaults/         Default movement paths for Pre Start
-tests/                  Pytest suite (no GUI / no Windows dependencies)
-```
-
-</details>
-
-## Testing
+The test suite runs headlessly without Roblox or Windows API dependencies:
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 node --check ui/app.js
+node --check ui/concept-glass/app.js
 node --check ui/i18n.js
 ```
 
-## Credits
+---
 
-**Upstream Engine — [Cream's Macro | Anime Expeditions](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro)** by [Cweamy](https://github.com/Cweamy) ([YouTube](https://www.youtube.com/@Cweamya)). The underlying computer vision architecture, stage navigation routines, window docking, OCR, webhooks, and core logic originate from his project (licensed under MIT).
+## Documentation
 
-**Fork Contributions** ([@Ponchik0](https://github.com/Ponchik0)):
-- Redesigned user interface with custom themes, density controls, and bilingual RU/EN support.
-- Portals mode automation and in-game Auto Play integration.
-- Precision action recorder (Replay mode) with accurate in-match wait tracking.
-- Template checking utility, deep-link rejoining, auto-reconnect recovery, and PDF reporting.
-- Shop meat purchasing and community asset expansions.
+| Guide | Description |
+|:--|:--|
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | In-depth operational documentation |
+| [`docs/architecture.md`](docs/architecture.md) | Modular engine architecture and data flow |
+| [`docs/from_ahk.md`](docs/from_ahk.md) | Legacy AutoHotkey coordinate references and interface quirks |
+| [`AGENTS.md`](AGENTS.md) | Development standards, testing rules, and release protocols |
+
+---
+
+## Contributors
+
+[Cweamy](https://github.com/Cweamy) — original engine author ([Cream's Macro | Anime Expeditions](https://github.com/Cweamy/Anime-Expeditions-Creams-Macro), [YouTube](https://www.youtube.com/@Cweamya)). Core vision routines, window docking, OCR, coordinate pipelines, and base macro loops are authored by Cweamy under MIT.
+
+---
 
 ## Disclaimer
 
-> This is a fan-made automation tool. It is not affiliated with, endorsed by, or associated with Roblox Corporation or the developers of Anime Expeditions. Automating gameplay may violate game or platform terms of service — use at your own discretion. All game trademarks and assets belong to their respective owners.
+> This project is an independent automation utility. It is not affiliated with, endorsed by, or associated with Roblox Corporation or Anime Expeditions. Automation tools should be used in compliance with relevant platform terms. All trademarks and game assets belong to their respective copyright holders.
 
 <div align="center">
 <br>
