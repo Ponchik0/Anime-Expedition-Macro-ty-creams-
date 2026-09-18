@@ -41,6 +41,11 @@ def test_get_diagnostics_returns_ocr_issue_when_ocr_unavailable(monkeypatch):
     fake_ocr_windows.is_available = lambda: False
     fake_ocr_windows.unavailable_reason = lambda: "no installed language packs"
     monkeypatch.setitem(sys.modules, "core.ocr_windows", fake_ocr_windows)
+    import core
+    monkeypatch.setattr(core, "ocr_windows", fake_ocr_windows, raising=False)
+
+    from core import settings as cfg
+    monkeypatch.setattr(cfg, "load", lambda: {"simulate_missing_ocr": False})
 
     api = _make_api(monkeypatch)
     result = api.get_diagnostics()
@@ -67,6 +72,8 @@ def test_get_diagnostics_empty_when_ocr_available(monkeypatch):
     fake_ocr_windows.is_available = lambda: True
     fake_ocr_windows.unavailable_reason = lambda: ""
     monkeypatch.setitem(sys.modules, "core.ocr_windows", fake_ocr_windows)
+    import core
+    monkeypatch.setattr(core, "ocr_windows", fake_ocr_windows, raising=False)
 
     # Убедимся, что симуляция выключена
     from core import settings as cfg
@@ -86,7 +93,10 @@ def test_get_diagnostics_simulate_missing_ocr(monkeypatch):
     """
     fake_ocr_windows = types.ModuleType("core.ocr_windows")
     fake_ocr_windows.is_available = lambda: True
+    fake_ocr_windows.unavailable_reason = lambda: ""
     monkeypatch.setitem(sys.modules, "core.ocr_windows", fake_ocr_windows)
+    import core
+    monkeypatch.setattr(core, "ocr_windows", fake_ocr_windows, raising=False)
 
     from core import settings as cfg
     monkeypatch.setattr(cfg, "load", lambda: {"simulate_missing_ocr": True})

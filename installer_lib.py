@@ -243,7 +243,12 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
         icon=_vbs_str(icon or target),
         desc=_vbs_str(description or APP_NAME),
     )
-    fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_")
+    link_dir = os.path.dirname(os.path.abspath(link_path))
+    os.makedirs(link_dir, exist_ok=True)
+    try:
+        fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_", dir=link_dir)
+    except Exception:
+        fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_")
     try:
         # UTF-16, а НЕ utf-8-sig. Windows Script Host понимает либо ANSI, либо
         # UTF-16LE с BOM; на BOM от UTF-8 он падает сразу на первом символе
@@ -253,17 +258,43 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
         # пользователя бывает кириллица, а в описании она есть всегда.
         with os.fdopen(fd, "w", encoding="utf-16") as f:
             f.write(script)
-        os.makedirs(os.path.dirname(link_path), exist_ok=True)
         subprocess.run(["cscript", "//nologo", path], timeout=30,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                        capture_output=True)
     except Exception:
-        return False
+        pass
     finally:
         try:
             os.remove(path)
         except OSError:
             pass
+
+    # Fallback на PowerShell, если cscript заблокирован политиками безопасности или ASR
+    if not os.path.isfile(link_path):
+        try:
+            escaped_link = link_path.replace("'", "''")
+            escaped_target = target.replace("'", "''")
+            escaped_workdir = (workdir or os.path.dirname(target)).replace("'", "''")
+            escaped_icon = (icon or target).replace("'", "''")
+            escaped_desc = (description or APP_NAME).replace("'", "''")
+            ps_script = (
+                f"$ws = New-Object -ComObject WScript.Shell; "
+                f"$s = $ws.CreateShortcut('{escaped_link}'); "
+                f"$s.TargetPath = '{escaped_target}'; "
+                f"$s.WorkingDirectory = '{escaped_workdir}'; "
+                f"$s.IconLocation = '{escaped_icon}'; "
+                f"$s.Description = '{escaped_desc}'; "
+                f"$s.Save()"
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                capture_output=True,
+            )
+        except Exception:
+            pass
+
     return os.path.isfile(link_path)
 
 
