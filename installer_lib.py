@@ -98,23 +98,62 @@ def zip_asset_url(timeout: float = 15.0) -> str:
     return f"https://github.com/{RELEASES_REPO}/releases/latest/download/{ZIP_ASSET_NAME}"
 
 
-def download(url: str, dest_path: str, on_progress=None, timeout: float = 120.0) -> None:
-    """Качает файл, по дороге сообщая (получено, всего).
+def download(url: str, dest_path: str, on_progress=None,
+             timeout=(10.0, 45.0), max_retries: int = 5) -> None:
+    """Качает файл с поддержкой докачки (HTTP Range) и повторных попыток.
 
-    total = 0, если сервер не прислал Content-Length: это не повод падать,
-    вызывающий просто покажет неопределённый индикатор вместо процентов."""
-    with requests.get(url, headers=HEADERS, stream=True, timeout=timeout) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length") or 0)
-        done = 0
-        with open(dest_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                if not chunk:
-                    continue
-                f.write(chunk)
-                done += len(chunk)
-                if on_progress:
-                    on_progress(done, total)
+    При обрыве связи на 100 из 160 МБ не начинает скачивание с нуля, а
+    докачивает оставшийся хвост. Это предотвращает сбои на нестабильных
+    сетях и медленных соединениях."""
+    import time
+    done = 0
+    total = 0
+
+    for attempt in range(max_retries):
+        try:
+            req_headers = dict(HEADERS)
+            mode = "wb"
+            if os.path.isfile(dest_path):
+                done = os.path.getsize(dest_path)
+                if done > 0:
+                    req_headers["Range"] = f"bytes={done}-"
+                    mode = "ab"
+
+            with requests.get(url, headers=req_headers, stream=True, timeout=timeout) as r:
+                if r.status_code == 416:
+                    # Диапазон не удовлетворяется — файл уже скачан целиком
+                    break
+                if r.status_code == 206:
+                    cr = r.headers.get("Content-Range", "")
+                    if "/" in cr:
+                        try:
+                            total = int(cr.rsplit("/", 1)[-1])
+                        except ValueError:
+                            pass
+                elif r.status_code == 200:
+                    # Сервер вернул файл с начала (не поддерживает Range или мы запросили с 0)
+                    done = 0
+                    mode = "wb"
+                    total = int(r.headers.get("content-length") or 0)
+                else:
+                    r.raise_for_status()
+
+                with open(dest_path, mode) as f:
+                    for chunk in r.iter_content(chunk_size=128 * 1024):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        done += len(chunk)
+                        if on_progress:
+                            on_progress(done, total)
+
+                # Успешно дочитали весь поток
+                if total == 0 or done >= total:
+                    break
+        except (requests.exceptions.RequestException, OSError):
+            if attempt >= max_retries - 1:
+                raise
+            time.sleep(1.5)
 
 
 def extract_release(zip_path: str, dest_dir: str, on_progress=None) -> int:
@@ -127,6 +166,9 @@ def extract_release(zip_path: str, dest_dir: str, on_progress=None) -> int:
         содержимым из архива значит выбросить ровно ту правку, ради которой
         папка и существует. Ту же политику применяет core/updater.py.
     """
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError(f"Corrupted or invalid ZIP archive: {zip_path}")
+
     written = 0
     with zipfile.ZipFile(zip_path) as zf:
         entries = [i for i in zf.infolist() if not i.is_dir()]
@@ -151,10 +193,70 @@ def extract_release(zip_path: str, dest_dir: str, on_progress=None) -> int:
     return written
 
 
+def _is_valid_release_archive(fpath: str) -> bool:
+    """Проверяет, что файл является настоящим архивом релиза, а не исходным кодом или битым файлом."""
+    try:
+        if not os.path.isfile(fpath) or os.path.getsize(fpath) < 10 * 1024 * 1024:
+            return False
+        if not zipfile.is_zipfile(fpath):
+            return False
+        with zipfile.ZipFile(fpath) as zf:
+            names = [os.path.basename(n).lower() for n in zf.namelist()]
+            return EXE_NAME.lower() in names
+    except Exception:
+        return False
+
+
+def find_local_archive() -> str | None:
+    """Ищет готовый zip-архив сборки рядом с установщиком или в папке Загрузок.
+    Позволяет установить приложение даже если GitHub недоступен или заблокирован."""
+    search_dirs = []
+    try:
+        argv_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if os.path.isdir(argv_dir):
+            search_dirs.append(argv_dir)
+    except Exception:
+        pass
+
+    cwd = os.getcwd()
+    if os.path.isdir(cwd) and cwd not in search_dirs:
+        search_dirs.append(cwd)
+
+    downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+    if os.path.isdir(downloads) and downloads not in search_dirs:
+        search_dirs.append(downloads)
+
+    for d in search_dirs:
+        # Сначала проверяем точное имя ZIP_ASSET_NAME в текущей папке
+        exact = os.path.join(d, ZIP_ASSET_NAME)
+        if _is_valid_release_archive(exact):
+            return exact
+
+        # Затем ищем любые подходящие zip-архивы в этой папке
+        dir_candidates = []
+        try:
+            for fname in os.listdir(d):
+                if not fname.lower().endswith(".zip"):
+                    continue
+                fl = fname.lower()
+                if ("anime" in fl or "macro" in fl or "expedition" in fl) and "setup" not in fl:
+                    fpath = os.path.join(d, fname)
+                    if _is_valid_release_archive(fpath):
+                        dir_candidates.append(fpath)
+        except OSError:
+            pass
+
+        if dir_candidates:
+            dir_candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return dir_candidates[0]
+
+    return None
+
+
 def install_release(dest_dir: str, on_status=None, on_progress=None) -> str:
     """Скачивает и раскладывает сборку в dest_dir. Возвращает тег версии.
-    Если рядом с установщиком уже лежит готовый zip-архив, используется
-    он напрямую без скачивания."""
+    Если рядом с установщиком или в Загрузках уже лежит готовый zip-архив,
+    используется он напрямую без повторного скачивания."""
     def say(text):
         if on_status:
             on_status(text)
@@ -162,16 +264,11 @@ def install_release(dest_dir: str, on_status=None, on_progress=None) -> str:
     os.makedirs(dest_dir, exist_ok=True)
     tag = latest_tag() or ""
 
-    # Проверяем локальный zip рядом с exe установщика (офлайн/ручная загрузка)
-    try:
-        installer_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-        local_zip = os.path.join(installer_dir, ZIP_ASSET_NAME)
-        if os.path.isfile(local_zip) and os.path.getsize(local_zip) > 1024 * 1024:
-            say("Installing from local archive…")
-            extract_release(local_zip, dest_dir, on_progress=on_progress)
-            return tag or "v2.0.0"
-    except Exception:
-        pass
+    local_zip = find_local_archive()
+    if local_zip:
+        say(f"Installing from local package ({os.path.basename(local_zip)})…")
+        extract_release(local_zip, dest_dir, on_progress=on_progress)
+        return tag or "v2.0.0"
 
     say("Checking for latest release…")
     url = zip_asset_url()
@@ -389,10 +486,32 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
 
 
 def desktop_dir() -> str:
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+            val, _ = winreg.QueryValueEx(k, "Desktop")
+            if val:
+                expanded = os.path.expandvars(val)
+                if os.path.isdir(expanded):
+                    return expanded
+    except Exception:
+        pass
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
 def start_menu_dir() -> str:
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+            val, _ = winreg.QueryValueEx(k, "Programs")
+            if val:
+                expanded = os.path.expandvars(val)
+                if os.path.isdir(expanded):
+                    return expanded
+    except Exception:
+        pass
     return os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
                         "Microsoft", "Windows", "Start Menu", "Programs")
 

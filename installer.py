@@ -32,37 +32,37 @@ from tkinter import filedialog, messagebox, ttk
 import installer_lib as lib
 
 # --------------------------------------------------------------- ЦВЕТОВАЯ ПАЛИТРА -
-# Modern UI Onyx (тёмный графит, неоновый фиолетовый акцент, мягкие границы).
+# Стиль интерфейса Anime Expeditions (нейтральный тёмный графит, фирменная тёплая латунь).
 # Все контрасты выверены по WCAG AA/AAA для отличной читаемости на любом мониторе.
-BG = "#0c0d14"              # Основной фон окна
-HEADER_BG = "#10121d"       # Фон шапки
-CARD_BG = "#131624"         # Фон карточки
-CARD_BORDER = "#23283c"     # Тонкая граница карточки
-INPUT_BG = "#191c2e"        # Фон поля ввода
-INPUT_BORDER = "#2f3652"    # Рамка поля ввода
-INPUT_BORDER_FOCUS = "#7c6cf0" # Рамка при фокусе
+BG = "#131417"               # Основной глубокий фон окна
+HEADER_BG = "#18191e"        # Фон шапки
+CARD_BG = "#1c1d22"          # Фон карточки / панели
+CARD_BORDER = "#2b2d35"      # Тонкая граница карточки (1px)
+INPUT_BG = "#23252c"         # Фон поля ввода
+INPUT_BORDER = "#363945"     # Рамка поля ввода
+INPUT_BORDER_FOCUS = "#dcae6e" # Рамка при фокусе (латунь)
 
-TEXT_HEAD = "#ffffff"       # Заголовки
-TEXT_MAIN = "#e3e6f3"       # Основной текст
-TEXT_MUTED = "#868da4"      # Приглушённый текст / подписи
-TEXT_DIM = "#5e647b"        # Второстепенный текст
+TEXT_HEAD = "#ffffff"        # Заголовки
+TEXT_MAIN = "#dcdfe6"        # Основной текст
+TEXT_MUTED = "#858b9c"       # Приглушённый текст / подписи
+TEXT_DIM = "#5e6372"         # Второстепенный текст / подсказки
 
-ACCENT = "#7c6cf0"          # Неоновый фиолетовый акцент
-ACCENT_HOVER = "#8f80fa"    # Акцент при наведении
-ACCENT_ACTIVE = "#6b5be2"   # Акцент при нажатии
-ACCENT_FG = "#ffffff"       # Текст на акцентной кнопке
+ACCENT = "#dcae6e"           # Фирменная тёплая латунь макроса
+ACCENT_HOVER = "#eec286"     # При наведении
+ACCENT_ACTIVE = "#c89a58"    # При нажатии
+ACCENT_FG = "#12100f"        # Тёмный контрастный текст на латунной кнопке
 
-BUTTON_SEC_BG = "#1e2236"   # Второстепенная кнопка
-BUTTON_SEC_HOVER = "#2a304a"
-BUTTON_SEC_BORDER = "#333b5c"
-BUTTON_SEC_FG = "#ccd2e5"
+BUTTON_SEC_BG = "#24262e"    # Второстепенная кнопка
+BUTTON_SEC_HOVER = "#2c2f39"
+BUTTON_SEC_BORDER = "#363945"
+BUTTON_SEC_FG = "#c8ccd8"
 
-BADGE_BG = "#221c3e"        # Подложка бейджа версии
-BADGE_BORDER = "#493b82"
-BADGE_FG = "#b8abff"
+BADGE_BG = "#25221b"         # Подложка бейджа версии (тёмная латунь)
+BADGE_BORDER = "#443a28"
+BADGE_FG = "#dcae6e"
 
-SUCCESS_COLOR = "#4ade80"   # Зелёный статус
-ERROR_COLOR = "#f87171"     # Красный статус
+SUCCESS_COLOR = "#6bc987"    # Зелёный статус
+ERROR_COLOR = "#ef6567"      # Красный статус
 
 
 def enable_dpi_awareness():
@@ -222,7 +222,7 @@ class InstallerWindow:
         root.resizable(False, False)
 
         # Центрируем окно на экране
-        width, height = 540, 530
+        width, height = 520, 460
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
         x = max(0, (sw - width) // 2)
@@ -247,32 +247,25 @@ class InstallerWindow:
         root.protocol("WM_DELETE_WINDOW", self.close)
 
     def _build_header(self):
-        """Верхняя брендовая плашка в стиле Modern UI."""
-        header_frame = tk.Frame(self.main_container, bg=HEADER_BG, height=82)
+        """Верхняя брендовая плашка в фирменном стиле Anime Expeditions."""
+        header_frame = tk.Frame(self.main_container, bg=HEADER_BG, height=72)
         header_frame.pack(fill="x", side="top")
         header_frame.pack_propagate(False)
 
         top_box = tk.Frame(header_frame, bg=HEADER_BG)
-        top_box.pack(fill="both", expand=True, padx=22, pady=14)
+        top_box.pack(fill="both", expand=True, padx=22, pady=12)
 
-        # Иконка-эмблема
-        icon_canvas = tk.Canvas(top_box, width=44, height=44, bg=HEADER_BG,
-                                highlightthickness=0)
-        icon_canvas.pack(side="left", padx=(0, 14))
+        top_sub = tk.Label(top_box, text="ANIME EXPEDITIONS",
+                           font=("Segoe UI Variable Text", 8, "bold"),
+                           fg=TEXT_MUTED, bg=HEADER_BG)
+        top_sub.pack(anchor="w")
 
-        icon_canvas.create_polygon(22, 2, 42, 22, 22, 42, 2, 22,
-                                   fill="#1c1f33", outline=ACCENT, width=2)
-        icon_canvas.create_text(22, 22, text="AE", fill="#ffffff",
-                                font=("Segoe UI Variable Display", 11, "bold"))
+        title_row = tk.Frame(top_box, bg=HEADER_BG)
+        title_row.pack(anchor="w", pady=(1, 0))
 
-        text_box = tk.Frame(top_box, bg=HEADER_BG)
-        text_box.pack(side="left", fill="y", expand=True)
-
-        title_row = tk.Frame(text_box, bg=HEADER_BG)
-        title_row.pack(anchor="w")
-
-        title_lbl = tk.Label(title_row, text=lib.APP_NAME.upper(),
-                             font=("Segoe UI Variable Display", 12, "bold"),
+        title_text = "Uninstall Wizard" if self.uninstall_mode else "Macro Setup"
+        title_lbl = tk.Label(title_row, text=title_text,
+                             font=("Segoe UI Variable Display", 13, "bold"),
                              fg=TEXT_HEAD, bg=HEADER_BG)
         title_lbl.pack(side="left")
 
@@ -282,15 +275,15 @@ class InstallerWindow:
                              fg=BADGE_FG, bg=BADGE_BG,
                              relief="solid", bd=1)
         badge_lbl.configure(highlightbackground=BADGE_BORDER, highlightthickness=1)
-        badge_lbl.pack(side="left", padx=(10, 0))
+        badge_lbl.pack(side="left", padx=(8, 0))
 
-        sub_text = ("Uninstall application components and shortcuts"
+        sub_text = ("•  Remove application components and shortcuts"
                     if self.uninstall_mode
-                    else "Automated installation and setup")
-        sub_lbl = tk.Label(text_box, text=sub_text,
-                           font=("Segoe UI Variable Text", 9),
-                           fg=TEXT_MUTED, bg=HEADER_BG)
-        sub_lbl.pack(anchor="w", pady=(3, 0))
+                    else "•  Automated setup and components configuration")
+        sub_lbl = tk.Label(title_row, text=sub_text,
+                           font=("Segoe UI Variable Text", 8),
+                           fg=TEXT_DIM, bg=HEADER_BG)
+        sub_lbl.pack(side="left", padx=(8, 0))
 
         sep = tk.Frame(self.main_container, bg=CARD_BORDER, height=1)
         sep.pack(fill="x", side="top")
@@ -303,15 +296,15 @@ class InstallerWindow:
         # ── КАРТОЧКА 1: Папка назначения ──
         path_card = tk.Frame(self.view_frame, bg=CARD_BG,
                              highlightbackground=CARD_BORDER, highlightthickness=1)
-        path_card.pack(fill="x", pady=(0, 14))
+        path_card.pack(fill="x", pady=(0, 12))
 
         p_inner = tk.Frame(path_card, bg=CARD_BG)
-        p_inner.pack(fill="x", padx=16, pady=14)
+        p_inner.pack(fill="x", padx=16, pady=12)
 
-        p_head = tk.Label(p_inner, text="INSTALLATION FOLDER",
+        p_head = tk.Label(p_inner, text="INSTALLATION DIRECTORY",
                           font=("Segoe UI Variable Text", 8, "bold"),
                           fg=TEXT_MUTED, bg=CARD_BG)
-        p_head.pack(anchor="w", pady=(0, 8))
+        p_head.pack(anchor="w", pady=(0, 6))
 
         row_box = tk.Frame(p_inner, bg=CARD_BG)
         row_box.pack(fill="x")
@@ -327,7 +320,7 @@ class InstallerWindow:
                               highlightthickness=1,
                               highlightbackground=INPUT_BORDER,
                               highlightcolor=INPUT_BORDER_FOCUS)
-        self.entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+        self.entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
 
         self.browse_btn = tk.Button(row_box, text="Browse…",
                                     font=("Segoe UI Variable Text", 9),
@@ -337,7 +330,7 @@ class InstallerWindow:
                                     relief="solid", bd=1,
                                     highlightthickness=1,
                                     highlightbackground=BUTTON_SEC_BORDER,
-                                    cursor="hand2", padx=12, pady=4,
+                                    cursor="hand2", padx=14, pady=4,
                                     command=self.pick_folder)
         self.browse_btn.pack(side="right")
 
@@ -347,7 +340,7 @@ class InstallerWindow:
         p_hint = tk.Label(p_inner, text=info_text,
                           font=("Segoe UI Variable Text", 8),
                           fg=TEXT_DIM, bg=CARD_BG)
-        p_hint.pack(anchor="w", pady=(8, 0))
+        p_hint.pack(anchor="w", pady=(6, 0))
 
         # ── КАРТОЧКА 2: Опции / Ярлыки ──
         opts_card = tk.Frame(self.view_frame, bg=CARD_BG,
@@ -355,12 +348,12 @@ class InstallerWindow:
         opts_card.pack(fill="x", pady=(0, 14))
 
         o_inner = tk.Frame(opts_card, bg=CARD_BG)
-        o_inner.pack(fill="x", padx=16, pady=14)
+        o_inner.pack(fill="x", padx=16, pady=12)
 
         o_head = tk.Label(o_inner, text="OPTIONS",
                           font=("Segoe UI Variable Text", 8, "bold"),
                           fg=TEXT_MUTED, bg=CARD_BG)
-        o_head.pack(anchor="w", pady=(0, 10))
+        o_head.pack(anchor="w", pady=(0, 8))
 
         self.desktop_var = tk.BooleanVar(value=True)
         self.startmenu_var = tk.BooleanVar(value=True)
@@ -380,16 +373,16 @@ class InstallerWindow:
         else:
             self._add_check(o_inner, self.desktop_var, "Create Desktop shortcut")
             self._add_check(o_inner, self.startmenu_var, "Create Start Menu shortcut")
-            self._add_check(o_inner, self.launch_var, "Launch Anime Expeditions Macro after installation")
+            self._add_check(o_inner, self.launch_var, "Launch Anime Expeditions Macro when finished")
 
         # ── БЛОК ПРОГРЕССА И СТАТУСА ──
         self.progress_box = tk.Frame(self.view_frame, bg=BG)
         self.progress_box.pack(fill="x", pady=(0, 12))
 
-        self.bar = ttk.Progressbar(self.progress_box, length=490, mode="determinate")
-        self.bar.pack(fill="x", pady=(0, 6))
+        self.bar = ttk.Progressbar(self.progress_box, length=480, mode="determinate")
+        self.bar.pack(fill="x", pady=(0, 4))
 
-        init_status = ("Click 'Install' to begin downloading and setup."
+        init_status = ("Ready to install. Click 'Install' to begin setup."
                        if not self.uninstall_mode
                        else "Click 'Uninstall' to remove the application.")
         self.status_lbl = tk.Label(self.progress_box, text=init_status,
@@ -404,14 +397,15 @@ class InstallerWindow:
         btn_text = "Uninstall" if self.uninstall_mode else "Install"
         btn_bg = ERROR_COLOR if self.uninstall_mode else ACCENT
         btn_hover = "#ef4444" if self.uninstall_mode else ACCENT_HOVER
+        btn_fg = "#ffffff" if self.uninstall_mode else ACCENT_FG
 
         self.go_btn = tk.Button(self.footer, text=btn_text,
                                 font=("Segoe UI Variable Text", 9, "bold"),
-                                bg=btn_bg, fg=ACCENT_FG,
+                                bg=btn_bg, fg=btn_fg,
                                 activebackground=btn_hover,
-                                activeforeground=ACCENT_FG,
+                                activeforeground=btn_fg,
                                 relief="flat", bd=0,
-                                cursor="hand2", padx=24, pady=8,
+                                cursor="hand2", padx=26, pady=7,
                                 command=self.start)
         self.go_btn.pack(side="right")
 
@@ -423,12 +417,12 @@ class InstallerWindow:
                                     relief="solid", bd=1,
                                     highlightthickness=1,
                                     highlightbackground=BUTTON_SEC_BORDER,
-                                    cursor="hand2", padx=18, pady=7,
+                                    cursor="hand2", padx=18, pady=6,
                                     command=self.close)
         self.cancel_btn.pack(side="right", padx=(0, 10))
 
     def _add_check(self, parent, var, text):
-        """Создает стилизованный чекбокс в стиле Modern UI."""
+        """Создает стилизованный чекбокс в стиле макроса."""
         chk = tk.Checkbutton(parent, text=text, variable=var,
                              font=("Segoe UI Variable Text", 9),
                              fg=TEXT_MAIN, bg=CARD_BG,
@@ -436,7 +430,7 @@ class InstallerWindow:
                              activeforeground=TEXT_HEAD,
                              selectcolor=INPUT_BG,
                              cursor="hand2", bd=0, highlightthickness=0)
-        chk.pack(anchor="w", pady=3)
+        chk.pack(anchor="w", pady=2)
         return chk
 
     def pick_folder(self):
@@ -460,14 +454,14 @@ class InstallerWindow:
                 mb_done = done / 1048576
                 mb_total = total / 1048576
                 self.status_lbl.config(
-                    text=f"Downloading… {mb_done:.1f} of {mb_total:.1f} MB ({pct}%)",
+                    text=f"Downloading package… {mb_done:.1f} of {mb_total:.1f} MB ({pct}%)",
                     fg=TEXT_MAIN)
             else:
                 self.bar.config(mode="indeterminate")
                 self.bar.start(12)
                 mb_done = done / 1048576
                 self.status_lbl.config(
-                    text=f"Downloading… {mb_done:.1f} MB", fg=TEXT_MAIN)
+                    text=f"Downloading package… {mb_done:.1f} MB", fg=TEXT_MAIN)
         self.root.after(0, apply)
 
     def set_busy(self, busy):
@@ -504,7 +498,7 @@ class InstallerWindow:
             self.root.after(0, lambda e=exc: self._failed(e))
 
     def _done_install(self, target, version):
-        """Отображает стильный экран завершения установки прямо в окне (без нативных попапов)."""
+        """Отображает экран завершения установки прямо в окне (без нативных попапов)."""
         self.bar.stop()
         self.bar.config(mode="determinate", maximum=1, value=1)
         self.busy = False
@@ -516,26 +510,26 @@ class InstallerWindow:
         done_frame = tk.Frame(self.main_container, bg=BG)
         done_frame.pack(fill="both", expand=True, padx=24, pady=24)
 
-        icon_box = tk.Canvas(done_frame, width=54, height=54, bg=BG, highlightthickness=0)
-        icon_box.pack(pady=(16, 12))
-        icon_box.create_oval(3, 3, 51, 51, fill="#122a1e", outline=SUCCESS_COLOR, width=2)
-        icon_box.create_text(27, 27, text="✓", fill=SUCCESS_COLOR,
-                             font=("Segoe UI Variable Display", 20, "bold"))
+        icon_box = tk.Canvas(done_frame, width=48, height=48, bg=BG, highlightthickness=0)
+        icon_box.pack(pady=(12, 10))
+        icon_box.create_oval(2, 2, 46, 46, fill="#18281e", outline=SUCCESS_COLOR, width=2)
+        icon_box.create_text(24, 24, text="✓", fill=SUCCESS_COLOR,
+                             font=("Segoe UI Variable Display", 18, "bold"))
 
         h1 = tk.Label(done_frame, text="Installation Completed Successfully!",
-                      font=("Segoe UI Variable Display", 14, "bold"),
+                      font=("Segoe UI Variable Display", 13, "bold"),
                       fg=TEXT_HEAD, bg=BG)
-        h1.pack(pady=(0, 6))
+        h1.pack(pady=(0, 4))
 
         h2 = tk.Label(done_frame,
                       text=f"{lib.APP_NAME} {self.installed_version} is ready to use.",
-                      font=("Segoe UI Variable Text", 10),
+                      font=("Segoe UI Variable Text", 9),
                       fg=TEXT_MUTED, bg=BG)
-        h2.pack(pady=(0, 20))
+        h2.pack(pady=(0, 16))
 
         res_card = tk.Frame(done_frame, bg=CARD_BG,
                             highlightbackground=CARD_BORDER, highlightthickness=1)
-        res_card.pack(fill="x", pady=(0, 24))
+        res_card.pack(fill="x", pady=(0, 20))
 
         rc_inner = tk.Frame(res_card, bg=CARD_BG)
         rc_inner.pack(fill="x", padx=16, pady=12)
@@ -553,59 +547,81 @@ class InstallerWindow:
         btn_box = tk.Frame(done_frame, bg=BG)
         btn_box.pack(fill="x", side="bottom")
 
-        launch_btn = tk.Button(btn_box, text="Launch Macro",
-                               font=("Segoe UI Variable Text", 9, "bold"),
-                               bg=ACCENT, fg=ACCENT_FG,
-                               activebackground=ACCENT_HOVER,
-                               activeforeground=ACCENT_FG,
-                               relief="flat", bd=0,
-                               cursor="hand2", padx=22, pady=8,
-                               command=self._launch_and_exit)
-        launch_btn.pack(side="right")
-
-        close_btn = tk.Button(btn_box, text="Close",
-                              font=("Segoe UI Variable Text", 9),
-                              bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
-                              activebackground=BUTTON_SEC_HOVER,
-                              activeforeground=TEXT_HEAD,
-                              relief="solid", bd=1,
-                              highlightthickness=1,
-                              highlightbackground=BUTTON_SEC_BORDER,
-                              cursor="hand2", padx=18, pady=7,
-                              command=self.root.destroy)
-        close_btn.pack(side="right", padx=(0, 10))
-
+        # При отмеченном чекбоксе запуска кнопка Finish запускает макрос и закрывает окно.
+        # Это исключает нежелательный запуск в фоне и повторные клики.
         if self.launch_var.get():
-            self._launch_app(target)
+            finish_btn = tk.Button(btn_box, text="Finish & Launch",
+                                   font=("Segoe UI Variable Text", 9, "bold"),
+                                   bg=ACCENT, fg=ACCENT_FG,
+                                   activebackground=ACCENT_HOVER,
+                                   activeforeground=ACCENT_FG,
+                                   relief="flat", bd=0,
+                                   cursor="hand2", padx=22, pady=7,
+                                   command=self._launch_and_exit)
+            finish_btn.pack(side="right")
+
+            close_btn = tk.Button(btn_box, text="Close",
+                                  font=("Segoe UI Variable Text", 9),
+                                  bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
+                                  activebackground=BUTTON_SEC_HOVER,
+                                  activeforeground=TEXT_HEAD,
+                                  relief="solid", bd=1,
+                                  highlightthickness=1,
+                                  highlightbackground=BUTTON_SEC_BORDER,
+                                  cursor="hand2", padx=16, pady=6,
+                                  command=self.root.destroy)
+            close_btn.pack(side="right", padx=(0, 10))
+        else:
+            finish_btn = tk.Button(btn_box, text="Finish",
+                                   font=("Segoe UI Variable Text", 9, "bold"),
+                                   bg=ACCENT, fg=ACCENT_FG,
+                                   activebackground=ACCENT_HOVER,
+                                   activeforeground=ACCENT_FG,
+                                   relief="flat", bd=0,
+                                   cursor="hand2", padx=22, pady=7,
+                                   command=self.root.destroy)
+            finish_btn.pack(side="right")
+
+            launch_btn = tk.Button(btn_box, text="Launch Macro",
+                                   font=("Segoe UI Variable Text", 9),
+                                   bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
+                                   activebackground=BUTTON_SEC_HOVER,
+                                   activeforeground=TEXT_HEAD,
+                                   relief="solid", bd=1,
+                                   highlightthickness=1,
+                                   highlightbackground=BUTTON_SEC_BORDER,
+                                   cursor="hand2", padx=16, pady=6,
+                                   command=self._launch_and_exit)
+            launch_btn.pack(side="right", padx=(0, 10))
 
     def _done_uninstall(self):
-        """Отображает стильный экран завершения деинсталляции."""
+        """Отображает экран завершения деинсталляции."""
         self.bar.stop()
         self.busy = False
 
         self.view_frame.destroy()
 
         done_frame = tk.Frame(self.main_container, bg=BG)
-        done_frame.pack(fill="both", expand=True, padx=24, pady=36)
+        done_frame.pack(fill="both", expand=True, padx=24, pady=32)
 
-        icon_box = tk.Canvas(done_frame, width=54, height=54, bg=BG, highlightthickness=0)
-        icon_box.pack(pady=(16, 12))
-        icon_box.create_oval(3, 3, 51, 51, fill="#122a1e", outline=SUCCESS_COLOR, width=2)
-        icon_box.create_text(27, 27, text="✓", fill=SUCCESS_COLOR,
-                             font=("Segoe UI Variable Display", 20, "bold"))
+        icon_box = tk.Canvas(done_frame, width=48, height=48, bg=BG, highlightthickness=0)
+        icon_box.pack(pady=(12, 10))
+        icon_box.create_oval(2, 2, 46, 46, fill="#18281e", outline=SUCCESS_COLOR, width=2)
+        icon_box.create_text(24, 24, text="✓", fill=SUCCESS_COLOR,
+                             font=("Segoe UI Variable Display", 18, "bold"))
 
-        h1 = tk.Label(done_frame, text=f"{lib.APP_NAME} Uninstalled Successfully",
-                      font=("Segoe UI Variable Display", 14, "bold"),
+        h1 = tk.Label(done_frame, text=f"{lib.APP_NAME} Uninstalled",
+                      font=("Segoe UI Variable Display", 13, "bold"),
                       fg=TEXT_HEAD, bg=BG)
-        h1.pack(pady=(0, 6))
+        h1.pack(pady=(0, 4))
 
         h2 = tk.Label(done_frame,
-                      text="All shortcuts and registry entries were removed from the system.",
-                      font=("Segoe UI Variable Text", 10),
+                      text="Shortcuts and application files were successfully removed.",
+                      font=("Segoe UI Variable Text", 9),
                       fg=TEXT_MUTED, bg=BG)
-        h2.pack(pady=(0, 30))
+        h2.pack(pady=(0, 24))
 
-        close_btn = tk.Button(done_frame, text="Close",
+        close_btn = tk.Button(done_frame, text="Finish",
                               font=("Segoe UI Variable Text", 9, "bold"),
                               bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
                               activebackground=BUTTON_SEC_HOVER,
@@ -613,7 +629,7 @@ class InstallerWindow:
                               relief="solid", bd=1,
                               highlightthickness=1,
                               highlightbackground=BUTTON_SEC_BORDER,
-                              cursor="hand2", padx=28, pady=8,
+                              cursor="hand2", padx=26, pady=7,
                               command=self.root.destroy)
         close_btn.pack()
 

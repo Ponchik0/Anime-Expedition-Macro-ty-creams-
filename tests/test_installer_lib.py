@@ -340,3 +340,38 @@ def test_the_uninstall_entry_round_trips_through_the_registry(tmp_path):
     finally:
         lib.unregister_uninstall()
     assert lib.read_install_dir() is None
+
+
+def test_extract_release_rejects_corrupted_zip(tmp_path):
+    """Битый или оборванный при скачивании архив не должен приводить к тихой
+    установке половины файлов — должна бросаться явная ошибка."""
+    corrupt = tmp_path / "corrupt.zip"
+    corrupt.write_bytes(b"PK\x03\x04not_a_valid_zip_content_at_all_junk")
+    dest = tmp_path / "install"
+
+    with pytest.raises(ValueError, match="Corrupted or invalid ZIP"):
+        lib.extract_release(str(corrupt), str(dest))
+
+
+def test_find_local_archive_detects_candidate(tmp_path, monkeypatch):
+    """Если рядом с установщиком лежит скачанный архив >10MB, find_local_archive
+    находит его и избавляет от повторного скачивания."""
+    archive = tmp_path / "Anime.Expeditions.Macro.v2.0.0.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr(lib.EXE_NAME, b"X" * (11 * 1024 * 1024))
+
+    monkeypatch.setattr(lib.sys, "argv", [str(tmp_path / "installer.exe")])
+    monkeypatch.setattr(lib.os, "getcwd", lambda: str(tmp_path))
+
+    found = lib.find_local_archive()
+    assert found is not None
+    assert os.path.abspath(found) == os.path.abspath(str(archive))
+
+
+def test_desktop_and_start_menu_dirs_return_non_empty_paths():
+    """Пути к Рабочему столу и Меню 'Пуск' должны определяться не пустыми."""
+    d = lib.desktop_dir()
+    sm = lib.start_menu_dir()
+    assert isinstance(d, str) and len(d) > 0
+    assert isinstance(sm, str) and len(sm) > 0
+
