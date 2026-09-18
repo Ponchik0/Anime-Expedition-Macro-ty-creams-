@@ -1,15 +1,15 @@
 ## v2.0.0 — Modern Glass UI, WASD Walk System & Next-Gen Automation
 
-### Cyber-Glass Interface & Visual Identity
-- `new` **Complete Cyber-Glass Redesign** — obsidian dark theme (`#0c0d14`), frosted glass surfaces, natural ambient shadows, and crisp responsive layout across all views.
+### Modern UI & Visual Identity
+- `new` **Complete Modern UI Redesign** — obsidian dark theme (`#0c0d14`), frosted glass surfaces, natural ambient shadows, and crisp responsive layout across all views.
 - `new` **What's New Showcase & Modern In-App Changelog** — interactive release showcase modal upon upgrading with clean category filters, bullet points, and persistent version badge.
 - `new` **Win Streak & Record Telemetry Strip** — real-time HUD telemetry tracking consecutive wins (`STREAK`), all-time session record (`BEST`), and auto-timer for upcoming Challenge rotations.
 - `new` **Loss Streak Safety Stop** — configurable safety threshold that automatically pauses macro execution after consecutive defeats to safeguard winrate and stats.
 - `new` **Quick Action Bar (Auto-Restart & VIP Rejoin)** — dedicated fast-action controls for immediate round restart looping (`Alt+F5`) and 1-click private server reconnection (`Alt+F6`) with dynamic hotkey badge synchronization.
 - `fix` **Dashboard Mini Queue Filtering & Adaptive Scroll** — the Dashboard upcoming queue now strictly displays active tasks (`enabled !== false`) with accurate counter badge, alternating zebra striping for high readability, and responsive clamp height (`clamp(140px, 22vh, 230px)`).
 
-### Cyber-Glass Setup Installer (v2.0)
-- `new` **Cyber-Glass Setup UI** — completely redesigned standalone installer (`Anime Expeditions Macro Setup.exe`) matching the new obsidian Cyber-Glass theme, native Windows 10/11 dark title bar, and Per-Monitor High-DPI support.
+### Modern Setup Installer (v2.0)
+- `new` **Modern Setup UI** — completely redesigned standalone installer (`Anime Expeditions Macro Setup.exe`) matching the new obsidian theme, native Windows 10/11 dark title bar, and Per-Monitor High-DPI support.
 - `new` **In-Window Completion & Error Views** — seamless in-window completion view with green verification badge and 1-click launch button, replacing native OS popups.
 - `new` **Resilient Multi-Source Downloading** — direct download with fallback search for Windows asset archives, custom User-Agent, and offline local zip package auto-detection.
 

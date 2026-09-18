@@ -167,21 +167,21 @@ def install_release(dest_dir: str, on_status=None, on_progress=None) -> str:
         installer_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         local_zip = os.path.join(installer_dir, ZIP_ASSET_NAME)
         if os.path.isfile(local_zip) and os.path.getsize(local_zip) > 1024 * 1024:
-            say("Установка из локального архива…")
+            say("Installing from local archive…")
             extract_release(local_zip, dest_dir, on_progress=on_progress)
             return tag or "v2.0.0"
     except Exception:
         pass
 
-    say("Ищу последнюю версию…")
+    say("Checking for latest release…")
     url = zip_asset_url()
 
     fd, tmp_zip = tempfile.mkstemp(suffix=".zip", prefix="aem_")
     os.close(fd)
     try:
-        say("Скачиваю…")
+        say("Downloading package…")
         download(url, tmp_zip, on_progress=on_progress)
-        say("Распаковываю…")
+        say("Extracting files…")
         extract_release(tmp_zip, dest_dir, on_progress=on_progress)
     finally:
         try:

@@ -317,6 +317,10 @@ def test_a_shortcut_is_really_created_and_points_at_its_target(tmp_path):
         encoding="utf-16")
     got = subprocess.run(["cscript", "//nologo", str(reader)],
                          capture_output=True, text=True, timeout=30).stdout.strip()
+    if not got:
+        ps_cmd = f"(New-Object -ComObject WScript.Shell).CreateShortcut('{link}').TargetPath"
+        got = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                             capture_output=True, text=True, timeout=15).stdout.strip()
     assert os.path.normcase(got) == os.path.normcase(str(exe)), \
         "ярлык создан, но ведёт не туда"
 

@@ -6,8 +6,8 @@ All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
 ## v2.0.0 — Modern Glass UI, WASD Walk System & Next-Gen Automation
 
-### Next-Gen Glass Interface & Modular Dashboard
-- `new` **Modern Cyber-Glass Design System** — completely redesigned sleek obsidian glass aesthetic with dynamic backdrop blur, refined tactile feedback, and customizable theme settings (Onyx/Pearl).
+### Next-Gen Interface & Modular Dashboard
+- `new` **New Modern UI System** — completely redesigned sleek aesthetic with dynamic backdrop blur, refined tactile feedback, and customizable theme settings (Onyx/Pearl).
 - `new` **Modular Dashboard & Drag-and-Drop Layout** — fully customizable dashboard grid allowing Macro Engine, Session Stats, Process Log, and Run History cards to be rearranged, hidden, or restored on the fly.
 - `new` **Intelligent Cursor & Header Grab Handles** — clean, dedicated drag handles (`⋮⋮`) with zero button clutter, active strictly within header bounds while keeping card contents and controls intuitively clickable.
 - `new` **Sidebar Restore Banner** — non-intrusive restore bar that dynamically appears when cards are hidden, offering instant one-click restoration without polluting card headers.
