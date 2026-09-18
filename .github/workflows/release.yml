@@ -84,7 +84,7 @@ jobs:
           Copy-Item "dist/Anime Expeditions Macro.exe" package/
           Copy-Item Assets package/Assets -Recurse
           Copy-Item Templates package/Templates -Recurse
-          Compress-Archive -Path package/* -DestinationPath "dist/Anime-Expeditions-Macro-Windows.zip"
+          Compress-Archive -Path package/* -DestinationPath "dist/Anime-Expeditions-Macro-Windows.zip" -Force
 
       # Установщик (см. installer.py). Собирается ПОСЛЕ архива и отдельным
       # шагом, потому что это самостоятельная маленькая программа: он не
@@ -135,15 +135,22 @@ jobs:
       # Creams.Macro.-.Anime.Expeditions.exe", seen live). Shipping it
       # keeps the upgrade chain unbroken: their old updater swaps in this
       # exe, whose own updater then uses the zips from the next release on.
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release metadata
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
-          files: |
-            dist/Anime Expeditions Macro Setup.exe
-            dist/Anime-Expeditions-Macro-Windows.zip
-            dist/Anime Expeditions Macro.exe
+
+      - name: Upload Windows Assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "dist/Anime Expeditions Macro Setup.exe" \
+            "dist/Anime-Expeditions-Macro-Windows.zip" \
+            "dist/Anime Expeditions Macro.exe" \
+            --clobber
 
       # Python script, not inline bash+jq -- the jq version sent Discord
       # invalid JSON (HTTP 400, code 50109) on the real runner the first
@@ -201,6 +208,9 @@ jobs:
           cd package && ditto -c -k --sequesterRsrc . ../dist/Anime-Expeditions-Macro-macOS.zip
 
       - name: Upload macOS asset to the release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/Anime-Expeditions-Macro-macOS.zip
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" "dist/Anime-Expeditions-Macro-macOS.zip" --clobber
+

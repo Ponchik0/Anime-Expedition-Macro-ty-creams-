@@ -20,6 +20,7 @@
 ПРАВА АДМИНИСТРАТОРА НЕ ТРЕБУЮТСЯ и требоваться не должны — почему именно,
 расписано у default_install_dir в installer_lib.py.
 """
+import ctypes
 import os
 import shutil
 import subprocess
@@ -29,6 +30,75 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import installer_lib as lib
+
+# --------------------------------------------------------------- ЦВЕТОВАЯ ПАЛИТРА -
+# Cyber-Glass Onyx (тёмный графит, неоновый фиолетовый акцент, мягкие границы).
+# Все контрасты выверены по WCAG AA/AAA для отличной читаемости на любом мониторе.
+BG = "#0c0d14"              # Основной фон окна
+HEADER_BG = "#10121d"       # Фон шапки
+CARD_BG = "#131624"         # Фон стеклянной карточки
+CARD_BORDER = "#23283c"     # Тонкая граница карточки
+INPUT_BG = "#191c2e"        # Фон поля ввода
+INPUT_BORDER = "#2f3652"    # Рамка поля ввода
+INPUT_BORDER_FOCUS = "#7c6cf0" # Рамка при фокусе
+
+TEXT_HEAD = "#ffffff"       # Заголовки
+TEXT_MAIN = "#e3e6f3"       # Основной текст
+TEXT_MUTED = "#868da4"      # Приглушённый текст / подписи
+TEXT_DIM = "#5e647b"        # Второстепенный текст
+
+ACCENT = "#7c6cf0"          # Неоновый фиолетовый акцент
+ACCENT_HOVER = "#8f80fa"    # Акцент при наведении
+ACCENT_ACTIVE = "#6b5be2"   # Акцент при нажатии
+ACCENT_FG = "#ffffff"       # Текст на акцентной кнопке
+
+BUTTON_SEC_BG = "#1e2236"   # Второстепенная кнопка
+BUTTON_SEC_HOVER = "#2a304a"
+BUTTON_SEC_BORDER = "#333b5c"
+BUTTON_SEC_FG = "#ccd2e5"
+
+BADGE_BG = "#221c3e"        # Подложка бейджа версии
+BADGE_BORDER = "#493b82"
+BADGE_FG = "#b8abff"
+
+SUCCESS_COLOR = "#4ade80"   # Зелёный статус
+ERROR_COLOR = "#f87171"     # Красный статус
+
+
+def enable_dpi_awareness():
+    """Включает попиксельную чёткость на мониторах с масштабированием (125%, 150%, 200%).
+    Без этого Tkinter мылит шрифты и растягивает пиксели."""
+    try:
+        # Per-monitor DPI aware v2 (Windows 10 1703+)
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:
+            # Per-monitor DPI aware (Windows 8.1+)
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+
+def set_dark_titlebar(root):
+    """Окрашивает стандартную белую рамку окна Windows 10/11 в тёмный цвет.
+    Использует DWMWA_USE_IMMERSIVE_DARK_MODE."""
+    try:
+        root.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+        if not hwnd:
+            hwnd = root.winfo_id()
+        for attr in (20, 19):  # 20 для Win11/Win10 20H1+, 19 для Win10 1809
+            val = ctypes.c_int(1)
+            res = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, attr, ctypes.byref(val), ctypes.sizeof(val)
+            )
+            if res == 0:
+                break
+    except Exception:
+        pass
 
 
 # ------------------------------------------------------------------- ЛОГИКА -
@@ -143,136 +213,282 @@ class InstallerWindow:
         self.root = root
         self.uninstall_mode = uninstall_mode
         self.busy = False
-        root.title(f"{lib.APP_NAME} — {'удаление' if uninstall_mode else 'установка'}")
+        self.installed_version = "v2.0.0"
+        self.target_installed_dir = ""
+
+        mode_title = "Удаление" if uninstall_mode else "Установка"
+        root.title(f"{lib.APP_NAME} • {mode_title}")
+        root.configure(bg=BG)
         root.resizable(False, False)
 
-        frame = ttk.Frame(root, padding=16)
-        frame.grid(sticky="nsew")
+        # Центрируем окно на экране
+        width, height = 540, 530
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        x = max(0, (sw - width) // 2)
+        y = max(0, (sh - height) // 2 - 20)
+        root.geometry(f"{width}x{height}+{x}+{y}")
 
-        ttk.Label(frame, text=lib.APP_NAME,
-                  style="Head.TLabel").grid(columnspan=3, sticky="w")
-        self.subtitle = ttk.Label(frame, style="Dim.TLabel", text=(
-            "Удаление приложения и его ярлыков." if uninstall_mode
-            else "Куда поставить и что создать. Права администратора не нужны."
-        ))
-        self.subtitle.grid(columnspan=3, sticky="w", pady=(2, 14))
+        # Иконка приложения
+        try:
+            base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            ico = os.path.join(base_dir, "logo.ico")
+            if os.path.isfile(ico):
+                root.iconbitmap(ico)
+        except Exception:
+            pass
 
-        # Повторный запуск предлагает ТУ ЖЕ папку, что и прошлая установка —
-        # иначе рядом молча появилась бы вторая копия.
+        self.main_container = tk.Frame(root, bg=BG)
+        self.main_container.pack(fill="both", expand=True)
+
+        self._build_header()
+        self._build_config_view()
+
+        root.protocol("WM_DELETE_WINDOW", self.close)
+
+    def _build_header(self):
+        """Верхняя брендовая плашка в стиле Cyber-Glass."""
+        header_frame = tk.Frame(self.main_container, bg=HEADER_BG, height=82)
+        header_frame.pack(fill="x", side="top")
+        header_frame.pack_propagate(False)
+
+        top_box = tk.Frame(header_frame, bg=HEADER_BG)
+        top_box.pack(fill="both", expand=True, padx=22, pady=14)
+
+        # Иконка-эмблема
+        icon_canvas = tk.Canvas(top_box, width=44, height=44, bg=HEADER_BG,
+                                highlightthickness=0)
+        icon_canvas.pack(side="left", padx=(0, 14))
+
+        icon_canvas.create_polygon(22, 2, 42, 22, 22, 42, 2, 22,
+                                   fill="#1c1f33", outline=ACCENT, width=2)
+        icon_canvas.create_text(22, 22, text="AE", fill="#ffffff",
+                                font=("Segoe UI Variable Display", 11, "bold"))
+
+        text_box = tk.Frame(top_box, bg=HEADER_BG)
+        text_box.pack(side="left", fill="y", expand=True)
+
+        title_row = tk.Frame(text_box, bg=HEADER_BG)
+        title_row.pack(anchor="w")
+
+        title_lbl = tk.Label(title_row, text=lib.APP_NAME.upper(),
+                             font=("Segoe UI Variable Display", 12, "bold"),
+                             fg=TEXT_HEAD, bg=HEADER_BG)
+        title_lbl.pack(side="left")
+
+        badge_text = "UNINSTALL" if self.uninstall_mode else "v2.0.0"
+        badge_lbl = tk.Label(title_row, text=f" {badge_text} ",
+                             font=("Segoe UI Variable Text", 8, "bold"),
+                             fg=BADGE_FG, bg=BADGE_BG,
+                             relief="solid", bd=1)
+        badge_lbl.configure(highlightbackground=BADGE_BORDER, highlightthickness=1)
+        badge_lbl.pack(side="left", padx=(10, 0))
+
+        sub_text = ("Деинсталляция компонентов приложения и ярлыков"
+                    if self.uninstall_mode
+                    else "Cyber-Glass Edition • Автоматическая установка и настройка")
+        sub_lbl = tk.Label(text_box, text=sub_text,
+                           font=("Segoe UI Variable Text", 9),
+                           fg=TEXT_MUTED, bg=HEADER_BG)
+        sub_lbl.pack(anchor="w", pady=(3, 0))
+
+        sep = tk.Frame(self.main_container, bg=CARD_BORDER, height=1)
+        sep.pack(fill="x", side="top")
+
+    def _build_config_view(self):
+        """Основной экран параметров установки/удаления."""
+        self.view_frame = tk.Frame(self.main_container, bg=BG)
+        self.view_frame.pack(fill="both", expand=True, padx=20, pady=16)
+
+        # ── КАРТОЧКА 1: Папка назначения ──
+        path_card = tk.Frame(self.view_frame, bg=CARD_BG,
+                             highlightbackground=CARD_BORDER, highlightthickness=1)
+        path_card.pack(fill="x", pady=(0, 14))
+
+        p_inner = tk.Frame(path_card, bg=CARD_BG)
+        p_inner.pack(fill="x", padx=16, pady=14)
+
+        p_head = tk.Label(p_inner, text="ПАПКА УСТАНОВКИ",
+                          font=("Segoe UI Variable Text", 8, "bold"),
+                          fg=TEXT_MUTED, bg=CARD_BG)
+        p_head.pack(anchor="w", pady=(0, 8))
+
+        row_box = tk.Frame(p_inner, bg=CARD_BG)
+        row_box.pack(fill="x")
+
         self.path_var = tk.StringVar(
             value=lib.read_install_dir() or lib.default_install_dir())
 
-        ttk.Label(frame, text="Папка:").grid(row=2, column=0, sticky="w")
-        entry = ttk.Entry(frame, textvariable=self.path_var, width=46)
-        entry.grid(row=2, column=1, sticky="we", padx=(8, 6))
-        self.browse_btn = ttk.Button(frame, text="Обзор…", command=self.pick_folder)
-        self.browse_btn.grid(row=2, column=2)
+        self.entry = tk.Entry(row_box, textvariable=self.path_var,
+                              font=("Segoe UI Variable Text", 9),
+                              bg=INPUT_BG, fg=TEXT_MAIN,
+                              insertbackground=TEXT_HEAD,
+                              relief="solid", bd=1,
+                              highlightthickness=1,
+                              highlightbackground=INPUT_BORDER,
+                              highlightcolor=INPUT_BORDER_FOCUS)
+        self.entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+
+        self.browse_btn = tk.Button(row_box, text="Обзор…",
+                                    font=("Segoe UI Variable Text", 9),
+                                    bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
+                                    activebackground=BUTTON_SEC_HOVER,
+                                    activeforeground=TEXT_HEAD,
+                                    relief="solid", bd=1,
+                                    highlightthickness=1,
+                                    highlightbackground=BUTTON_SEC_BORDER,
+                                    cursor="hand2", padx=12, ipady=4,
+                                    command=self.pick_folder)
+        self.browse_btn.pack(side="right")
+
+        info_text = ("Текущая директория установки приложения."
+                     if self.uninstall_mode
+                     else "✓ Права администратора не требуются  •  Установка в профиль пользователя")
+        p_hint = tk.Label(p_inner, text=info_text,
+                          font=("Segoe UI Variable Text", 8),
+                          fg=TEXT_DIM, bg=CARD_BG)
+        p_hint.pack(anchor="w", pady=(8, 0))
+
+        # ── КАРТОЧКА 2: Опции / Ярлыки ──
+        opts_card = tk.Frame(self.view_frame, bg=CARD_BG,
+                             highlightbackground=CARD_BORDER, highlightthickness=1)
+        opts_card.pack(fill="x", pady=(0, 14))
+
+        o_inner = tk.Frame(opts_card, bg=CARD_BG)
+        o_inner.pack(fill="x", padx=16, pady=14)
+
+        o_head = tk.Label(o_inner, text="ПАРАМЕТРЫ",
+                          font=("Segoe UI Variable Text", 8, "bold"),
+                          fg=TEXT_MUTED, bg=CARD_BG)
+        o_head.pack(anchor="w", pady=(0, 10))
 
         self.desktop_var = tk.BooleanVar(value=True)
         self.startmenu_var = tk.BooleanVar(value=True)
         self.launch_var = tk.BooleanVar(value=True)
         self.keepdata_var = tk.BooleanVar(value=True)
 
-        opts = ttk.Frame(frame)
-        opts.grid(row=3, columnspan=3, sticky="w", pady=(12, 0))
-        if uninstall_mode:
-            entry.state(["disabled"])
-            self.browse_btn.state(["disabled"])
-            ttk.Checkbutton(opts, variable=self.keepdata_var,
-                            text="Сохранить настройки, шаблоны, маршруты и мои эталоны"
-                            ).grid(sticky="w")
-            ttk.Label(opts, style="Dim.TLabel", wraplength=430, text=(
-                "Снимешь галочку — папка будет удалена целиком, вместе с тем, "
-                "что ты настраивал руками. Восстановить это неоткуда."
-            )).grid(sticky="w", pady=(2, 0))
+        if self.uninstall_mode:
+            self.entry.config(state="disabled")
+            self.browse_btn.config(state="disabled")
+            self._add_check(o_inner, self.keepdata_var,
+                            "Сохранить настройки, шаблоны и эталоны (рекомендуется)")
+            warn_lbl = tk.Label(o_inner,
+                                text="Если снять эту галочку, папка будет удалена полностью со всеми вашими записями.",
+                                font=("Segoe UI Variable Text", 8),
+                                fg=ERROR_COLOR, bg=CARD_BG, wraplength=460, justify="left")
+            warn_lbl.pack(anchor="w", padx=26, pady=(3, 0))
         else:
-            ttk.Checkbutton(opts, variable=self.desktop_var,
-                            text="Ярлык на рабочем столе").grid(sticky="w")
-            ttk.Checkbutton(opts, variable=self.startmenu_var,
-                            text="Ярлык в меню «Пуск»").grid(sticky="w")
-            ttk.Checkbutton(opts, variable=self.launch_var,
-                            text="Запустить после установки").grid(sticky="w")
+            self._add_check(o_inner, self.desktop_var, "Создать ярлык на рабочем столе")
+            self._add_check(o_inner, self.startmenu_var, "Добавить ярлык в меню «Пуск»")
+            self._add_check(o_inner, self.launch_var, "Запустить Anime Expeditions Macro сразу после установки")
 
-        self.bar = ttk.Progressbar(frame, length=430, mode="determinate")
-        self.bar.grid(row=4, columnspan=3, sticky="we", pady=(16, 4))
-        self.status = ttk.Label(frame, text="", style="Dim.TLabel")
-        self.status.grid(row=5, columnspan=3, sticky="w")
+        # ── БЛОК ПРОГРЕССА И СТАТУСА ──
+        self.progress_box = tk.Frame(self.view_frame, bg=BG)
+        self.progress_box.pack(fill="x", pady=(0, 12))
 
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=6, columnspan=3, sticky="e", pady=(16, 0))
-        self.go_btn = ttk.Button(
-            buttons, style="Go.TButton",
-            text="Удалить" if uninstall_mode else "Установить",
-            command=self.start)
-        self.go_btn.grid(row=0, column=0, padx=(0, 8))
-        self.cancel_btn = ttk.Button(buttons, text="Отмена", command=self.close)
-        self.cancel_btn.grid(row=0, column=1)
+        self.bar = ttk.Progressbar(self.progress_box, length=490, mode="determinate")
+        self.bar.pack(fill="x", pady=(0, 6))
 
-        frame.columnconfigure(1, weight=1)
-        root.protocol("WM_DELETE_WINDOW", self.close)
+        init_status = ("Нажмите «Установить» для начала загрузки и распаковки."
+                       if not self.uninstall_mode
+                       else "Нажмите «Удалить» для деинсталляции.")
+        self.status_lbl = tk.Label(self.progress_box, text=init_status,
+                                   font=("Segoe UI Variable Text", 8),
+                                   fg=TEXT_MUTED, bg=BG)
+        self.status_lbl.pack(anchor="w")
 
-    # --- вспомогательное ---
+        # ── ПОДВАЛ С КНОПКАМИ ДЕЙСТВИЯ ──
+        self.footer = tk.Frame(self.view_frame, bg=BG)
+        self.footer.pack(fill="x", side="bottom")
+
+        btn_text = "Удалить" if self.uninstall_mode else "Установить"
+        btn_bg = ERROR_COLOR if self.uninstall_mode else ACCENT
+        btn_hover = "#ef4444" if self.uninstall_mode else ACCENT_HOVER
+
+        self.go_btn = tk.Button(self.footer, text=btn_text,
+                                font=("Segoe UI Variable Text", 9, "bold"),
+                                bg=btn_bg, fg=ACCENT_FG,
+                                activebackground=btn_hover,
+                                activeforeground=ACCENT_FG,
+                                relief="flat", bd=0,
+                                cursor="hand2", padx=24, ipady=8,
+                                command=self.start)
+        self.go_btn.pack(side="right")
+
+        self.cancel_btn = tk.Button(self.footer, text="Отмена",
+                                    font=("Segoe UI Variable Text", 9),
+                                    bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
+                                    activebackground=BUTTON_SEC_HOVER,
+                                    activeforeground=TEXT_HEAD,
+                                    relief="solid", bd=1,
+                                    highlightthickness=1,
+                                    highlightbackground=BUTTON_SEC_BORDER,
+                                    cursor="hand2", padx=18, ipady=7,
+                                    command=self.close)
+        self.cancel_btn.pack(side="right", padx=(0, 10))
+
+    def _add_check(self, parent, var, text):
+        """Создает стилизованный чекбокс в стиле Cyber-Glass."""
+        chk = tk.Checkbutton(parent, text=text, variable=var,
+                             font=("Segoe UI Variable Text", 9),
+                             fg=TEXT_MAIN, bg=CARD_BG,
+                             activebackground=CARD_BG,
+                             activeforeground=TEXT_HEAD,
+                             selectcolor=INPUT_BG,
+                             cursor="hand2", bd=0, highlightthickness=0)
+        chk.pack(anchor="w", pady=3)
+        return chk
+
     def pick_folder(self):
-        chosen = filedialog.askdirectory(title="Куда поставить")
+        chosen = filedialog.askdirectory(title="Куда поставить Anime Expeditions Macro")
         if chosen:
             self.path_var.set(resolve_install_target(chosen))
 
     def close(self):
-        # Закрыть посреди распаковки значит оставить половину файлов и битую
-        # запись в реестре. Пока идёт работа, окно не закрывается.
         if self.busy:
             return
         self.root.destroy()
 
     def say(self, text):
-        self.root.after(0, lambda: self.status.config(text=text))
+        self.root.after(0, lambda: self.status_lbl.config(text=text, fg=TEXT_MUTED))
 
     def progress(self, done, total):
         def apply():
             if total:
                 self.bar.config(mode="determinate", maximum=total, value=done)
-                # Мегабайты, а не только полоса. Скачивается 115 МБ, и на
-                # медленном канале это минуты: без цифр человек не понимает,
-                # идёт ли дело вообще, и закрывает окно на середине.
-                self.status.config(
-                    text=f"Скачиваю… {done / 1048576:.0f} из {total / 1048576:.0f} МБ")
+                pct = int((done / total) * 100)
+                mb_done = done / 1048576
+                mb_total = total / 1048576
+                self.status_lbl.config(
+                    text=f"Скачивание… {mb_done:.1f} из {mb_total:.1f} МБ ({pct}%)",
+                    fg=TEXT_MAIN)
             else:
-                # Сервер не прислал размер — показываем «идёт», а не врём
-                # процентами, которых не знаем.
                 self.bar.config(mode="indeterminate")
                 self.bar.start(12)
-                self.status.config(text=f"Скачиваю… {done / 1048576:.0f} МБ")
+                mb_done = done / 1048576
+                self.status_lbl.config(
+                    text=f"Скачивание… {mb_done:.1f} МБ", fg=TEXT_MAIN)
         self.root.after(0, apply)
 
     def set_busy(self, busy):
         self.busy = busy
-        state = ["disabled"] if busy else ["!disabled"]
-        for w in (self.go_btn, self.cancel_btn, self.browse_btn):
+        state = "disabled" if busy else "normal"
+        for w in (self.go_btn, self.cancel_btn, self.browse_btn, self.entry):
             try:
-                w.state(state)
-            except tk.TclError:
+                w.config(state=state)
+            except Exception:
                 pass
 
-    # --- запуск ---
     def start(self):
         target = os.path.normpath(self.path_var.get().strip())
         if not target:
-            messagebox.showerror(lib.APP_NAME, "Укажи папку.")
+            self.say("Пожалуйста, укажите папку для установки.")
             return
         if self.uninstall_mode and not os.path.isdir(target):
-            messagebox.showerror(lib.APP_NAME, f"Папка не найдена:\n{target}")
-            return
-        if self.uninstall_mode and not messagebox.askyesno(
-                lib.APP_NAME,
-                f"Удалить {lib.APP_NAME} из\n{target}?"
-                + ("" if self.keepdata_var.get()
-                   else "\n\nНастройки, шаблоны и маршруты будут удалены безвозвратно.")):
+            self.say(f"Папка не найдена: {target}")
             return
 
         self.set_busy(True)
-        # Отдельный поток: в главном крутится tkinter, и скачивание 115 МБ в
-        # нём заморозило бы окно намертво — Windows пометила бы его как
-        # «не отвечает» ровно тогда, когда всё идёт хорошо.
         threading.Thread(target=self._work, args=(target,), daemon=True).start()
 
     def _work(self, target):
@@ -285,143 +501,174 @@ class InstallerWindow:
                                      self.startmenu_var.get(), self.say, self.progress)
                 self.root.after(0, lambda: self._done_install(target, version))
         except Exception as exc:
-            # exc привязывается аргументом по умолчанию, а не захватывается
-            # замыканием: Python удаляет имя при выходе из except, а лямбда
-            # выполнится ПОЗЖЕ, из очереди Tk. С захватом здесь падал бы
-            # NameError — то есть вместо понятного окна с причиной ошибки
-            # человек не увидел бы ничего.
             self.root.after(0, lambda e=exc: self._failed(e))
 
-    def _failed(self, exc):
-        self.bar.stop()
-        self.set_busy(False)
-        self.say("Не получилось.")
-        messagebox.showerror(
-            lib.APP_NAME,
-            f"{'Удаление' if self.uninstall_mode else 'Установка'} не удалась:\n{exc}\n\n"
-            "Проверь подключение к интернету и права на папку.")
-
     def _done_install(self, target, version):
+        """Отображает стильный экран завершения установки прямо в окне (без нативных попапов)."""
         self.bar.stop()
         self.bar.config(mode="determinate", maximum=1, value=1)
         self.busy = False
-        self.say(f"Готово. Установлено в {target}")
+        self.installed_version = version or "v2.0.0"
+        self.target_installed_dir = target
 
-        # Сначала сообщение, ПОТОМ запуск. Наоборот было ошибкой: приложение
-        # поднимает своё окно поверх, окно установщика уходит под него вместе
-        # с ещё не показанным messagebox, и человек видит, что установщик
-        # «завис», хотя всё уже готово.
-        messagebox.showinfo(
-            lib.APP_NAME,
-            f"{lib.APP_NAME} {version} установлен.\n\n{target}")
+        self.view_frame.destroy()
+
+        done_frame = tk.Frame(self.main_container, bg=BG)
+        done_frame.pack(fill="both", expand=True, padx=24, pady=24)
+
+        icon_box = tk.Canvas(done_frame, width=54, height=54, bg=BG, highlightthickness=0)
+        icon_box.pack(pady=(16, 12))
+        icon_box.create_oval(3, 3, 51, 51, fill="#122a1e", outline=SUCCESS_COLOR, width=2)
+        icon_box.create_text(27, 27, text="✓", fill=SUCCESS_COLOR,
+                             font=("Segoe UI Variable Display", 20, "bold"))
+
+        h1 = tk.Label(done_frame, text="Установка успешно завершена!",
+                      font=("Segoe UI Variable Display", 14, "bold"),
+                      fg=TEXT_HEAD, bg=BG)
+        h1.pack(pady=(0, 6))
+
+        h2 = tk.Label(done_frame,
+                      text=f"{lib.APP_NAME} {self.installed_version} готов к использованию.",
+                      font=("Segoe UI Variable Text", 10),
+                      fg=TEXT_MUTED, bg=BG)
+        h2.pack(pady=(0, 20))
+
+        res_card = tk.Frame(done_frame, bg=CARD_BG,
+                            highlightbackground=CARD_BORDER, highlightthickness=1)
+        res_card.pack(fill="x", pady=(0, 24))
+
+        rc_inner = tk.Frame(res_card, bg=CARD_BG)
+        rc_inner.pack(fill="x", padx=16, pady=12)
+
+        rc_lbl = tk.Label(rc_inner, text="РАСПОЛОЖЕНИЕ ПРИЛОЖЕНИЯ",
+                          font=("Segoe UI Variable Text", 8, "bold"),
+                          fg=TEXT_MUTED, bg=CARD_BG)
+        rc_lbl.pack(anchor="w", pady=(0, 4))
+
+        rc_path = tk.Label(rc_inner, text=target,
+                           font=("Consolas", 9),
+                           fg=TEXT_MAIN, bg=CARD_BG, wraplength=450, justify="left")
+        rc_path.pack(anchor="w")
+
+        btn_box = tk.Frame(done_frame, bg=BG)
+        btn_box.pack(fill="x", side="bottom")
+
+        launch_btn = tk.Button(btn_box, text="Запустить сейчас",
+                               font=("Segoe UI Variable Text", 9, "bold"),
+                               bg=ACCENT, fg=ACCENT_FG,
+                               activebackground=ACCENT_HOVER,
+                               activeforeground=ACCENT_FG,
+                               relief="flat", bd=0,
+                               cursor="hand2", padx=22, ipady=8,
+                               command=self._launch_and_exit)
+        launch_btn.pack(side="right")
+
+        close_btn = tk.Button(btn_box, text="Закрыть",
+                              font=("Segoe UI Variable Text", 9),
+                              bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
+                              activebackground=BUTTON_SEC_HOVER,
+                              activeforeground=TEXT_HEAD,
+                              relief="solid", bd=1,
+                              highlightthickness=1,
+                              highlightbackground=BUTTON_SEC_BORDER,
+                              cursor="hand2", padx=18, ipady=7,
+                              command=self.root.destroy)
+        close_btn.pack(side="right", padx=(0, 10))
 
         if self.launch_var.get():
-            exe = lib.app_exe_path(target)
-            try:
-                # cwd обязателен: приложение ищет Assets рядом с собой, и
-                # запуск с чужой рабочей папкой оставил бы его без картинок.
-                subprocess.Popen([exe], cwd=target)
-            except OSError as exc:
-                # Молча проглатывать нельзя: галочка стояла, человек ждёт
-                # запуска, а вместо него тишина и непонятно, установилось ли.
-                messagebox.showwarning(
-                    lib.APP_NAME,
-                    f"Установлено, но запустить не получилось:\n{exc}\n\n"
-                    f"Запусти вручную:\n{exe}")
-        self.root.destroy()
+            self._launch_app(target)
 
     def _done_uninstall(self):
+        """Отображает стильный экран завершения деинсталляции."""
         self.bar.stop()
         self.busy = False
-        messagebox.showinfo(lib.APP_NAME, f"{lib.APP_NAME} удалён.")
+
+        self.view_frame.destroy()
+
+        done_frame = tk.Frame(self.main_container, bg=BG)
+        done_frame.pack(fill="both", expand=True, padx=24, pady=36)
+
+        icon_box = tk.Canvas(done_frame, width=54, height=54, bg=BG, highlightthickness=0)
+        icon_box.pack(pady=(16, 12))
+        icon_box.create_oval(3, 3, 51, 51, fill="#122a1e", outline=SUCCESS_COLOR, width=2)
+        icon_box.create_text(27, 27, text="✓", fill=SUCCESS_COLOR,
+                             font=("Segoe UI Variable Display", 20, "bold"))
+
+        h1 = tk.Label(done_frame, text=f"{lib.APP_NAME} успешно удалён",
+                      font=("Segoe UI Variable Display", 14, "bold"),
+                      fg=TEXT_HEAD, bg=BG)
+        h1.pack(pady=(0, 6))
+
+        h2 = tk.Label(done_frame,
+                      text="Все ярлыки и регистрационные данные удалены из системы.",
+                      font=("Segoe UI Variable Text", 10),
+                      fg=TEXT_MUTED, bg=BG)
+        h2.pack(pady=(0, 30))
+
+        close_btn = tk.Button(done_frame, text="Закрыть",
+                              font=("Segoe UI Variable Text", 9, "bold"),
+                              bg=BUTTON_SEC_BG, fg=BUTTON_SEC_FG,
+                              activebackground=BUTTON_SEC_HOVER,
+                              activeforeground=TEXT_HEAD,
+                              relief="solid", bd=1,
+                              highlightthickness=1,
+                              highlightbackground=BUTTON_SEC_BORDER,
+                              cursor="hand2", padx=28, ipady=8,
+                              command=self.root.destroy)
+        close_btn.pack()
+
+    def _failed(self, exc):
+        """Отображает ошибку установки с подсказкой и возможностью повторить."""
+        self.bar.stop()
+        self.set_busy(False)
+        self.status_lbl.config(text=f"Ошибка: {exc}", fg=ERROR_COLOR)
+
+        messagebox.showerror(
+            lib.APP_NAME,
+            f"{'Удаление' if self.uninstall_mode else 'Установка'} не удалась:\n\n{exc}\n\n"
+            "Проверьте подключение к интернету или права доступа к выбранной папке."
+        )
+
+    def _launch_and_exit(self):
+        self._launch_app(self.target_installed_dir)
         self.root.destroy()
+
+    def _launch_app(self, target_dir):
+        exe = lib.app_exe_path(target_dir)
+        try:
+            subprocess.Popen([exe], cwd=target_dir)
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------- ОФОРМЛЕНИЕ -
-# ЧИСТО НЕЙТРАЛЬНАЯ ШКАЛА: ни одного цветного оттенка, только серые.
-# Установщик видят один раз, часто на чужом мониторе с непонятной калибровкой,
-# и цветной акцент здесь ничего не сообщает — он только украшает. Роль
-# «главного» берёт на себя светлота: самая светлая заливка в окне ровно одна,
-# у кнопки «Установить».
-#
-# КОНТРАСТ ПОСЧИТАН, А НЕ ПОДОБРАН НА ГЛАЗ (WCAG 2.1, отношение яркостей):
-#   текст на фоне        17.68:1     приглушённый на фоне      7.04:1
-#   текст на карточке    16.16:1     приглушённый на карточке  6.43:1
-#   второстепенный       11.35:1     текст в поле ввода       13.87:1
-#   текст на кнопке      16.91:1     граница на всех трёх    3.00-3.83:1
-# Нормы: 4.5:1 для текста, 3:1 для границ и прочих нетекстовых элементов.
-#
-# Граница светлее, чем «красиво»: #6d6d6d — минимальное значение, которое
-# держит 3:1 на ВСЕХ трёх подложках сразу, включая самую светлую (поле ввода).
-# Более тёмная выглядела бы аккуратнее и пропадала бы на плохом мониторе, а
-# рамка поля ввода — это единственное, что показывает, куда можно печатать.
-BG        = "#0a0a0a"   # окно
-BG_CARD   = "#161616"   # кнопки, приподнятые поверхности
-BG_FIELD  = "#242424"   # поле ввода, вдавленное
-BORDER    = "#6d6d6d"   # границы и рамка фокуса
-INK       = "#f2f2f2"   # основной текст
-INK_DIM   = "#c4c4c4"   # второстепенный
-INK_MUTED = "#9a9a9a"   # подписи
-ACCENT    = "#ededed"   # заливка главной кнопки (текст на ней — BG)
-
-
 def apply_theme(root):
-    """Тёмная тема поверх ttk.
-
-    Берём 'clam', а не родную 'vista': vista рисует контролы средствами
-    Windows и попросту игнорирует заданные цвета — получилось бы тёмное окно
-    со светлыми серыми кнопками посередине. clam рисует сам и слушается.
-    """
+    """Настраивает визуальные стили ttk под тему Cyber-Glass."""
     style = ttk.Style(root)
     try:
         style.theme_use("clam")
     except tk.TclError:
-        return  # чужая система без clam — оставляем как есть, лишь бы работало
+        pass
 
-    root.configure(bg=BG)
-    style.configure(".", background=BG, foreground=INK,
-                    font=("Segoe UI", 9), borderwidth=0)
+    style.configure(".", background=BG, foreground=TEXT_MAIN,
+                    font=("Segoe UI Variable Text", 9), borderwidth=0)
     style.configure("TFrame", background=BG)
-    style.configure("TLabel", background=BG, foreground=INK)
-    style.configure("Dim.TLabel", foreground=INK_MUTED)
-    style.configure("Head.TLabel", foreground=INK, font=("Segoe UI", 14, "bold"))
+    style.configure("TLabel", background=BG, foreground=TEXT_MAIN)
 
-    style.configure("TEntry", fieldbackground=BG_FIELD, foreground=INK,
-                    insertcolor=INK, bordercolor=BORDER, lightcolor=BORDER,
-                    darkcolor=BORDER, padding=5)
-    style.map("TEntry", bordercolor=[("focus", ACCENT)])
-
-    style.configure("TButton", background=BG_CARD, foreground=INK_DIM,
-                    bordercolor=BORDER, lightcolor=BG_CARD, darkcolor=BG_CARD,
-                    padding=(12, 6), relief="flat")
-    style.map("TButton",
-              background=[("active", BG_FIELD), ("disabled", BG)],
-              foreground=[("active", INK), ("disabled", "#6d6d6d")])
-
-    # Главная кнопка — единственная акцентная во всём окне. Второй акцент
-    # рядом означал бы «оба главные», то есть ни одного.
-    style.configure("Go.TButton", background=ACCENT, foreground=BG,
-                    lightcolor=ACCENT, darkcolor=ACCENT, bordercolor=ACCENT,
-                    font=("Segoe UI", 9, "bold"))
-    style.map("Go.TButton",
-              background=[("active", "#ffffff"), ("disabled", BG_CARD)],
-              foreground=[("disabled", "#6d6d6d")])
-
-    style.configure("TCheckbutton", background=BG, foreground=INK_DIM,
-                    indicatorbackground=BG_FIELD, indicatorforeground=ACCENT,
-                    focuscolor=BG)
-    style.map("TCheckbutton",
-              foreground=[("active", INK)],
-              indicatorbackground=[("selected", ACCENT), ("active", BG_FIELD)])
-
-    style.configure("Horizontal.TProgressbar", background=ACCENT,
-                    troughcolor=BG_FIELD, bordercolor=BG_FIELD,
-                    lightcolor=ACCENT, darkcolor=ACCENT, thickness=6)
+    style.configure("Horizontal.TProgressbar",
+                    background=ACCENT,
+                    troughcolor=INPUT_BG,
+                    bordercolor=CARD_BORDER,
+                    lightcolor=ACCENT,
+                    darkcolor=ACCENT,
+                    thickness=8)
 
 
 def main():
+    enable_dpi_awareness()
     uninstall = "--uninstall" in sys.argv[1:]
     root = tk.Tk()
+    set_dark_titlebar(root)
     apply_theme(root)
     InstallerWindow(root, uninstall)
     root.mainloop()

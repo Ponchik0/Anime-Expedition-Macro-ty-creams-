@@ -46,6 +46,7 @@ cmd = [
     "--noupx",
     f"--name={EXE_NAME}",
     f"--icon={os.path.join(ROOT, 'logo.ico')}",
+    f"--add-data={os.path.join(ROOT, 'logo.ico')};.",
     "--distpath=dist",
     "--workpath=build",
     # installer_lib лежит рядом и подхватится сам, но пусть будет явно:

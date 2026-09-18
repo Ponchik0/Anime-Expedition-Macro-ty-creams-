@@ -1,6 +1,7 @@
 import os
 import ctypes
 from ctypes import wintypes
+from typing import Optional
 
 from . import config
 from .window import BaseWindowManager

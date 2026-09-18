@@ -23,7 +23,7 @@ import zipfile
 import requests
 
 APP_NAME = "Anime Expeditions Macro"
-RELEASES_REPO = "Ponchik0/ae"
+RELEASES_REPO = "Ponchik0/Anime-Expedition-Macro-ty-creams-"
 RELEASES_PAGE = f"https://github.com/{RELEASES_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
 # Совпадает с именем из release.yml. Дефисы намеренно: GitHub заменяет пробелы
@@ -41,6 +41,9 @@ UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\AnimeExped
 # записанные маршруты и подменённые эталоны — то, что он делал руками и чего
 # никакая переустановка не вернёт.
 USER_OWNED = ("settings.json", "Paths", "Templates", "Recordings", "debug")
+
+
+HEADERS = {"User-Agent": f"{APP_NAME}-Installer"}
 
 
 def is_inside(root: str, target: str) -> bool:
@@ -64,7 +67,7 @@ def latest_tag(timeout: float = 10.0):
     60 запросов в час НА IP — а один IP бывает общим на школу или на целого
     провайдера."""
     try:
-        resp = requests.head(RELEASES_PAGE, allow_redirects=False, timeout=timeout)
+        resp = requests.head(RELEASES_PAGE, headers=HEADERS, allow_redirects=False, timeout=timeout)
         location = resp.headers.get("Location", "")
         if "/releases/tag/" in location:
             return location.rsplit("/releases/tag/", 1)[-1]
@@ -78,10 +81,16 @@ def zip_asset_url(timeout: float = 15.0) -> str:
     собираем адрес сами: имя вложения задано release.yml и не меняется, так
     что построенная ссылка ничем не хуже полученной."""
     try:
-        resp = requests.get(API_URL, timeout=timeout)
+        resp = requests.get(API_URL, headers=HEADERS, timeout=timeout)
         if resp.status_code == 200:
-            for asset in resp.json().get("assets", []):
+            assets = resp.json().get("assets", [])
+            for asset in assets:
                 if asset.get("name", "").lower() == ZIP_ASSET_NAME.lower():
+                    return asset["browser_download_url"]
+            # Если точного совпадения нет, ищем любой zip для Windows
+            for asset in assets:
+                name = asset.get("name", "").lower()
+                if name.endswith(".zip") and ("windows" in name or "macro" in name):
                     return asset["browser_download_url"]
     except Exception:
         pass
@@ -93,7 +102,7 @@ def download(url: str, dest_path: str, on_progress=None, timeout: float = 120.0)
 
     total = 0, если сервер не прислал Content-Length: это не повод падать,
     вызывающий просто покажет неопределённый индикатор вместо процентов."""
-    with requests.get(url, stream=True, timeout=timeout) as r:
+    with requests.get(url, headers=HEADERS, stream=True, timeout=timeout) as r:
         r.raise_for_status()
         total = int(r.headers.get("content-length") or 0)
         done = 0
@@ -143,16 +152,26 @@ def extract_release(zip_path: str, dest_dir: str, on_progress=None) -> int:
 
 def install_release(dest_dir: str, on_status=None, on_progress=None) -> str:
     """Скачивает и раскладывает сборку в dest_dir. Возвращает тег версии.
-
-    Архив качается во временный файл и удаляется в любом случае: недокачанный
-    архив, оставшийся под правильным именем, на следующем запуске выглядел бы
-    как готовый."""
+    Если рядом с установщиком уже лежит готовый zip-архив, используется
+    он напрямую без скачивания."""
     def say(text):
         if on_status:
             on_status(text)
 
     os.makedirs(dest_dir, exist_ok=True)
     tag = latest_tag() or ""
+
+    # Проверяем локальный zip рядом с exe установщика (офлайн/ручная загрузка)
+    try:
+        installer_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        local_zip = os.path.join(installer_dir, ZIP_ASSET_NAME)
+        if os.path.isfile(local_zip) and os.path.getsize(local_zip) > 1024 * 1024:
+            say("Установка из локального архива…")
+            extract_release(local_zip, dest_dir, on_progress=on_progress)
+            return tag or "v2.0.0"
+    except Exception:
+        pass
+
     say("Ищу последнюю версию…")
     url = zip_asset_url()
 
@@ -162,7 +181,7 @@ def install_release(dest_dir: str, on_status=None, on_progress=None) -> str:
         say("Скачиваю…")
         download(url, tmp_zip, on_progress=on_progress)
         say("Распаковываю…")
-        extract_release(tmp_zip, dest_dir)
+        extract_release(tmp_zip, dest_dir, on_progress=on_progress)
     finally:
         try:
             os.remove(tmp_zip)

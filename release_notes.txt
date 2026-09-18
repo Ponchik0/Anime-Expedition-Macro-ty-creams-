@@ -1,18 +1,17 @@
 ## v2.0.0 — Modern Glass UI, WASD Walk System & Next-Gen Automation
 
-### Next-Gen Glass Interface & Modular Dashboard
-- `new` **Modern Cyber-Glass Design System** — completely redesigned sleek obsidian glass aesthetic with dynamic backdrop blur, refined tactile feedback, and customizable theme settings (Onyx/Pearl).
-- `new` **Modular Dashboard & Drag-and-Drop Layout** — fully customizable dashboard grid allowing Macro Engine, Session Stats, Process Log, and Run History cards to be rearranged, hidden, or restored on the fly.
-- `new` **Intelligent Cursor & Header Grab Handles** — clean, dedicated drag handles (`⋮⋮`) with zero button clutter, active strictly within header bounds while keeping card contents and controls intuitively clickable.
-- `new` **Sidebar Restore Banner** — non-intrusive restore bar that dynamically appears when cards are hidden, offering instant one-click restoration without polluting card headers.
-- `new` **Thematic Modal Cross Icons** — replaced all ambiguous close buttons across all modal dialogs with vector `#i-close` icons and `.btn-danger-hover` styling.
-
-### Live Sub-Block Customization & Swap Physics (Macro Engine)
-- `new` **Sub-Block Reordering with Live Swap Preview** — all 4 sub-sections (Streak & Stats, Run Info, Mini Queue, Active Automations) support dynamic reordering. Dragged blocks feature smooth inertia physics (`lerp * 0.35` with velocity tilt), while target blocks smoothly glide out of the way to preview the new layout in real time.
+### Cyber-Glass Interface & Visual Identity
+- `new` **Complete Cyber-Glass Redesign** — obsidian dark theme (`#0c0d14`), frosted glass surfaces, natural ambient shadows, and crisp responsive layout across all views.
+- `new` **What's New Showcase & Modern In-App Changelog** — interactive release showcase modal upon upgrading with clean category filters, bullet points, and persistent version badge.
 - `new` **Win Streak & Record Telemetry Strip** — real-time HUD telemetry tracking consecutive wins (`STREAK`), all-time session record (`BEST`), and auto-timer for upcoming Challenge rotations.
 - `new` **Loss Streak Safety Stop** — configurable safety threshold that automatically pauses macro execution after consecutive defeats to safeguard winrate and stats.
 - `new` **Quick Action Bar (Auto-Restart & VIP Rejoin)** — dedicated fast-action controls for immediate round restart looping (`Alt+F5`) and 1-click private server reconnection (`Alt+F6`) with dynamic hotkey badge synchronization.
 - `fix` **Dashboard Mini Queue Filtering & Adaptive Scroll** — the Dashboard upcoming queue now strictly displays active tasks (`enabled !== false`) with accurate counter badge, alternating zebra striping for high readability, and responsive clamp height (`clamp(140px, 22vh, 230px)`).
+
+### Cyber-Glass Setup Installer (v2.0)
+- `new` **Cyber-Glass Setup UI** — completely redesigned standalone installer (`Anime Expeditions Macro Setup.exe`) matching the new obsidian Cyber-Glass theme, native Windows 10/11 dark title bar, and Per-Monitor High-DPI support.
+- `new` **In-Window Completion & Error Views** — seamless in-window completion view with green verification badge and 1-click launch button, replacing native OS popups.
+- `new` **Resilient Multi-Source Downloading** — direct download with fallback search for Windows asset archives, custom User-Agent, and offline local zip package auto-detection.
 
 ### WASD Walk Recording & Visual Route Navigation
 - `new` **Live WASD Walk Recording System** — record in-game movement routes on the fly without cluttering the main replay. Activates via global hotkey (`Alt+9`) or directly in Scenario Builder with an on-screen recording HUD (`recPopout`).
@@ -36,6 +35,8 @@
 - `new` **Pre-Shipped Endless Templates** — shipped pre-calibrated `Inf Summer` and `Summer Fishing` task templates with repeat set to 9999 for out-of-the-box 24/7 farming.
 
 ### Engine Reliability, Bugfixes & Navigation
+- `fix` **WindowManager Type Annotation Crash** — fixed startup failure `NameError: name 'Optional' is not defined` in `core/window_win.py` and `core/window_mac.py`.
+- `fix` **Release Workflow Asset Overwrite (422)** — automated release pipeline now uses `gh release upload --clobber` and `Compress-Archive -Force` ensuring all 3 release binaries (`Setup.exe`, `Windows.zip`, `Macro.exe`) are reliably published without collision errors.
 - `fix` **Anti-Reparenting Leak (Browser Docking)** — Roblox window could dock into Chrome/Edge because window search matched browser tabs titled "Anime Expeditions"; fixed by strictly filtering window handles by macro process ID (`pid=os.getpid()`).
 - `fix` **Adaptive Resolution & Display Scaling** — mouse clicks and vision templates drifted on non-1080p resolutions (1024×768) or 125%/150% Windows DPI; fixed with aspect ratio distortion correction and work area boundary checks (`SPI_GETWORKAREA`).
 - `fix` **Inf Summer Infinite Loop & Restart Fallback** — endless runs could accidentally exit to lobby on defeat or restart stalls; fixed with 5-stage restart verification and an unconditional lobby exit lock for Inf Summer scenarios.

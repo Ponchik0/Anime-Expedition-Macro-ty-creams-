@@ -5178,8 +5178,7 @@ class Api:
                     return
 
                 self.push_log("[OCR] Окно установщика открыто. Ожидаем завершения...")
-                # Ждём завершения PowerShell процесса (до 10 минут)
-                WAIT_TIMEOUT = 0x00000102
+                # Ждём завершения PowerShell процесса
                 INFINITE = 0xFFFFFFFF
                 ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, INFINITE)
 

@@ -31,7 +31,10 @@ with a [window_mac] prefix.
 """
 
 import atexit
+import os
 import subprocess
+import time
+from typing import Optional
 
 import objc
 import Quartz
