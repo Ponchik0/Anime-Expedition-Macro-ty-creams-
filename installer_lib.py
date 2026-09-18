@@ -231,12 +231,100 @@ def _vbs_str(value: str) -> str:
     return '"' + str(value).replace('"', '""') + '"'
 
 
+def _create_shortcut_com(link_path: str, target: str, workdir: str = "",
+                         icon: str = "", description: str = "") -> bool:
+    """Создаёт .lnk напрямую через интерфейсы Windows COM (IShellLinkW, IPersistFile)
+    через стандартный ctypes без запуска внешних процессов и без временных файлов.
+    Работает во всех версиях Windows, не блокируется ASR/Defender и не зависит
+    от системной кодовой страницы ANSI при кириллических путях."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", wintypes.DWORD),
+                ("Data2", wintypes.WORD),
+                ("Data3", wintypes.WORD),
+                ("Data4", wintypes.BYTE * 8),
+            ]
+            def __init__(self, d1, d2, d3, d4):
+                super().__init__(d1, d2, d3, (wintypes.BYTE * 8)(*d4))
+
+        CLSID_ShellLink = _GUID(0x00021401, 0, 0, (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+        IID_IShellLinkW = _GUID(0x000214F9, 0, 0, (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+        IID_IPersistFile = _GUID(0x0000010B, 0, 0, (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+        CLSCTX_INPROC_SERVER = 1
+
+        class _IShellLinkW(ctypes.Structure):
+            _fields_ = [("lpVtbl", ctypes.c_void_p)]
+
+        ole32 = ctypes.oledll.ole32
+        ole32.CoInitialize(None)
+        try:
+            p_sl = ctypes.POINTER(_IShellLinkW)()
+            hr = ole32.CoCreateInstance(
+                ctypes.byref(CLSID_ShellLink), None, CLSCTX_INPROC_SERVER,
+                ctypes.byref(IID_IShellLinkW), ctypes.byref(p_sl)
+            )
+            if hr != 0 or not p_sl:
+                return False
+
+            vtbl = ctypes.cast(p_sl.contents.lpVtbl, ctypes.POINTER(ctypes.c_void_p))
+
+            # IShellLinkW Vtbl indices: 7: SetDescription, 9: SetWorkingDirectory, 17: SetIconLocation, 20: SetPath
+            proto_SetPath = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl[20])
+            proto_SetPath(p_sl, target)
+
+            if workdir or os.path.dirname(target):
+                proto_SetWorkingDirectory = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl[9])
+                proto_SetWorkingDirectory(p_sl, workdir or os.path.dirname(target))
+
+            if description:
+                proto_SetDescription = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, wintypes.LPCWSTR)(vtbl[7])
+                proto_SetDescription(p_sl, description)
+
+            if icon or target:
+                proto_SetIconLocation = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, wintypes.LPCWSTR, ctypes.c_int)(vtbl[17])
+                proto_SetIconLocation(p_sl, icon or target, 0)
+
+            # QueryInterface for IPersistFile (index 0)
+            p_pf = ctypes.c_void_p()
+            proto_QI = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, ctypes.POINTER(_GUID), ctypes.POINTER(ctypes.c_void_p))(vtbl[0])
+            hr_qi = proto_QI(p_sl, ctypes.byref(IID_IPersistFile), ctypes.byref(p_pf))
+            if hr_qi == 0 and p_pf.value:
+                pf_vtbl = ctypes.cast(p_pf, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))
+                # IPersistFile::Save is index 6
+                proto_Save = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, wintypes.LPCWSTR, wintypes.BOOL)(pf_vtbl.contents[6])
+                proto_Save(p_pf, link_path, True)
+                ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(pf_vtbl.contents[2])(p_pf)
+
+            ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(vtbl[2])(p_sl)
+        finally:
+            ole32.CoUninitialize()
+    except Exception:
+        pass
+
+    return os.path.isfile(link_path)
+
+
 def create_shortcut(link_path: str, target: str, workdir: str = "",
                     icon: str = "", description: str = "") -> bool:
     """Создаёт .lnk. Возвращает True, если файл появился.
 
     Неудача здесь НЕ должна валить установку: приложение уже разложено и
     работает, отсутствие ярлыка — неудобство, а не поломка."""
+    link_dir = os.path.dirname(os.path.abspath(link_path))
+    os.makedirs(link_dir, exist_ok=True)
+
+    # 1. Быстрый и прямой способ через in-process Windows COM (ctypes)
+    try:
+        if _create_shortcut_com(link_path, target, workdir, icon, description):
+            return True
+    except Exception:
+        pass
+
+    # 2. Попытка через VBScript + cscript (нативно для Windows)
     script = _VBS.format(
         link=_vbs_str(link_path),
         target=_vbs_str(target),
@@ -244,8 +332,6 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
         icon=_vbs_str(icon or target),
         desc=_vbs_str(description or APP_NAME),
     )
-    link_dir = os.path.dirname(os.path.abspath(link_path))
-    os.makedirs(link_dir, exist_ok=True)
     try:
         fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_")
     except Exception:
