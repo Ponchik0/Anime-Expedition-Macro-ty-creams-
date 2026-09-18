@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import base64
 
 import requests
 
@@ -246,9 +247,9 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
     link_dir = os.path.dirname(os.path.abspath(link_path))
     os.makedirs(link_dir, exist_ok=True)
     try:
-        fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_", dir=link_dir)
-    except Exception:
         fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_")
+    except Exception:
+        fd, path = tempfile.mkstemp(suffix=".vbs", prefix="aem_lnk_", dir=link_dir)
     try:
         # UTF-16, а НЕ utf-8-sig. Windows Script Host понимает либо ANSI, либо
         # UTF-16LE с BOM; на BOM от UTF-8 он падает сразу на первом символе
@@ -269,7 +270,9 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
         except OSError:
             pass
 
-    # Fallback на PowerShell, если cscript заблокирован политиками безопасности или ASR
+    # Fallback на PowerShell, если cscript заблокирован политиками безопасности или ASR.
+    # Команду кодируем в base64 UTF-16LE (-EncodedCommand), чтобы кириллические пути
+    # и пробелы не ломались в консоли независимо от текущей кодовой страницы Windows.
     if not os.path.isfile(link_path):
         try:
             escaped_link = link_path.replace("'", "''")
@@ -286,8 +289,9 @@ def create_shortcut(link_path: str, target: str, workdir: str = "",
                 f"$s.Description = '{escaped_desc}'; "
                 f"$s.Save()"
             )
+            encoded = base64.b64encode(ps_script.encode("utf-16le")).decode("ascii")
             subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
                 timeout=15,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 capture_output=True,
