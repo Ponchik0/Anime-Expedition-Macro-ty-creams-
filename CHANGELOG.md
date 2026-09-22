@@ -2,6 +2,19 @@
 
 All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 
+## [2.0.1] - 2026-09-22
+
+### Interactive UI & Version Badge
+- `new` **Animated Version Badge** — smooth continuous rotation for the version icon with interactive hover acceleration (1.8s), distinct tactile active feedback (`:active { transform: scale(0.96) }`), and enhanced hover states.
+- `fix` **Update Modal Occlusion & Toggle** — eliminated accidental modal dismissals and fixed child window occlusion to ensure the update window always opens cleanly over the game.
+- `fix` **Settings Anchor Precision** — checking for updates from Settings now directly targets the update action button.
+
+### Installer & Reliability
+- `new` **Native Windows COM Shortcuts** — replaced brittle PowerShell script invocation with direct Windows `IShellLinkW` / `IPersistFile` COM interface for 100% reliable shortcut creation on Desktop and Start Menu.
+- `new` **Clean Modern Installer UI** — redesigned setup wizard matching the macro's obsidian/brass aesthetic with small-caps header typography and clean system icons.
+- `new` **Resumable & Chunked Downloads** — chunked HTTP streaming with resume support (`Range` headers) for large package downloads, with fallback mirrors and zero memory spikes.
+- `fix` **Match Restart Stop Handling** — graceful exit on macro stop during in-game match restarts, preventing unnecessary repeat iterations.
+
 ## [2.0.0] - 2026-09-17
 
 ## v2.0.0 — Modern Glass UI, WASD Walk System & Next-Gen Automation
