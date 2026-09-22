@@ -9,10 +9,17 @@ All notable changes to Anime Expeditions (Cream's Macro) are documented here.
 - `fix` **Update Modal Occlusion & Toggle** — eliminated accidental modal dismissals and fixed child window occlusion to ensure the update window always opens cleanly over the game.
 - `fix` **Settings Anchor Precision** — checking for updates from Settings now directly targets the update action button.
 
-### Installer & Reliability
+### Installer Redesign & Streamlined Setup
+- `new` **Macro Aesthetic Harmonization** — installer dialog (`installer.py`) redesigned with the macro's obsidian palette (`#131417`), dark headers (`#18191e`), and warm brass accents (`#dcae6e`), replacing artificial neon borders and generic elements.
+- `new` **Clean Header Typography** — removed the synthetic canvas emblem in favor of clean, balanced typography: small-caps `ANIME EXPEDITIONS` brand eyebrow and bold `Macro Setup` title with a compact `v2.0.1` badge.
 - `new` **Native Windows COM Shortcuts** — replaced brittle PowerShell script invocation with direct Windows `IShellLinkW` / `IPersistFile` COM interface for 100% reliable shortcut creation on Desktop and Start Menu.
-- `new` **Clean Modern Installer UI** — redesigned setup wizard matching the macro's obsidian/brass aesthetic with small-caps header typography and clean system icons.
-- `new` **Resumable & Chunked Downloads** — chunked HTTP streaming with resume support (`Range` headers) for large package downloads, with fallback mirrors and zero memory spikes.
+- `new` **Intelligent Completion Flow** — when "Launch after install" is enabled, the completion view presents an intuitive `Finish & Launch` primary action and `Close` secondary, preventing duplicate background process launches.
+- `fix` **OneDrive & Redirected Desktop Shortcuts** — shortcuts previously failed to appear on systems where Desktop was redirected to OneDrive; fixed by reading actual user shell folders from Windows Registry (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`).
+
+### Resumable Downloads & Package Reliability
+- `new` **HTTP Range Resume Support** — installer downloads now leverage HTTP `Range: bytes={done}-` requests with partial content (`206`) handling and automatic retries (up to 5 attempts). If connection drops midway through the 160MB package, download resumes seamlessly without restarting from zero.
+- `new` **Smart Local Package Discovery** — installer checks its own directory, current working folder, and `Downloads` for existing release packages (`Anime-Expeditions-Macro-Windows.zip`) and installs directly without re-downloading if already present.
+- `fix` **Archive Corruption & Source Zip Guard** — validated archives with `zipfile.is_zipfile` and verified the presence of `Anime Expeditions Macro.exe` before extraction, preventing partial corrupted installations and ignoring bare source code zips.
 - `fix` **Match Restart Stop Handling** — graceful exit on macro stop during in-game match restarts, preventing unnecessary repeat iterations.
 
 ## [2.0.0] - 2026-09-17
