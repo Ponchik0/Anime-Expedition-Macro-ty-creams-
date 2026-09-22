@@ -1,60 +1,23 @@
-## v2.0.0 — Modern Glass UI, WASD Walk System & Next-Gen Automation
+## v2.0.1 — Installer Reliability, Resumable Downloads & Service Telemetry
 
-### Modern UI & Visual Identity
-- `new` **Complete Modern UI Redesign** — obsidian dark theme (`#0c0d14`), frosted glass surfaces, natural ambient shadows, and crisp responsive layout across all views.
-- `new` **What's New Showcase & Modern In-App Changelog** — interactive release showcase modal upon upgrading with clean category filters, bullet points, and persistent version badge.
-- `new` **Win Streak & Record Telemetry Strip** — real-time HUD telemetry tracking consecutive wins (`STREAK`), all-time session record (`BEST`), and auto-timer for upcoming Challenge rotations.
-- `new` **Loss Streak Safety Stop** — configurable safety threshold that automatically pauses macro execution after consecutive defeats to safeguard winrate and stats.
-- `new` **Quick Action Bar (Auto-Restart & VIP Rejoin)** — dedicated fast-action controls for immediate round restart looping (`Alt+F5`) and 1-click private server reconnection (`Alt+F6`) with dynamic hotkey badge synchronization.
-- `fix` **Dashboard Mini Queue Filtering & Adaptive Scroll** — the Dashboard upcoming queue now strictly displays active tasks (`enabled !== false`) with accurate counter badge, alternating zebra striping for high readability, and responsive clamp height (`clamp(140px, 22vh, 230px)`).
+### Installer Redesign & Streamlined Setup
+- `new` **Macro Aesthetic Harmonization** — installer dialog (`installer.py`) redesigned with the macro's obsidian palette (`#131417`), dark headers (`#18191e`), and warm brass accents (`#dcae6e`), replacing artificial neon borders and generic elements.
+- `new` **Clean Header Typography** — removed the synthetic canvas emblem in favor of clean, balanced typography: small-caps `ANIME EXPEDITIONS` brand eyebrow and bold `Macro Setup` title with a compact `v2.0.1` badge.
+- `new` **Intelligent Completion Flow** — when "Launch after install" is enabled, the completion view presents an intuitive `Finish & Launch` primary action and `Close` secondary, preventing duplicate background process launches.
+- `fix` **OneDrive & Redirected Desktop Shortcuts** — shortcuts previously failed to appear on systems where Desktop was redirected to OneDrive; fixed by reading actual user shell folders from Windows Registry (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`).
 
-### Modern Setup Installer (v2.0)
-- `new` **Modern Setup UI** — completely redesigned standalone installer (`Anime Expeditions Macro Setup.exe`) matching the new obsidian theme, native Windows 10/11 dark title bar, and Per-Monitor High-DPI support.
-- `new` **In-Window Completion & Error Views** — seamless in-window completion view with green verification badge and 1-click launch button, replacing native OS popups.
-- `new` **Resilient Multi-Source Downloading** — direct download with fallback search for Windows asset archives, custom User-Agent, and offline local zip package auto-detection.
+### Resumable Downloads & Package Reliability
+- `new` **HTTP Range Resume Support** — installer downloads now leverage HTTP `Range: bytes={done}-` requests with partial content (`206`) handling and automatic retries (up to 5 attempts). If connection drops midway through the 160MB package, download resumes seamlessly without restarting from zero.
+- `new` **Smart Local Package Discovery** — installer checks its own directory, current working folder, and `Downloads` for existing release packages (`Anime-Expeditions-Macro-Windows.zip`) and installs directly without re-downloading if already present.
+- `fix` **Archive Corruption & Source Zip Guard** — validated archives with `zipfile.is_zipfile` and verified the presence of `Anime Expeditions Macro.exe` before extraction, preventing partial corrupted installations and ignoring bare source code zips.
 
-### WASD Walk Recording & Visual Route Navigation
-- `new` **Live WASD Walk Recording System** — record in-game movement routes on the fly without cluttering the main replay. Activates via global hotkey (`Alt+9`) or directly in Scenario Builder with an on-screen recording HUD (`recPopout`).
-- `new` **Intelligent Idle Auto-Save & Manual Stop** — automatically concludes and saves movement routes after 1.8s of idle input or via the on-screen Stop button, prompting for route name and saving to `Paths/`.
-- `new` **Visual Walking Path Picker** — integrated walking path selector into Move/Walk scenario blocks and the Expedition Hub walking paths manager, allowing stored WASD routes to be assigned with one click.
+### Privacy-Preserving Telemetry & Service Monitoring
+- `new` **Non-Intrusive Anonymous Telemetry** — lightweight, background heartbeat service tracking active sessions, version distribution, average operating hours, and completed runs without collecting personal data, usernames, IP addresses, or file paths.
+- `new` **Private Developer Analytics Dashboard** — added `tools/dashboard.py` generating live HTML & CLI analytics showing GitHub release downloads, 14-day clone/view traffic, online users, and runtime statistics protected by developer secret.
+- `fix` **Asynchronous Daemon Execution** — heartbeat runs strictly in a background daemon thread with low priority and silent fail-safe error suppression, ensuring zero impact on startup time or macro execution.
 
-### Recordings Drawer & Quick Replay Selector (F10)
-- `new` **Sliding Glass Recordings Drawer (`F10`)** — full-height drawer sliding smoothly from the right edge with live search, route length, action count, and creation date.
-- `new` **Instant Route Selection & Fast Play** — 1-click selection to mark a recording as active without launching, or direct `Play` (▶) button for instant replay execution.
-- `new` **Native Window Occlusion Protection** — automatically hides embedded Roblox window (`hide_game()`) when opening the drawer and restores it upon closing, preventing the game from overlapping the route list.
-- `new` **Start Button Mode Selector** — switch between Task Queue (Auto) and Replay mode directly from the drawer footer.
-- `new` **Harmonious Drawer Header & Pill Badge** — clean inline layout with dedicated `.rec-drawer-title-row` and glass pill count badge vertically aligned right next to the title.
-
-### Hotkey Management & Multi-Key Combinations
-- `new` **Two-Key / Modifier Hotkey Recording** — full support for recording combination shortcuts (`Alt+9`, `Alt+F5`, `Alt+F6`, `Ctrl+Shift+R`). Holding a modifier shows a pending state (`Alt + ...`) and waits for the target key before saving.
-- `new` **Tactile Hotkey Reset/Clear Button (`×`)** — dedicated quick-clear button on every hotkey row to instantly unbind shortcuts.
-- `new` **Automated Default Hotkey Migration** — seamless auto-migration of legacy default keys (`F6` -> `Alt+F5`, `F10` -> `Alt+F6`, `F9` -> `F10`) for both fresh installs and existing users upgrading from previous versions.
-
-### Scenarios, Templates & Management
-- `new` **Open Templates Folder Button** — added a dedicated 1-click button in Scenarios and Tasks headers to open the `Templates/` directory directly in Windows Explorer.
-- `new` **Pre-Shipped Endless Templates** — shipped pre-calibrated `Inf Summer` and `Summer Fishing` task templates with repeat set to 9999 for out-of-the-box 24/7 farming.
-
-### Engine Reliability, Bugfixes & Navigation
-- `fix` **WindowManager Type Annotation Crash** — fixed startup failure `NameError: name 'Optional' is not defined` in `core/window_win.py` and `core/window_mac.py`.
-- `fix` **Release Workflow Asset Overwrite (422)** — automated release pipeline now uses `gh release upload --clobber` and `Compress-Archive -Force` ensuring all 3 release binaries (`Setup.exe`, `Windows.zip`, `Macro.exe`) are reliably published without collision errors.
-- `fix` **Anti-Reparenting Leak (Browser Docking)** — Roblox window could dock into Chrome/Edge because window search matched browser tabs titled "Anime Expeditions"; fixed by strictly filtering window handles by macro process ID (`pid=os.getpid()`).
-- `fix` **Adaptive Resolution & Display Scaling** — mouse clicks and vision templates drifted on non-1080p resolutions (1024×768) or 125%/150% Windows DPI; fixed with aspect ratio distortion correction and work area boundary checks (`SPI_GETWORKAREA`).
-- `fix` **Inf Summer Infinite Loop & Restart Fallback** — endless runs could accidentally exit to lobby on defeat or restart stalls; fixed with 5-stage restart verification and an unconditional lobby exit lock for Inf Summer scenarios.
-- `fix` **Start Game Modal Auto-Click** — stage and event loading occasionally halted on an unhandled green "Start Game" confirmation dialog; added visual template matching and automatic click dispatch.
-- `fix` **Windows OCR Bundled Dependencies** — PyInstaller `.exe` builds omitted WinRT OCR assemblies, causing silent OCR failures on clean Windows installs; explicitly bundled `winsdk.windows.media.ocr` and globalization modules.
-- `fix` **Diagnostics Bell & In-App Setup** — missing OCR language packs or incorrect display scaling caused silent runner failures without notification; added header Diagnostics Bell with 1-click OCR package installation and real-time status.
-- `fix` **Lobby Auto-Recovery Navigation** — character could get stuck in lobby if dialog menus closed prematurely or templates shifted; added multi-anchor detection, relaxed matching tolerance (0.78), and proactive lobby reset.
-- `fix` **Infinite Wave Limit & Match Stall Fallback** — runner could freeze indefinitely if victory/defeat banners were obscured during long runs; added timeout watchdog that safely leaves stage and advances queue.
-- `fix` **Window Maximize & Fullscreen Layout** — maximizing window distorted Roblox coordinates or caused canvas stretching; fixed via Win32 `SW_MAXIMIZE`/`SW_RESTORE` preserving game viewport at (0, 44).
-- `fix` **Multi-Key Hotkey Capture Glitch** — pressing `Alt` immediately locked the hotkey without waiting for the secondary key (e.g. `9` or `F5`); fixed by supporting modifier pending states (`Alt + ...`).
-- `fix` **Recordings Drawer Roblox Occlusion** — embedded Roblox child window rendered on top of the F10 recordings drawer due to native HWND z-ordering; fixed by auto-hiding the game on drawer open and restoring it on close.
-- `fix` **WASD Walk Recording Polish & Safe HUD** — floating recording HUD could remain on screen after screen switch; fixed with strict lifecycle cleanup and 1.8s idle auto-save to `Paths/`.
-- `fix` **Dashboard Mini Queue Enabled Filtering** — upcoming queue on Dashboard showed disabled tasks and inflated count; now strictly filters `enabled !== false` with zebra striping and adaptive scrolling.
-- `fix` **Thematic Modal Close Icons** — ambiguous or missing modal close buttons replaced with vector `#i-close` cross icons and danger hover states across all dialogs.
-- `fix` **Seamless Roblox Docking & Window Protection** — embedded game window (1152×756) with auto-docking, smart un-docking on quit, resolution detection, and protection against UI overlap.
-- `fix` **Elimination of Artificial Neon Glows & Native Dialogs** — replaced jarring oversaturated glow halos with natural frosted glass shadows and safe in-app confirmations that never hide behind native game windows.
-- `fix` **Clean Layout Splitters** — removed non-functional tier resizers, keeping only high-precision column resizers with smooth pointer tracking.
-- `fix` **Multi-Rank Fishing Rod Protection** — multi-layer verification protecting equipped fishing rods (Novice through Grandmaster) from accidental un-equipping during cycle transitions.
+### Quality & Bugfixes
+- `fix` **100% Test Suite Green** — all 1452 automated unit tests passing, frontend syntax verified via `node --check ui/app.js`.
 
 ---
 

@@ -68,3 +68,6 @@ Recordings/
 *.pdf
 todo.md
 ui/concept-command/
+tools/admin_secret.json
+tools/dashboard.html
+

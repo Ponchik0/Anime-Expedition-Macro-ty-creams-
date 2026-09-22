@@ -2618,7 +2618,18 @@ class Api:
             paths.cancel_recording()
 
         if cfg.load().get("run_mode") == "replay":
+            try:
+                from core import telemetry
+                telemetry.set_farming_active(True)
+            except Exception:
+                pass
             return self.replay_play()
+
+        try:
+            from core import telemetry
+            telemetry.set_farming_active(True)
+        except Exception:
+            pass
 
         self.reset_run_status("Starting macro execution...")
         data = cfg.load()
@@ -2638,6 +2649,11 @@ class Api:
             memory_refresh_hours=data.get("memory_refresh_hours", 4.0))
 
     def stop_macro(self) -> dict:
+        try:
+            from core import telemetry
+            telemetry.set_farming_active(False)
+        except Exception:
+            pass
         # An explicit Stop cancels any pending auto-reopen/auto-restart -- if
         # the user is deliberately stopping (and may then close Roblox to
         # quit), the watchdog must not helpfully reopen the game and start the
@@ -6356,6 +6372,12 @@ def _launch_ui():
 
     threading.Thread(target=_check_for_update_background, daemon=True).start()
 
+    try:
+        from core import telemetry
+        telemetry.start_telemetry(api)
+    except Exception as exc:
+        api.push_log(f"[Telemetry] Init failed: {exc}")
+
     def _ensure_assets_background():
         # Assets/ ships as a loose folder beside the exe (see core.constants.
         # ASSETS_DIR), so a bare exe with no Assets next to it (shared solo,
@@ -6739,6 +6761,11 @@ def _launch_ui():
         from core import vision
         vision.close_all_mss()
         api.logger.close()
+        try:
+            from core import telemetry
+            telemetry.stop_telemetry(api)
+        except Exception:
+            pass
 
     atexit.register(_on_app_exit)
 
