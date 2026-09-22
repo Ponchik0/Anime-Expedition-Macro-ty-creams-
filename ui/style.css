@@ -329,31 +329,45 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .titlebar-btn:hover { background: var(--bg-surface); color: var(--text); }
 .titlebar-btn:active { background: var(--bg-field); }
 
-/* Значок версии. Раньше — цветной со свечением при наведении. */
+/* Значок версии: живая интерактивная кнопка с постоянным плавным вращением и тактильным откликом */
 .ver-badge-btn {
   padding: 2px var(--s2);
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
   background: var(--bg-surface);
-  /* Без !important: он стоял здесь, чтобы перебить инлайновые цвета в
-     разметке, но заодно не давал подсветить бейдж при наличии
-     обновления. Инлайн из index.html убран, подпорка не нужна. */
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-size: 10px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  transition: color var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease);
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--t-hover) var(--ease), border-color var(--t-hover) var(--ease), background var(--t-hover) var(--ease), transform 80ms var(--ease);
 }
 .ver-badge-btn:hover {
   color: var(--text);
   border-color: var(--border-strong);
-  background: var(--bg-surface);
-  box-shadow: none;
+  background: var(--bg-field);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
-.ver-badge-btn:active { transform: none; }
-.ver-badge-icon { width: 11px; height: 11px; }
+.ver-badge-btn:active {
+  transform: scale(0.96);
+  background: var(--bg-card);
+}
+.ver-badge-icon {
+  width: 11px;
+  height: 11px;
+  transform-box: fill-box;
+  transform-origin: center;
+  /* Плавное постоянное вращение — иконка живая и динамичная, а не статичная */
+  animation: ver-badge-spin 8s linear infinite;
+  transition: transform var(--t-hover) var(--ease);
+}
+.ver-badge-btn:hover .ver-badge-icon {
+  /* При наведении ускоряется, показывая интерактивность */
+  animation: ver-badge-spin 1.8s linear infinite;
+}
 @keyframes ver-badge-spin { to { transform: rotate(360deg); } }
-.ver-badge-icon.spinning { animation: ver-badge-spin 900ms linear infinite; }
+.ver-badge-icon.spinning { animation: ver-badge-spin 800ms linear infinite !important; }
 
 /* Колокольчик диагностики:
    Без фона, без кругляшка, аккуратный размер (16px).
@@ -2798,26 +2812,29 @@ body.compact-mode #compact-strip { display: flex; }
   0%   { box-shadow: 0 0 6px -2px color-mix(in srgb, var(--accent) 20%, transparent); border-color: color-mix(in srgb, var(--accent) 65%, transparent); }
   100% { box-shadow: 0 0 14px -1px color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }
 }
-.ver-badge-btn.has-update:hover { animation-play-state: paused; }
+.ver-badge-btn.has-update:hover {
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg-surface));
+  border-color: var(--accent-hover);
+}
 
 
 /* Иконка слева от версии крутится, пока обновление не поставлено. Она и так
    означает «проверить/обновить», поэтому вращение читается сразу и без
    подписи: что-то пришло.
 
-   3 секунды на оборот, а не 900 мс как у .spinning. Быстрое вращение значит
-   «идёт проверка прямо сейчас, подожди» — оно и занято этим смыслом. Медленное
-   означает «есть что взять» и не торопит: обновление может подождать. */
+   2.5 секунды на оборот, а при наведении ускоряется до 1.2с для живого отклика. */
 @keyframes ver-badge-turn { to { transform: rotate(360deg); } }
 .ver-badge-btn.has-update .ver-badge-icon {
-  animation: ver-badge-turn 3s linear infinite;
+  animation: ver-badge-turn 2.5s linear infinite;
 }
 /* Пока идёт настоящая проверка, .spinning главнее — иначе два вращения
    наложились бы и стало бы непонятно, что происходит. */
 .ver-badge-btn.has-update .ver-badge-icon.spinning {
-  animation: ver-badge-spin 900ms linear infinite;
+  animation: ver-badge-spin 800ms linear infinite !important;
 }
-.ver-badge-btn.has-update:hover .ver-badge-icon { animation-play-state: paused; }
+.ver-badge-btn.has-update:hover .ver-badge-icon {
+  animation: ver-badge-turn 1.2s linear infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .ver-badge-btn.has-update .ver-badge-icon { animation: none; }
 }

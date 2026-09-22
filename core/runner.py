@@ -1474,6 +1474,8 @@ class MacroRunner(BountyOps, ChallengeOps, CraftingOps, FuelOps, ShopOps, Expedi
                     ).start()
                     fresh_entry = True
                     time.sleep(5.0)
+                    if stop_event.is_set():
+                        return False
                     if (self._is_fishing_task(task) or str(task.get("macro") or "").strip().lower() == "inf summer") and repeat_index >= repeat_total:
                         repeat_total += 9999
                     continue

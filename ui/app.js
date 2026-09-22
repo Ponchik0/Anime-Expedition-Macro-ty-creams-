@@ -484,8 +484,9 @@ if (typeof window !== 'undefined') {
 async function showUpdateAvailable(triggerEl) {
   try {
     const modal = document.getElementById('update-modal');
-    // Если уже открыто — закрываем (toggle)
-    if (modal && modal.style.display === 'flex') {
+    // Если вызвано пользователем по клику и окно уже открыто — закрываем (toggle).
+    // При фоновом пуше от Python окно не захлопывается обратно.
+    if (triggerEl && modal && modal.style.display === 'flex') {
       dismissUpdateModal();
       return;
     }
@@ -494,6 +495,9 @@ async function showUpdateAvailable(triggerEl) {
     if (diagModal && diagModal.style.display === 'flex') {
       closeDiagModal();
     }
+
+    // Сразу прячем нативное окно игры, чтобы оно не закрывало модалку
+    try { window.pywebview && pywebview.api.hide_game(); } catch (e) {}
 
     let info = null;
     if (window.pywebview && pywebview.api && pywebview.api.get_update_info) {
@@ -801,9 +805,10 @@ async function manualCheckForUpdate(e) {
   }
 
   const badge = typeof document !== 'undefined' ? document.getElementById('ver-badge') : null;
-  // Если обновление уже найдено и горит маячок — сразу открываем окно обновления у кнопки
+  const target = (e && (e.currentTarget || e.target)) || badge;
+  // Если обновление уже найдено и горит маячок — сразу открываем окно обновления у вызвавшей кнопки
   if (badge && badge.classList.contains('has-update')) {
-    showUpdateAvailable(badge);
+    showUpdateAvailable(target);
     return;
   }
 
