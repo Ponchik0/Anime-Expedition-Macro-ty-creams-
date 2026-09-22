@@ -1,4 +1,4 @@
-## v2.0.1 — Installer Reliability, Resumable Downloads & Service Telemetry
+## v2.0.1 — Installer Reliability & Resumable Downloads
 
 ### Installer Redesign & Streamlined Setup
 - `new` **Macro Aesthetic Harmonization** — installer dialog (`installer.py`) redesigned with the macro's obsidian palette (`#131417`), dark headers (`#18191e`), and warm brass accents (`#dcae6e`), replacing artificial neon borders and generic elements.
@@ -10,14 +10,6 @@
 - `new` **HTTP Range Resume Support** — installer downloads now leverage HTTP `Range: bytes={done}-` requests with partial content (`206`) handling and automatic retries (up to 5 attempts). If connection drops midway through the 160MB package, download resumes seamlessly without restarting from zero.
 - `new` **Smart Local Package Discovery** — installer checks its own directory, current working folder, and `Downloads` for existing release packages (`Anime-Expeditions-Macro-Windows.zip`) and installs directly without re-downloading if already present.
 - `fix` **Archive Corruption & Source Zip Guard** — validated archives with `zipfile.is_zipfile` and verified the presence of `Anime Expeditions Macro.exe` before extraction, preventing partial corrupted installations and ignoring bare source code zips.
-
-### Privacy-Preserving Telemetry & Service Monitoring
-- `new` **Non-Intrusive Anonymous Telemetry** — lightweight, background heartbeat service tracking active sessions, version distribution, average operating hours, and completed runs without collecting personal data, usernames, IP addresses, or file paths.
-- `new` **Private Developer Analytics Dashboard** — added `tools/dashboard.py` generating live HTML & CLI analytics showing GitHub release downloads, 14-day clone/view traffic, online users, and runtime statistics protected by developer secret.
-- `fix` **Asynchronous Daemon Execution** — heartbeat runs strictly in a background daemon thread with low priority and silent fail-safe error suppression, ensuring zero impact on startup time or macro execution.
-
-### Quality & Bugfixes
-- `fix` **100% Test Suite Green** — all 1452 automated unit tests passing, frontend syntax verified via `node --check ui/app.js`.
 
 ---
 
